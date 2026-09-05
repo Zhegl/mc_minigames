@@ -1,0 +1,9 @@
+name: PotatoMinigames
+version: '${version}'
+author: _FuriousPotato_
+main: me.petr1furious.potatominigames.PotatoMinigamesPlugin
+api-version: '1.21'
+permissions:
+  potatominigames.admin:
+    description: Manage minigames (start/stop games, change configs, admin helpers).
+    default: op

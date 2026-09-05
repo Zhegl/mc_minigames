@@ -1,0 +1,15 @@
+# Potato Minigames core settings.
+
+# Games start the moment you run `start` — there is no lobby or pre-game countdown.
+# (Bingo has its own cage countdown, see games/bingo.yml.)
+
+# Register the /dummy lifecycle-testing game (development only).
+enableDummyGame: false
+
+# Advanced Slime Paper world reset: clone a template slime world over the game
+# world before each game, so terrain damage never persists.
+asp:
+  enable: false
+  templateWorld: template
+  gameWorld: game
+  resetOnStart: true

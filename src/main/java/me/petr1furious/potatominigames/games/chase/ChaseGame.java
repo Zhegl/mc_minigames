@@ -1,0 +1,41 @@
+package me.petr1furious.potatominigames.games.chase;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+
+import me.petr1furious.potatominigames.core.config.ConfigRegistry;
+import me.petr1furious.potatominigames.core.game.GameSession;
+import me.petr1furious.potatominigames.core.game.Minigame;
+import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.gadgets.GadgetRegistry;
+
+/** The ultimate-tag successor: hunters vs runners across a fixed number of rounds. */
+public final class ChaseGame implements Minigame {
+    private final ChaseConfig config;
+    private final GadgetRegistry gadgets;
+
+    public ChaseGame(ConfigRegistry configs, GadgetRegistry gadgets) {
+        this.config = new ChaseConfig(configs);
+        this.gadgets = gadgets;
+    }
+
+    @Override
+    public String id() {
+        return "chase";
+    }
+
+    @Override
+    public Component displayName() {
+        return Component.text("Chase", NamedTextColor.AQUA);
+    }
+
+    @Override
+    public boolean usesGadgets() {
+        return true;
+    }
+
+    @Override
+    public GameSession createSession(SessionServices services) {
+        return new ChaseSession(services, config, gadgets);
+    }
+}

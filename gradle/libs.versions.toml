@@ -1,0 +1,7 @@
+[versions]
+paper = "26.2.build.115-stable"
+asp = "4.2.0-SNAPSHOT"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
+asp-api = { module = "com.infernalsuite.asp:api", version.ref = "asp" }
