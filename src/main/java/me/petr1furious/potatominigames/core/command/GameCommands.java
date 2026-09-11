@@ -121,7 +121,14 @@ public final class GameCommands {
         root.then(Commands.literal("join")
                 .executes(ctx -> run(ctx, c -> {
                     requireOwnSession(game);
-                    sessions.join(requirePlayer(c));
+                    Player self = requirePlayer(c);
+                    // Joining puts a knocked-out player back in; that's an admin's call,
+                    // or the dead would simply revive themselves.
+                    if (sessions.isParticipant(self) && !isAdmin(c.getSource())) {
+                        throw new CommandFailure(
+                                "You are already part of this game. If you were knocked out, an admin can bring you back.");
+                    }
+                    sessions.join(self);
                 }))
                 .then(Commands.argument("players", ArgumentTypes.players())
                         .requires(GameCommands::isAdmin)

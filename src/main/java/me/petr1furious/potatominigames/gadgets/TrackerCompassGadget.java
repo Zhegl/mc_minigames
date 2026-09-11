@@ -16,8 +16,11 @@ import net.kyori.adventure.text.format.TextDecoration;
  *
  * <p>Deliberately says nothing about distance: knowing only the direction and who
  * you are chasing is the interesting part, and a live distance readout makes
- * hiding pointless. The action bar is written only while the compass is actually
- * in hand, so it never fights with other gadgets for that line.
+ * hiding pointless. The needle is kept pointing for anyone carrying the compass,
+ * so it is already aimed the moment it is drawn: until the first update the client
+ * still points it at a spawn in another world, and it spins. The action bar is
+ * written only while the compass is actually in hand, so it never fights with
+ * other gadgets for that line.
  */
 public class TrackerCompassGadget extends AbstractGadget {
     public static final String ID = "tracker-compass";
@@ -36,27 +39,46 @@ public class TrackerCompassGadget extends AbstractGadget {
             return;
         }
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getGameMode() == GameMode.SPECTATOR || !isHolding(player)) {
+            if (player.getGameMode() == GameMode.SPECTATOR || !isCarrying(player)) {
                 continue;
             }
+            boolean holding = isHolding(player);
             Player target = nearestTarget(player);
             if (target == null) {
-                player.sendActionBar(Component.text("Nobody to track", NamedTextColor.GRAY));
+                if (holding) {
+                    player.sendActionBar(Component.text("Nobody to track", NamedTextColor.GRAY));
+                }
                 continue;
             }
             player.setCompassTarget(target.getLocation());
-            player.sendActionBar(Component.text()
-                    .append(Component.text("Tracking ", NamedTextColor.GRAY))
-                    .append(Component.text(
-                            context.hideTargetNames(player) ? "enemy" : target.getName(), NamedTextColor.AQUA))
-                    .build());
+            if (holding) {
+                player.sendActionBar(Component.text()
+                        .append(Component.text("Tracking ", NamedTextColor.GRAY))
+                        .append(Component.text(
+                                context.hideTargetNames(player) ? "enemy" : target.getName(), NamedTextColor.AQUA))
+                        .build());
+            }
         }
     }
 
     private boolean isHolding(Player player) {
         var inventory = player.getInventory();
-        return GadgetItems.checkForItem(inventory.getItemInMainHand(), TAG)
-                || GadgetItems.checkForItem(inventory.getItemInOffHand(), TAG);
+        return isTracker(inventory.getItemInMainHand()) || isTracker(inventory.getItemInOffHand());
+    }
+
+    /** Anywhere in the inventory, offhand included: the needle shows in the hotbar too. */
+    private boolean isCarrying(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (isTracker(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The type check first spares a meta copy for every other slot, several times a second. */
+    private static boolean isTracker(ItemStack item) {
+        return item != null && item.getType() == Material.COMPASS && GadgetItems.checkForItem(item, TAG);
     }
 
     /** Nearest trackable player in the same world; other worlds cannot be pointed at. */

@@ -87,6 +87,11 @@ public final class SidebarService {
         } else {
             view.setTitle(title);
         }
+        // A reconnecting player comes back on the main scoreboard while their view
+        // lives on, so re-attach it or the sidebar stays hidden for the whole game.
+        if (viewer.getScoreboard() != view.scoreboard) {
+            viewer.setScoreboard(view.scoreboard);
+        }
         view.setLines(lines);
     }
 

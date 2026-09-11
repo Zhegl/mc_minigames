@@ -32,8 +32,21 @@ import me.petr1furious.potatominigames.core.team.TeamColor;
  */
 public interface GameSession {
 
-    /** Called when a player late-joins a running game (see {@link #allowLateJoin()}). */
+    /**
+     * Called when a player late-joins a running game (see {@link #allowLateJoin()}),
+     * including a participant who is back after being knocked out (see
+     * {@link #isInGame(Player)}).
+     */
     default void onParticipantJoin(Player player) {
+    }
+
+    /**
+     * Whether a participant is still playing. `join` refuses only players who are;
+     * one who isn't (dead in warfare, say) is put back into the running game.
+     * By default every participant plays until the game ends.
+     */
+    default boolean isInGame(Player player) {
+        return true;
     }
 
     /** Called when a participant leaves for good via the leave command. */

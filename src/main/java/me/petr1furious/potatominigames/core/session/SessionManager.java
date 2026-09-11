@@ -217,22 +217,30 @@ public final class SessionManager {
         start(game, roster);
     }
 
-    /** Late-joins a player into a game already in progress. */
+    /**
+     * Late-joins a player into a game already in progress, or puts a participant who
+     * was knocked out back into it.
+     */
     public void join(Player player) throws CommandFailure {
         if (phase != GamePhase.RUNNING) {
             throw new CommandFailure("No game is running.");
         }
-        if (participants.isParticipant(player)) {
+        boolean returning = participants.isParticipant(player);
+        if (returning && session.isInGame(player)) {
             throw new CommandFailure(player.getName() + " is already in the game.");
         }
         if (!session.allowLateJoin()) {
             throw new CommandFailure(player.getName() + " cannot join this game once it has started.");
         }
-        Participant participant = participants.add(player);
-        if (activeGame.usesTeams()) {
-            teams.resolveForStart(activeGame.id(), participant);
+        // A returning player already has their pre-game snapshot; taking another now
+        // would record them as a spectator and "restore" that at the end.
+        if (!returning) {
+            Participant participant = participants.add(player);
+            if (activeGame.usesTeams()) {
+                teams.resolveForStart(activeGame.id(), participant);
+            }
+            playerState.snapshot(player);
         }
-        playerState.snapshot(player);
         session.onParticipantJoin(player);
         messages.broadcast(Component.text()
                 .append(Component.text(player.getName(), NamedTextColor.AQUA))

@@ -3,6 +3,7 @@ package me.petr1furious.potatominigames.games.warfare;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -113,17 +114,27 @@ abstract class WarfareSessionBase implements GameSession {
         }
     }
 
+    /**
+     * In the game means in survival or adventure in the game world, and nothing else:
+     * there is deliberately no alive/eliminated bookkeeping to drift out of step. A
+     * death makes you a spectator, which is what takes you out, and `join` (or a
+     * plain gamemode change) is what brings you back.
+     */
     protected boolean isPlayerAlive(Player player) {
+        GameMode mode = player.getGameMode();
         return player.isOnline()
-                && services.participants().isParticipant(player)
-                && player.getGameMode() != GameMode.SPECTATOR
-                && player.getGameMode() != GameMode.CREATIVE
+                && (mode == GameMode.SURVIVAL || mode == GameMode.ADVENTURE)
                 && player.getWorld().equals(gameWorld());
+    }
+
+    @Override
+    public boolean isInGame(Player player) {
+        return isPlayerAlive(player);
     }
 
     protected List<Player> alivePlayers() {
         List<Player> result = new ArrayList<>();
-        for (Player player : services.participants().onlinePlayers()) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
             if (isPlayerAlive(player)) {
                 result.add(player);
             }

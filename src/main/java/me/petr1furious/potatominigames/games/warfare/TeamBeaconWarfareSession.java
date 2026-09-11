@@ -120,6 +120,8 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
 
     @Override
     public void onParticipantJoin(Player player) {
+        // Brought back while waiting out a respawn: spawn now, not twice.
+        cancelPendingRespawn(player.getUniqueId());
         TeamColor team = teamOf(player);
         BeaconState beacon = team == null ? null : beacons.get(team);
         if (beacon == null || beacon.destroyed) {
@@ -170,8 +172,8 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
     @Override
     public Collection<Player> getTrackedPlayers(Player viewer) {
         List<Player> result = new ArrayList<>();
-        for (Player other : services.participants().onlinePlayers()) {
-            if (other == viewer || !isPlayerAlive(other) || arePlayersFriendly(viewer, other)) {
+        for (Player other : alivePlayers()) {
+            if (other == viewer || arePlayersFriendly(viewer, other)) {
                 continue;
             }
             result.add(other);
@@ -479,8 +481,8 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
 
     private int getAlivePlayers(TeamColor team) {
         int alive = 0;
-        for (Player player : services.participants().onlinePlayers()) {
-            if (teamOf(player) == team && isPlayerAlive(player)) {
+        for (Player player : alivePlayers()) {
+            if (teamOf(player) == team) {
                 alive++;
             }
         }

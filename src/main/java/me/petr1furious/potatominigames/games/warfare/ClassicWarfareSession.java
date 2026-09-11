@@ -60,7 +60,11 @@ final class ClassicWarfareSession extends WarfareSessionBase {
     @Override
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getPlayer();
-        event.setCancelled(isPlayerAlive(player));
+        // A death anywhere else (the lobby, say) is not this game's business.
+        if (!isPlayerAlive(player)) {
+            return;
+        }
+        event.setCancelled(true);
         Component death = event.deathMessage();
         if (death != null) {
             services.messages().broadcast(death.color(NamedTextColor.GRAY));
@@ -121,8 +125,8 @@ final class ClassicWarfareSession extends WarfareSessionBase {
     @Override
     public Collection<Player> getTrackedPlayers(Player viewer) {
         List<Player> result = new ArrayList<>();
-        for (Player other : services.participants().onlinePlayers()) {
-            if (other != viewer && isPlayerAlive(other)) {
+        for (Player other : alivePlayers()) {
+            if (other != viewer) {
                 result.add(other);
             }
         }

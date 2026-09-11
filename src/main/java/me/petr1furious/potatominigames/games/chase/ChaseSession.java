@@ -13,9 +13,11 @@ import java.util.UUID;
 
 import org.bukkit.GameMode;
 import org.bukkit.GameRules;
+import org.bukkit.HeightMap;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.enchantments.Enchantment;
@@ -62,6 +64,17 @@ final class ChaseSession implements GameSession {
     private static final int CORNER_INSET = 3;
     /** Spacing of the arena ground-height samples; finer than the altitude band needs. */
     private static final int GROUND_SAMPLE_STEP = 4;
+    /**
+     * How many samples either side the altitude band looks at (2 = about 8 blocks),
+     * so the ground right next to a cliff or a ravine is judged by both levels.
+     */
+    private static final int GROUND_NEIGHBOURHOOD = 2;
+    /** Taller than any generated tree, so the trunk scan always reaches the ground. */
+    private static final int MAX_TREE_HEIGHT = 40;
+    /** Arena locations tried before settling for one whose spawn is in water. */
+    private static final int ARENA_ATTEMPTS = 20;
+    /** How far from its corner a spawn may move looking for dry land. */
+    private static final int DRY_SEARCH_RADIUS = 12;
 
     private enum RoundPhase {
         NONE, FREEZE, HUNTING, INTERMISSION, WAITING_FOR_PLAYERS
@@ -288,46 +301,87 @@ final class ChaseSession implements GameSession {
 
     /**
      * A fresh patch of terrain every round, as the original did: random coordinates
-     * whose two spawn corners are both in a playable biome.
+     * whose two spawn corners are both on dry land.
+     *
+     * <p>Only the centre comes from the biome search, and the corners sit most of a
+     * border away from it — a beach or river centre can easily put a corner out at
+     * sea. So each candidate is checked at the corners themselves: first their
+     * biomes (free, no chunks generated), then the actual blocks.
      */
     private void placeArena() {
         int border = Math.max(16, config.borderSize.get());
         int half = border / 2 - CORNER_INSET;
 
-        int wantX = random.nextInt(ARENA_SPREAD * 2 + 1) - ARENA_SPREAD;
-        int wantZ = random.nextInt(ARENA_SPREAD * 2 + 1) - ARENA_SPREAD;
-        Location center = ArenaBiomes.findSuitableNear(world, wantX, wantZ, ARENA_SPREAD);
-        int centerX = center.getBlockX();
-        int centerZ = center.getBlockZ();
+        int centerX = 0;
+        int centerZ = 0;
+        for (int attempt = 1; attempt <= ARENA_ATTEMPTS; attempt++) {
+            int wantX = random.nextInt(ARENA_SPREAD * 2 + 1) - ARENA_SPREAD;
+            int wantZ = random.nextInt(ARENA_SPREAD * 2 + 1) - ARENA_SPREAD;
+            Location center = ArenaBiomes.findSuitableNear(world, wantX, wantZ, ARENA_SPREAD);
+            centerX = center.getBlockX();
+            centerZ = center.getBlockZ();
+            boolean last = attempt == ARENA_ATTEMPTS;
+            if (!last && !(suitableAt(centerX - half, centerZ - half) && suitableAt(centerX + half, centerZ + half))) {
+                continue;
+            }
+            hunterSpawn = cornerSpawn(centerX - half, centerZ - half, centerX, centerZ, border);
+            runnerSpawn = cornerSpawn(centerX + half, centerZ + half, centerX, centerZ, border);
+            if (hunterSpawn != null && runnerSpawn != null) {
+                break;
+            }
+            if (last) {
+                services.plugin().getLogger().warning("No dry chase arena in " + ARENA_ATTEMPTS
+                        + " tries; spawning at " + centerX + "," + centerZ + " anyway");
+                if (hunterSpawn == null) {
+                    hunterSpawn = world.getHighestBlockAt(centerX - half, centerZ - half).getLocation().add(0.5, 2, 0.5);
+                }
+                if (runnerSpawn == null) {
+                    runnerSpawn = world.getHighestBlockAt(centerX + half, centerZ + half).getLocation().add(0.5, 2, 0.5);
+                }
+            }
+        }
 
         services.arena().applyBorder(world, new Location(world, centerX, 0, centerZ), border, border, 0);
-
-        hunterSpawn = cornerSpawn(centerX - half, centerZ - half);
-        runnerSpawn = cornerSpawn(centerX + half, centerZ + half);
 
         sampleGround(centerX, centerZ, border);
         outOfBounds.clear();
     }
 
+    private boolean suitableAt(int x, int z) {
+        return ArenaBiomes.isSuitable(world.getBiome(x, world.getSeaLevel(), z));
+    }
+
     /**
-     * The arena corner, nudged to the nearest dry column. A corner over a lake or
-     * river would otherwise start players swimming, and idle ones simply drown.
+     * The arena corner, nudged to the nearest dry column inside the border, or null
+     * if there is none nearby. A corner over a lake or the sea would otherwise start
+     * players swimming, and idle ones simply drown. Solid ground beats a treetop.
      */
-    private Location cornerSpawn(int x, int z) {
-        for (int radius = 0; radius <= 8; radius++) {
+    private Location cornerSpawn(int x, int z, int centerX, int centerZ, int border) {
+        int reach = border / 2 - 1;
+        Block treetop = null;
+        for (int radius = 0; radius <= DRY_SEARCH_RADIUS; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
                         continue; // only the new ring, not the filled square
                     }
+                    if (Math.abs(x + dx - centerX) > reach || Math.abs(z + dz - centerZ) > reach) {
+                        continue; // the border would hurt anyone standing here
+                    }
                     Block top = world.getHighestBlockAt(x + dx, z + dz);
-                    if (!top.isLiquid()) {
+                    if (top.isLiquid()) {
+                        continue;
+                    }
+                    if (!Tag.LEAVES.isTagged(top.getType())) {
                         return top.getLocation().add(0.5, 2, 0.5);
+                    }
+                    if (treetop == null) {
+                        treetop = top;
                     }
                 }
             }
         }
-        return world.getHighestBlockAt(x, z).getLocation().add(0.5, 2, 0.5);
+        return treetop == null ? null : treetop.getLocation().add(0.5, 2, 0.5);
     }
 
     /**
@@ -342,27 +396,70 @@ final class ChaseSession implements GameSession {
         groundOriginZ = centerZ - border / 2;
         int size = border / GROUND_SAMPLE_STEP + 1;
         groundSamples = new int[size][size];
+        int lowest = Integer.MAX_VALUE;
+        int highest = Integer.MIN_VALUE;
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
-                groundSamples[i][j] = world.getHighestBlockYAt(
-                        groundOriginX + i * GROUND_SAMPLE_STEP,
-                        groundOriginZ + j * GROUND_SAMPLE_STEP);
+                int y = terrainY(groundOriginX + i * GROUND_SAMPLE_STEP, groundOriginZ + j * GROUND_SAMPLE_STEP);
+                groundSamples[i][j] = y;
+                lowest = Math.min(lowest, y);
+                highest = Math.max(highest, y);
             }
         }
         services.plugin().getLogger().info("Chase arena at " + centerX + "," + centerZ + " sampled "
-                + (size * size) + " ground points in " + (System.currentTimeMillis() - startedAt) + "ms");
+                + (size * size) + " ground points (y " + lowest + ".." + highest + ") in "
+                + (System.currentTimeMillis() - startedAt) + "ms");
     }
 
-    /** Ground level near a position, from the pre-round sample. */
-    private int groundAt(int x, int z) {
-        if (groundSamples == null) {
-            return world.getSeaLevel();
+    /**
+     * The land surface of a column: the top of whatever you could stand on or swim
+     * in, with trees taken off. The plain highest block counts a canopy as ground,
+     * which lifts the band clean off the forest floor, so a jungle made standing on
+     * the grass "too low" and allowed towers far above the trees.
+     */
+    private int terrainY(int x, int z) {
+        int y = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING_NO_LEAVES);
+        int stop = Math.max(world.getMinHeight(), y - MAX_TREE_HEIGHT);
+        while (y > stop && isTreePart(world.getBlockAt(x, y, z).getType())) {
+            y--;
         }
-        int i = Math.round((x - groundOriginX) / (float) GROUND_SAMPLE_STEP);
-        int j = Math.round((z - groundOriginZ) / (float) GROUND_SAMPLE_STEP);
-        i = Math.max(0, Math.min(groundSamples.length - 1, i));
-        j = Math.max(0, Math.min(groundSamples.length - 1, j));
-        return groundSamples[i][j];
+        return y;
+    }
+
+    /** What stands on the terrain rather than being it (leaves are already excluded). */
+    private static boolean isTreePart(Material type) {
+        return Tag.LOGS.isTagged(type)
+                || type == Material.MUSHROOM_STEM
+                || type == Material.BROWN_MUSHROOM_BLOCK
+                || type == Material.RED_MUSHROOM_BLOCK
+                || type == Material.BAMBOO
+                || type == Material.CACTUS
+                || type == Material.BEE_NEST
+                || type == Material.MANGROVE_ROOTS;
+    }
+
+    /**
+     * Lowest and highest ground around a position, from the pre-round sample. A
+     * single nearest sample made the band jump with whatever that one column hit:
+     * stand at the foot of a cliff next to a sample on top of it (or on a ledge over
+     * a ravine) and the band no longer contained the ground under your feet.
+     */
+    private int[] groundRangeAt(int x, int z) {
+        if (groundSamples == null) {
+            return new int[] { world.getSeaLevel(), world.getSeaLevel() };
+        }
+        int last = groundSamples.length - 1;
+        int ci = Math.max(0, Math.min(last, Math.round((x - groundOriginX) / (float) GROUND_SAMPLE_STEP)));
+        int cj = Math.max(0, Math.min(last, Math.round((z - groundOriginZ) / (float) GROUND_SAMPLE_STEP)));
+        int low = Integer.MAX_VALUE;
+        int high = Integer.MIN_VALUE;
+        for (int i = Math.max(0, ci - GROUND_NEIGHBOURHOOD); i <= Math.min(last, ci + GROUND_NEIGHBOURHOOD); i++) {
+            for (int j = Math.max(0, cj - GROUND_NEIGHBOURHOOD); j <= Math.min(last, cj + GROUND_NEIGHBOURHOOD); j++) {
+                low = Math.min(low, groundSamples[i][j]);
+                high = Math.max(high, groundSamples[i][j]);
+            }
+        }
+        return new int[] { low, high };
     }
 
     private void beginHunting() {
@@ -644,9 +741,9 @@ final class ChaseSession implements GameSession {
                 continue;
             }
             Location at = player.getLocation();
-            int ground = groundAt(at.getBlockX(), at.getBlockZ());
-            boolean tooLow = at.getBlockY() < ground - config.allowedDepth.get();
-            boolean tooHigh = at.getBlockY() > ground + config.allowedHeight.get();
+            int[] ground = groundRangeAt(at.getBlockX(), at.getBlockZ());
+            boolean tooLow = at.getBlockY() < ground[0] - config.allowedDepth.get();
+            boolean tooHigh = at.getBlockY() > ground[1] + config.allowedHeight.get();
             if (!tooLow && !tooHigh) {
                 clearOutOfBounds(player);
                 continue;
