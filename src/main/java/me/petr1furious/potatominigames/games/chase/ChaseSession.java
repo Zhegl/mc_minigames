@@ -582,8 +582,8 @@ final class ChaseSession implements GameSession {
             event.setCancelled(true);
             return;
         }
+        // Runners can fight back: an ordinary hit, it just doesn't tag anyone.
         if (!attackerHunter) {
-            event.setCancelled(true);
             return;
         }
         catchPlayer(victim, Component.text()
