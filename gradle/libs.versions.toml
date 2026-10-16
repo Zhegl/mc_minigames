@@ -1,5 +1,5 @@
 [versions]
-paper = "26.2.build.115-stable"
+paper = "26.3.build.191-stable"
 asp = "4.2.0-SNAPSHOT"
 
 [libraries]
