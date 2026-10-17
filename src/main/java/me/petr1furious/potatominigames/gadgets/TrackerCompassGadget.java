@@ -35,11 +35,8 @@ public class TrackerCompassGadget extends AbstractGadget {
     }
 
     private void tick() {
-        if (!usableNow()) {
-            return;
-        }
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getGameMode() == GameMode.SPECTATOR || !isCarrying(player)) {
+            if (player.getGameMode() == GameMode.SPECTATOR || !isCarrying(player) || !usableBy(player)) {
                 continue;
             }
             boolean holding = isHolding(player);

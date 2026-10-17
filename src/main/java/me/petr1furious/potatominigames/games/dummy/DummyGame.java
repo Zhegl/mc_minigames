@@ -45,7 +45,7 @@ public final class DummyGame implements Minigame {
     }
 
     @Override
-    public GameSession createSession(SessionServices services) {
+    public GameSession createSession(SessionServices services, String mode) {
         return new DummySession(services);
     }
 
@@ -80,7 +80,7 @@ public final class DummyGame implements Minigame {
             if (secondsElapsed >= ROUND_SECONDS) {
                 services.messages().broadcast(
                         Component.text("Dummy round complete!", NamedTextColor.GREEN));
-                services.sessions().endGame(EndReason.FINISHED);
+                services.session().endGame(EndReason.FINISHED);
             }
         }
 

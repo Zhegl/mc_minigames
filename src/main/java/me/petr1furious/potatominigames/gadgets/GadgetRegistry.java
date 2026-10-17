@@ -1,13 +1,16 @@
 package me.petr1furious.potatominigames.gadgets;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -21,8 +24,9 @@ import me.petr1furious.potatominigames.core.world.Locations;
 
 /**
  * Owns all gadgets and the single listener that dispatches interact/shoot/impact
- * events to them. Gadgets whose {@code usableNow()} is false are skipped, which
- * is what keeps gadget items inert outside games unless allowOutsideGame is set.
+ * events to them. A gadget whose {@code usableBy(player)} is false is skipped, which
+ * keeps gadget items inert outside games (unless allowOutsideGame is set) and
+ * always inert in the lobby.
  */
 public final class GadgetRegistry implements Listener {
     private final Map<String, Gadget> gadgets = new LinkedHashMap<>();
@@ -47,16 +51,16 @@ public final class GadgetRegistry implements Listener {
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
-    public void endAllForGame() {
+    public void endForPlayers(Collection<UUID> players) {
         for (Gadget gadget : gadgets.values()) {
-            gadget.onGameEnd();
+            gadget.onGameEnd(players);
         }
     }
 
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
         for (Gadget gadget : gadgets.values()) {
-            if (gadget.usableNow()) {
+            if (gadget.usableBy(event.getPlayer())) {
                 gadget.onPlayerInteract(event);
             }
         }
@@ -69,7 +73,7 @@ public final class GadgetRegistry implements Listener {
             return;
         }
         for (Gadget gadget : gadgets.values()) {
-            if (gadget.usableNow()) {
+            if (event.getEntity() instanceof Player shooter && gadget.usableBy(shooter)) {
                 gadget.onBowShoot(event);
             }
         }

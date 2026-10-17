@@ -19,6 +19,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.CrossbowMeta;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.util.Vector;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -32,7 +33,11 @@ public class HimarsGadget extends AbstractGadget {
     private final Property<Double> fireworkSpeedBlocksPerTick;
     private final Property<Double> aimDirectionBlend;
 
-    private final Map<UUID, Location> projectileStart = new HashMap<>();
+    /** Where each rocket in flight was fired from (its power grows with distance), and by whom. */
+    private final Map<UUID, Shot> projectileStart = new HashMap<>();
+
+    private record Shot(Location start, UUID shooter) {
+    }
 
     public HimarsGadget(GadgetContext context) {
         super("himars", context, true);
@@ -75,7 +80,7 @@ public class HimarsGadget extends AbstractGadget {
             FireworkMeta meta = firework.getFireworkMeta();
             meta.setPower(20);
             firework.setFireworkMeta(meta);
-            projectileStart.put(firework.getUniqueId(), shooter.getLocation());
+            projectileStart.put(firework.getUniqueId(), new Shot(shooter.getLocation(), shooter.getUniqueId()));
         }
     }
 
@@ -83,10 +88,10 @@ public class HimarsGadget extends AbstractGadget {
     public boolean handleProjectileImpact(Projectile projectile, Location location, Entity shooter, Entity target) {
         if (!GadgetItems.checkForProjectile(projectile, TAG))
             return false;
-        Location start = projectileStart.remove(projectile.getUniqueId());
+        Shot shot = projectileStart.remove(projectile.getUniqueId());
         double power = 1.0;
-        if (start != null) {
-            power = Math.min(start.distance(location) * explosionPowerPerBlock.get(), maxExplosionPower.get());
+        if (shot != null && shot.start().getWorld() == location.getWorld()) {
+            power = Math.min(shot.start().distance(location) * explosionPowerPerBlock.get(), maxExplosionPower.get());
         }
         Locations.spawnExplosion(location, power, shooter);
         projectile.remove();
@@ -94,8 +99,8 @@ public class HimarsGadget extends AbstractGadget {
     }
 
     @Override
-    public void onGameEnd() {
-        projectileStart.clear();
+    public void onGameEnd(Collection<UUID> players) {
+        projectileStart.values().removeIf(shot -> players.contains(shot.shooter()));
     }
 
     private int getRemainingCooldownSeconds(Player player) {

@@ -1,10 +1,13 @@
 package me.petr1furious.potatominigames.core.hud;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -23,12 +26,21 @@ import me.petr1furious.potatominigames.core.team.TeamColor;
  * Per-viewer sidebar with stable objectives and line diffing: each line is a
  * scoreboard team prefix on an invisible entry, and updates only touch lines
  * whose content changed — no flicker, no per-tick scoreboard rebuilds.
+ *
+ * <p>One instance per game session. Spectators have no lines of their own: they
+ * mirror the sidebar of the player they are spectating, or of the first player
+ * with a sidebar when they are not attached to anyone.
  */
 public final class SidebarService {
     private static final int MAX_LINES = 15;
 
-    private final Map<UUID, View> views = new HashMap<>();
+    private final Map<UUID, View> views = new LinkedHashMap<>();
     private final Map<UUID, TeamColor> nameColors = new HashMap<>();
+    private final Supplier<Collection<Player>> spectators;
+
+    public SidebarService(Supplier<Collection<Player>> spectators) {
+        this.spectators = spectators;
+    }
 
     private static final class View {
         final Scoreboard scoreboard;
@@ -78,6 +90,30 @@ public final class SidebarService {
 
     /** Shows (creating if needed) the sidebar for the viewer and sets its lines. */
     public void update(Player viewer, Component title, List<Component> lines) {
+        render(viewer, title, lines);
+        for (Player spectator : spectators.get()) {
+            if (mirrorTarget(spectator) == viewer) {
+                render(spectator, title, lines);
+            }
+        }
+    }
+
+    /** Whose sidebar a spectator sees: the player they are attached to, else the first player shown one. */
+    private Player mirrorTarget(Player spectator) {
+        if (spectator.getSpectatorTarget() instanceof Player target && views.containsKey(target.getUniqueId())) {
+            return target;
+        }
+        Collection<Player> watching = spectators.get();
+        for (UUID id : views.keySet()) {
+            Player candidate = Bukkit.getPlayer(id);
+            if (candidate != null && !watching.contains(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private void render(Player viewer, Component title, List<Component> lines) {
         View view = views.get(viewer.getUniqueId());
         if (view == null) {
             view = new View(title);

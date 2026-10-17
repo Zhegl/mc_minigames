@@ -125,7 +125,7 @@ final class ChaseSession implements GameSession {
         }
         buildHunterSets(roster);
 
-        world = services.throwawayWorlds().create("chase");
+        world = services.worlds().create("chase");
         // Drops and mobs behave normally; only natural spawning is off so a timed
         // round is never decided by a creeper, and the sky stays put.
         world.setGameRule(GameRules.SPAWN_MOBS, false);
@@ -605,7 +605,7 @@ final class ChaseSession implements GameSession {
                     .append(Component.join(JoinConfiguration.commas(true), names)));
         }
         if (!ended) {
-            services.sessions().endGame(EndReason.FINISHED);
+            services.session().endGame(EndReason.FINISHED);
         }
     }
 

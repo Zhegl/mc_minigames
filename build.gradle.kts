@@ -3,7 +3,11 @@ plugins {
 }
 
 group = "me.petr1furious"
-version = "0.1.0"
+version = "0.2.0"
+
+// Which Minecraft API to compile against: `-Pmc=26.2` for the older dev server,
+// anything else (the default) for 26.3. The jar name says which one it is.
+val mc = providers.gradleProperty("mc").getOrElse("26.3")
 
 java {
     toolchain {
@@ -25,12 +29,16 @@ repositories {
 }
 
 dependencies {
-    compileOnly(libs.paper.api)
+    compileOnly(if (mc == "26.2") libs.paper.api.legacy else libs.paper.api)
     compileOnly(libs.asp.api)
 }
 
 tasks.compileJava {
     options.compilerArgs.add("-Xlint:deprecation")
+}
+
+tasks.jar {
+    archiveClassifier.set("mc$mc")
 }
 
 tasks.processResources {

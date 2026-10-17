@@ -78,7 +78,7 @@ final class BingoSession implements GameSession {
     private final BoardUiService boardUi;
     private final BingoKit kit;
 
-    private GameMode mode;
+    private final GameMode mode;
     private GameDifficulty difficulty;
     private BoardService.Board board;
     private final Map<TeamColor, TeamState> teamStates = new EnumMap<>(TeamColor.class);
@@ -97,8 +97,9 @@ final class BingoSession implements GameSession {
     private int arenaZ;
 
     BingoSession(SessionServices services, BingoConfig config, ItemPoolService itemPool,
-            BoardService boardService, BoardUiService boardUi, BingoKit kit) {
+            BoardService boardService, BoardUiService boardUi, BingoKit kit, GameMode mode) {
         this.services = services;
+        this.mode = mode;
         this.config = config;
         this.itemPool = itemPool;
         this.boardService = boardService;
@@ -118,10 +119,9 @@ final class BingoSession implements GameSession {
 
     @Override
     public void onStart() throws CommandFailure {
-        mode = config.gameMode();
         difficulty = config.gameDifficulty();
 
-        // Colours were resolved from the standing team registry when the session started.
+        // Colours were resolved (queue picks, saved colours or balancing) when the session started.
         teamStates.clear();
         for (Participant participant : services.participants().all()) {
             TeamColor color = participant.team();
@@ -220,7 +220,7 @@ final class BingoSession implements GameSession {
 
     private void triggerEnd() {
         if (!ended) {
-            services.sessions().endGame(EndReason.FINISHED);
+            services.session().endGame(EndReason.FINISHED);
         }
     }
 
@@ -334,7 +334,7 @@ final class BingoSession implements GameSession {
         butfastRewardTeamCount = Math.max(1, active.size());
         if (active.isEmpty()) {
             if (!ended) {
-                services.sessions().endGame(EndReason.ALL_PLAYERS_LEFT);
+                services.session().endGame(EndReason.ALL_PLAYERS_LEFT);
             }
             return;
         }
@@ -368,7 +368,7 @@ final class BingoSession implements GameSession {
     }
 
     private void onItemProgress(Player player, Material material) {
-        if (!services.sessions().isRunning() || board == null || ended) {
+        if (!services.session().isRunning() || board == null || ended) {
             return;
         }
         if (!services.participants().isParticipant(player)) {
@@ -901,7 +901,7 @@ final class BingoSession implements GameSession {
      * — and therefore the End — sit where vanilla would put them.
      */
     private void selectArena() {
-        arenaWorld = services.throwawayWorlds().create("bingo", World.Environment.NETHER);
+        arenaWorld = services.worlds().create("bingo", World.Environment.NETHER);
         ArenaBiomes.ArenaSpot spot = ArenaBiomes.findArenaCenter(arenaWorld);
         arenaX = spot.location().getBlockX();
         arenaZ = spot.location().getBlockZ();

@@ -3,6 +3,7 @@ package me.petr1furious.potatominigames.games.bingo;
 import java.util.List;
 import java.util.Locale;
 
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -71,13 +72,43 @@ public final class BingoGame implements Minigame {
     }
 
     @Override
+    public List<String> modes() {
+        return GameMode.keys();
+    }
+
+    @Override
+    public String defaultMode() {
+        return config.gameMode().key();
+    }
+
+    @Override
+    public Material icon() {
+        return Material.FILLED_MAP;
+    }
+
+    @Override
+    public Component description(String mode) {
+        return Component.text(switch (mode) {
+            case "butfast" -> "First team to collect an item scores it";
+            case "collectall" -> "Collect every item on a 3x3 card";
+            default -> "Collect a line of items on your 5x5 card";
+        });
+    }
+
+    @Override
+    public int minPlayers(String mode) {
+        return 1;
+    }
+
+    @Override
     public boolean usesTeams() {
         return true;
     }
 
     @Override
-    public GameSession createSession(SessionServices services) {
-        activeSession = new BingoSession(services, config, itemPool, boardService, boardUi, kit);
+    public GameSession createSession(SessionServices services, String mode) {
+        activeSession = new BingoSession(services, config, itemPool, boardService, boardUi, kit,
+                GameMode.fromKey(mode));
         return activeSession;
     }
 

@@ -20,6 +20,10 @@ import me.petr1furious.potatominigames.core.player.ParticipantRegistry;
 public final class TeamService {
     private final TeamRegistry registry;
     private ParticipantRegistry participants;
+    /** Colours picked in the queue this session came from; they win over everything. */
+    private Map<UUID, TeamColor> queuePicks = Map.of();
+    /** Whether saved colours apply: only for games an admin started directly. */
+    private boolean useStanding = true;
 
     public TeamService(TeamRegistry registry) {
         this.registry = registry;
@@ -36,6 +40,15 @@ public final class TeamService {
 
     public void detach() {
         this.participants = null;
+    }
+
+    /**
+     * How this session picks colours: queue picks first, then (for admin-started games)
+     * the saved colours, then balancing.
+     */
+    public void configureStart(Map<UUID, TeamColor> picks, boolean standingColours) {
+        this.queuePicks = Map.copyOf(picks);
+        this.useStanding = standingColours;
     }
 
     // --- standing assignments: usable at any time ---
@@ -91,12 +104,18 @@ public final class TeamService {
     // --- session-time resolution ---
 
     /**
-     * The colour a participant plays with: their standing assignment if they have
-     * one, otherwise the least-populated colour among this game's participants.
+     * The colour a participant plays with: their queue pick, else their standing
+     * assignment (admin-started games only), otherwise the least-populated colour
+     * among this game's participants.
      * Auto-picked colours are deliberately not persisted — only explicit picks are.
      */
     public TeamColor resolveForStart(String gameId, Participant participant) {
-        TeamColor standing = standingTeam(gameId, participant.id());
+        TeamColor picked = queuePicks.get(participant.id());
+        if (picked != null) {
+            participant.setTeam(picked);
+            return picked;
+        }
+        TeamColor standing = useStanding ? standingTeam(gameId, participant.id()) : null;
         if (standing != null) {
             participant.setTeam(standing);
             return standing;

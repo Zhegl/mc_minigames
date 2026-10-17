@@ -2,6 +2,7 @@ package me.petr1furious.potatominigames.gadgets;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -18,8 +19,11 @@ public interface Gadget {
 
     ItemStack createItem(int count);
 
-    /** Whether the gadget works right now: a game is running, or allowOutsideGame is set. */
-    boolean usableNow();
+    /**
+     * Whether the gadget works for this player right now: they are playing a game, or
+     * allowOutsideGame is set and they are not in the lobby (where gadgets never work).
+     */
+    boolean usableBy(Player player);
 
     default void onPlayerInteract(PlayerInteractEvent event) {
     }
@@ -33,7 +37,7 @@ public interface Gadget {
         return false;
     }
 
-    /** Called when a game session is cleaned up; despawn entities, cancel per-player state. */
-    default void onGameEnd() {
+    /** Called when a game session is cleaned up; despawn its players' entities and per-player state. */
+    default void onGameEnd(java.util.Collection<java.util.UUID> players) {
     }
 }

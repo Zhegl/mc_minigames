@@ -102,7 +102,7 @@ final class ClassicWarfareSession extends WarfareSessionBase {
     }
 
     private void checkGameEnd() {
-        if (ended || !services.sessions().isRunning()) {
+        if (ended || !services.session().isRunning()) {
             return;
         }
         List<Player> alive = alivePlayers();
@@ -119,7 +119,7 @@ final class ClassicWarfareSession extends WarfareSessionBase {
                     .append(Component.text(" wins!", NamedTextColor.RED)));
             services.points().add("war", winner.getUniqueId(), 1);
         }
-        services.sessions().endGame(EndReason.FINISHED);
+        services.session().endGame(EndReason.FINISHED);
     }
 
     @Override

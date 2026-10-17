@@ -5,24 +5,40 @@ import org.bukkit.plugin.java.JavaPlugin;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 
 import me.petr1furious.potatominigames.core.command.GameCommands;
+import me.petr1furious.potatominigames.core.command.PlayCommand;
 import me.petr1furious.potatominigames.core.command.PmCommand;
 import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.Minigame;
-import me.petr1furious.potatominigames.core.hud.BossBarService;
-import me.petr1furious.potatominigames.core.hud.SidebarService;
+import me.petr1furious.potatominigames.core.lobby.LobbyService;
 import me.petr1furious.potatominigames.core.player.PlayerStateService;
+import me.petr1furious.potatominigames.core.queue.QueueMenu;
+import me.petr1furious.potatominigames.core.queue.QueueService;
 import me.petr1furious.potatominigames.core.score.PointsService;
 import me.petr1furious.potatominigames.core.session.GameplayListener;
 import me.petr1furious.potatominigames.core.session.SessionManager;
 import me.petr1furious.potatominigames.core.team.TeamRegistry;
 import me.petr1furious.potatominigames.core.team.TeamService;
 import me.petr1furious.potatominigames.core.text.Messages;
-import me.petr1furious.potatominigames.core.world.ArenaService;
+import me.petr1furious.potatominigames.core.world.DimensionLinkListener;
 import me.petr1furious.potatominigames.core.world.SlimeWorldService;
 import me.petr1furious.potatominigames.core.world.SpawnFinder;
 import me.petr1furious.potatominigames.core.world.ThrowawayWorldService;
+import me.petr1furious.potatominigames.gadgets.FPVDroneGadget;
+import me.petr1furious.potatominigames.gadgets.GadgetRegistry;
+import me.petr1furious.potatominigames.gadgets.GrappleBowGadget;
+import me.petr1furious.potatominigames.gadgets.HimarsGadget;
+import me.petr1furious.potatominigames.gadgets.InfiniteCrossbowGadget;
+import me.petr1furious.potatominigames.gadgets.LocatorGadget;
+import me.petr1furious.potatominigames.gadgets.OreshnikGadget;
+import me.petr1furious.potatominigames.gadgets.RadarGadget;
+import me.petr1furious.potatominigames.gadgets.SessionGadgetContext;
+import me.petr1furious.potatominigames.gadgets.TrackerCompassGadget;
+import me.petr1furious.potatominigames.games.bingo.BingoGame;
+import me.petr1furious.potatominigames.games.chase.ChaseGame;
 import me.petr1furious.potatominigames.games.dummy.DummyGame;
+//PILLARS import me.petr1furious.potatominigames.games.pillars.PillarsGame;
+import me.petr1furious.potatominigames.games.warfare.WarfareGame;
 
 public final class PotatoMinigamesPlugin extends JavaPlugin {
     private SessionManager sessions;
@@ -31,12 +47,9 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
     public void onEnable() {
         Messages messages = new Messages();
         ConfigRegistry configs = new ConfigRegistry(this);
-        PlayerStateService playerState = new PlayerStateService();
+        PlayerStateService playerState = new PlayerStateService(this);
         TeamRegistry teamRegistry = new TeamRegistry(this);
         TeamService teams = new TeamService(teamRegistry);
-        SidebarService sidebar = new SidebarService();
-        BossBarService bossBars = new BossBarService();
-        ArenaService arena = new ArenaService();
         SlimeWorldService slimeWorlds = new SlimeWorldService(this);
         ThrowawayWorldService throwawayWorlds = new ThrowawayWorldService(this);
         SpawnFinder spawnFinder = new SpawnFinder();
@@ -45,55 +58,75 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         // A crash can leave scratch worlds behind; clear them before anything runs.
         throwawayWorlds.cleanupStale();
 
-        sessions = new SessionManager(this, playerState, teams, sidebar, bossBars, arena, slimeWorlds,
-                throwawayWorlds, spawnFinder, messages, points);
+        sessions = new SessionManager(this, playerState, teamRegistry, slimeWorlds, throwawayWorlds, spawnFinder,
+                points);
         configs.register(sessions.coreConfig(), "config.yml", "");
         configs.register(slimeWorlds.config(), "config.yml", "asp");
+
+        LobbyService lobby = new LobbyService(this, playerState, sessions);
+        configs.register(lobby.config(), "config.yml", "lobby");
+        sessions.setLobby(lobby);
 
         if (sessions.isDummyGameEnabled()) {
             sessions.registerGame(new DummyGame());
         }
 
-        var gadgetContext = new me.petr1furious.potatominigames.gadgets.SessionGadgetContext(this, sessions);
-        var gadgets = new me.petr1furious.potatominigames.gadgets.GadgetRegistry();
-        var fpvDrone = new me.petr1furious.potatominigames.gadgets.FPVDroneGadget(gadgetContext);
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.InfiniteCrossbowGadget(gadgetContext));
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.OreshnikGadget(gadgetContext));
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.HimarsGadget(gadgetContext));
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.LocatorGadget(gadgetContext));
+        var gadgetContext = new SessionGadgetContext(this, sessions);
+        gadgetContext.setLobby(lobby);
+        var gadgets = new GadgetRegistry();
+        var fpvDrone = new FPVDroneGadget(gadgetContext);
+        gadgets.register(new InfiniteCrossbowGadget(gadgetContext));
+        gadgets.register(new OreshnikGadget(gadgetContext));
+        gadgets.register(new HimarsGadget(gadgetContext));
+        gadgets.register(new LocatorGadget(gadgetContext));
         gadgets.register(fpvDrone);
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.RadarGadget(gadgetContext));
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.GrappleBowGadget(gadgetContext));
-        gadgets.register(new me.petr1furious.potatominigames.gadgets.TrackerCompassGadget(gadgetContext));
+        gadgets.register(new RadarGadget(gadgetContext));
+        gadgets.register(new GrappleBowGadget(gadgetContext));
+        gadgets.register(new TrackerCompassGadget(gadgetContext));
         for (var gadget : gadgets.all()) {
             configs.register(gadget.config(), "gadgets.yml", gadget.id());
         }
         gadgets.registerEvents(this);
-        sessions.addCleanupHook(gadgets::endAllForGame);
+        sessions.addCleanupHook(gadgets::endForPlayers);
 
-        sessions.registerGame(new me.petr1furious.potatominigames.games.warfare.WarfareGame(configs, fpvDrone));
-        sessions.registerGame(new me.petr1furious.potatominigames.games.bingo.BingoGame(this, configs));
-        sessions.registerGame(new me.petr1furious.potatominigames.games.chase.ChaseGame(configs, gadgets));
+        sessions.registerGame(new WarfareGame(configs, fpvDrone));
+        sessions.registerGame(new BingoGame(this, configs));
+        sessions.registerGame(new ChaseGame(configs, gadgets));
+        //PILLARS sessions.registerGame(new PillarsGame(this, configs, slimeWorlds));
+
+        QueueService queues = new QueueService(this, sessions, lobby);
+        queues.createQueues(configs);
+        QueueMenu menu = new QueueMenu(this, sessions, queues);
+        lobby.setMenuOpener(menu::open);
 
         GameCommands gameCommands = new GameCommands(sessions, teams, points, configs, messages, gadgets);
-        PmCommand pmCommand = new PmCommand(this, sessions, configs, messages, gameCommands);
+        PmCommand pmCommand = new PmCommand(this, sessions, configs, messages, gameCommands, queues);
+        PlayCommand playCommand = new PlayCommand(sessions, queues, lobby);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(pmCommand.build(), "Potato Minigames admin command.");
+            event.registrar().register(playCommand.buildPlay(), "Join a game's queue.");
+            event.registrar().register(playCommand.buildLobby(), "Go to the lobby.");
             for (Minigame game : sessions.games()) {
                 event.registrar().register(gameCommands.buildGameRoot(game),
                         "Potato Minigames: " + game.id());
             }
         });
 
-        getServer().getPluginManager().registerEvents(new GameplayListener(sessions), this);
-        getServer().getPluginManager().registerEvents(
-                new me.petr1furious.potatominigames.core.world.DimensionLinkListener(this, throwawayWorlds), this);
+        var pluginManager = getServer().getPluginManager();
+        pluginManager.registerEvents(new GameplayListener(sessions), this);
+        pluginManager.registerEvents(lobby, this);
+        pluginManager.registerEvents(queues, this);
+        pluginManager.registerEvents(menu, this);
+        pluginManager.registerEvents(new DimensionLinkListener(this, throwawayWorlds), this);
+
+        // Snapshots can point into worlds other plugins load, so wait until everything is up.
+        getServer().getScheduler().runTask(this, playerState::loadSaved);
     }
 
     @Override
     public void onDisable() {
         if (sessions != null) {
-            sessions.stopNow(EndReason.ABORTED);
+            sessions.stopAll(EndReason.ABORTED);
         }
     }
 }

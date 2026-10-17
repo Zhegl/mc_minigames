@@ -3,6 +3,7 @@ package me.petr1furious.potatominigames.games.warfare;
 import java.util.List;
 import java.util.Locale;
 
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -59,8 +60,30 @@ public final class WarfareGame implements Minigame {
     }
 
     @Override
-    public GameSession createSession(SessionServices services) {
-        if (config.mode.get().equalsIgnoreCase("team_beacon")) {
+    public List<String> modes() {
+        return List.of("classic", "team_beacon");
+    }
+
+    @Override
+    public String defaultMode() {
+        return config.mode.get().equalsIgnoreCase("team_beacon") ? "team_beacon" : "classic";
+    }
+
+    @Override
+    public Material icon() {
+        return Material.TNT;
+    }
+
+    @Override
+    public Component description(String mode) {
+        return Component.text(mode.equals("team_beacon")
+                ? "Defend your team's beacon, respawn until it falls"
+                : "Invisible free-for-all with gadgets");
+    }
+
+    @Override
+    public GameSession createSession(SessionServices services, String mode) {
+        if (mode.equalsIgnoreCase("team_beacon")) {
             return new TeamBeaconWarfareSession(services, config, fpvDrone);
         }
         return new ClassicWarfareSession(services, config, fpvDrone);

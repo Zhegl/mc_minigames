@@ -1,5 +1,7 @@
 package me.petr1furious.potatominigames.gadgets;
 
+import org.bukkit.entity.Player;
+
 import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
@@ -32,7 +34,10 @@ public abstract class AbstractGadget implements Gadget {
     }
 
     @Override
-    public final boolean usableNow() {
-        return context.gameRunning() || allowOutsideGame.get();
+    public final boolean usableBy(Player player) {
+        if (context.inGame(player)) {
+            return true;
+        }
+        return allowOutsideGame.get() && !context.inLobby(player);
     }
 }

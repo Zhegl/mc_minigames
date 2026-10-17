@@ -27,8 +27,9 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import me.petr1furious.potatominigames.core.team.TeamColor;
 
 /**
- * One play-through of a minigame. Created when the lobby opens, discarded after cleanup.
- * All Bukkit events are forwarded here by the core listener only while the session is active.
+ * One play-through of a minigame, discarded after cleanup. Bukkit events are
+ * forwarded here by the core listener only while the session is active, and only
+ * those that involve its players or happen in its worlds.
  */
 public interface GameSession {
 
@@ -73,6 +74,22 @@ public interface GameSession {
 
     /** Announce results here. Player state restore and HUD cleanup happen afterwards in core. */
     default void onEnd(EndReason reason) {
+    }
+
+    /**
+     * Where a new spectator should appear. By default (null) the core picks a random
+     * player who is still playing.
+     */
+    default org.bukkit.Location spectatorLocation(Player viewer) {
+        return null;
+    }
+
+    /**
+     * One line for the whole server once the game is over, e.g. "Alice won Pillars".
+     * By default (null) the core says the game has ended.
+     */
+    default net.kyori.adventure.text.Component globalResult() {
+        return null;
     }
 
     default boolean allowLateJoin() {

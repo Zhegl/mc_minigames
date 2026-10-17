@@ -1,7 +1,10 @@
 [versions]
+# The servers run 26.3; 26.2 is kept buildable for the bot-tested dev server (see README).
 paper = "26.3.build.191-stable"
+paper-legacy = "26.2.build.115-stable"
 asp = "4.2.0-SNAPSHOT"
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper" }
+paper-api-legacy = { module = "io.papermc.paper:paper-api", version.ref = "paper-legacy" }
 asp-api = { module = "com.infernalsuite.asp:api", version.ref = "asp" }

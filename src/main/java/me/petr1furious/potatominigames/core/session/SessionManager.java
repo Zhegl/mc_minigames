@@ -1,14 +1,18 @@
 package me.petr1furious.potatominigames.core.session;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Consumer;
 
-import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -18,339 +22,262 @@ import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
 import me.petr1furious.potatominigames.core.game.EndReason;
-import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.Minigame;
-import me.petr1furious.potatominigames.core.game.SessionServices;
-import me.petr1furious.potatominigames.core.hud.BossBarService;
-import me.petr1furious.potatominigames.core.hud.SidebarService;
-import me.petr1furious.potatominigames.core.player.Participant;
-import me.petr1furious.potatominigames.core.player.ParticipantRegistry;
+import me.petr1furious.potatominigames.core.lobby.LobbyService;
 import me.petr1furious.potatominigames.core.player.PlayerStateService;
 import me.petr1furious.potatominigames.core.score.PointsService;
+import me.petr1furious.potatominigames.core.team.TeamColor;
+import me.petr1furious.potatominigames.core.team.TeamRegistry;
 import me.petr1furious.potatominigames.core.team.TeamService;
-import me.petr1furious.potatominigames.core.text.Messages;
-import me.petr1furious.potatominigames.core.world.ArenaService;
+import me.petr1furious.potatominigames.core.world.SessionWorlds;
 import me.petr1furious.potatominigames.core.world.SlimeWorldService;
 import me.petr1furious.potatominigames.core.world.SpawnFinder;
 import me.petr1furious.potatominigames.core.world.ThrowawayWorldService;
 
 /**
- * The single-active-session state machine: IDLE → RUNNING → ENDING → IDLE.
- * Owns every task handle and guarantees the plugin is inert while IDLE.
+ * Every running game, at most one per game type, so different games can be
+ * played side by side (bingo and warfare at once, but not two warfares).
  *
- * <p>There is deliberately no lobby phase: {@code start} takes a selector (or
- * everyone online) and begins immediately, and {@code join} is a late-join into a
- * game already in progress. Teams are arranged beforehand and live in
- * {@link me.petr1furious.potatominigames.core.team.TeamRegistry}.
+ * <p>Games still start immediately when an admin runs {@code start}; the queue in
+ * {@code core.queue} is the other way in and ends up here too. The plugin stays
+ * inert for anyone who is not in a session.
  */
 public final class SessionManager {
     private final JavaPlugin plugin;
     private final PlayerStateService playerState;
-    private final TeamService teams;
-    private final SidebarService sidebar;
-    private final BossBarService bossBars;
-    private final ArenaService arena;
+    private final TeamRegistry teamRegistry;
     private final SlimeWorldService slimeWorlds;
     private final ThrowawayWorldService throwawayWorlds;
     private final SpawnFinder spawnFinder;
-    private final Messages messages;
     private final PointsService points;
+    private LobbyService lobby;
 
     private final Map<String, Minigame> games = new LinkedHashMap<>();
-    private final List<Runnable> cleanupHooks = new java.util.ArrayList<>();
+    private final List<Consumer<Collection<UUID>>> cleanupHooks = new ArrayList<>();
+    private final List<Consumer<ActiveSession>> startListeners = new ArrayList<>();
+    private final List<Consumer<ActiveSession>> endListeners = new ArrayList<>();
+
+    private final Map<String, ActiveSession> sessions = new LinkedHashMap<>();
+    /** Participants and spectators, each in exactly one session. */
+    private final Map<UUID, ActiveSession> byPlayer = new HashMap<>();
 
     private final PropertyBag coreConfig = new PropertyBag("core");
     private final Property<Boolean> enableDummyGame = coreConfig.define("enableDummyGame", PropertyCodec.BOOL, false);
 
-    public boolean isDummyGameEnabled() {
-        return enableDummyGame.get();
-    }
-
-    private GamePhase phase = GamePhase.IDLE;
-    private Minigame activeGame;
-    private GameSession session;
-    private ParticipantRegistry participants;
-    private BukkitTask ticker;
-    private BukkitTask endingTask;
-    private long elapsedSeconds;
-
-    public SessionManager(JavaPlugin plugin, PlayerStateService playerState, TeamService teams,
-            SidebarService sidebar, BossBarService bossBars, ArenaService arena, SlimeWorldService slimeWorlds,
-            ThrowawayWorldService throwawayWorlds, SpawnFinder spawnFinder, Messages messages,
+    public SessionManager(JavaPlugin plugin, PlayerStateService playerState, TeamRegistry teamRegistry,
+            SlimeWorldService slimeWorlds, ThrowawayWorldService throwawayWorlds, SpawnFinder spawnFinder,
             PointsService points) {
         this.plugin = plugin;
         this.playerState = playerState;
-        this.teams = teams;
-        this.sidebar = sidebar;
-        this.bossBars = bossBars;
-        this.arena = arena;
+        this.teamRegistry = teamRegistry;
         this.slimeWorlds = slimeWorlds;
         this.throwawayWorlds = throwawayWorlds;
         this.spawnFinder = spawnFinder;
-        this.messages = messages;
         this.points = points;
+    }
+
+    /** Wired after construction: the lobby needs the manager to tell game worlds apart. */
+    public void setLobby(LobbyService lobby) {
+        this.lobby = lobby;
     }
 
     public PropertyBag coreConfig() {
         return coreConfig;
     }
 
-    public void registerGame(Minigame game) {
-        games.put(game.id(), game);
+    public boolean isDummyGameEnabled() {
+        return enableDummyGame.get();
     }
 
-    /** Runs on every session cleanup (e.g. despawning gadget entities). */
-    public void addCleanupHook(Runnable hook) {
-        cleanupHooks.add(hook);
+    public void registerGame(Minigame game) {
+        games.put(game.id(), game);
     }
 
     public List<Minigame> games() {
         return List.copyOf(games.values());
     }
 
-    public GamePhase phase() {
-        return phase;
+    public Minigame game(String id) {
+        return games.get(id);
     }
 
-    public Optional<Minigame> activeGame() {
-        return Optional.ofNullable(activeGame);
+    /** Runs on every session cleanup with that session's players (e.g. despawning gadget entities). */
+    public void addCleanupHook(Consumer<Collection<UUID>> hook) {
+        cleanupHooks.add(hook);
     }
 
-    public Optional<GameSession> activeSession() {
-        return Optional.ofNullable(session);
+    public void addStartListener(Consumer<ActiveSession> listener) {
+        startListeners.add(listener);
     }
 
-    public ParticipantRegistry participants() {
-        return participants;
+    public void addEndListener(Consumer<ActiveSession> listener) {
+        endListeners.add(listener);
     }
 
-    public long elapsedSeconds() {
-        return elapsedSeconds;
+    SpawnFinder spawnFinder() {
+        return spawnFinder;
     }
 
-    public boolean isRunning() {
-        return phase == GamePhase.RUNNING;
+    PointsService points() {
+        return points;
     }
 
-    public boolean isSessionOf(Minigame game) {
-        return activeGame == game;
+    // --- lookups ---
+
+    public Optional<ActiveSession> sessionOf(Minigame game) {
+        return Optional.ofNullable(sessions.get(game.id()));
     }
 
-    public boolean isParticipant(Player player) {
-        return participants != null && participants.isParticipant(player);
+    /** The session a player plays or spectates in, if any. */
+    public Optional<ActiveSession> sessionOf(Player player) {
+        return Optional.ofNullable(byPlayer.get(player.getUniqueId()));
+    }
+
+    public Optional<ActiveSession> sessionOf(UUID playerId) {
+        return Optional.ofNullable(byPlayer.get(playerId));
+    }
+
+    public Optional<ActiveSession> sessionOwning(World world) {
+        for (ActiveSession session : sessions.values()) {
+            if (session.owns(world)) {
+                return Optional.of(session);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public List<ActiveSession> activeSessions() {
+        return List.copyOf(sessions.values());
+    }
+
+    /** Whether the player is playing (not merely spectating) in a running game. */
+    public boolean isPlaying(Player player) {
+        ActiveSession session = byPlayer.get(player.getUniqueId());
+        return session != null && session.isParticipant(player) && session.phase() != GamePhase.IDLE;
+    }
+
+    /** Playing or spectating. */
+    public boolean isBusy(Player player) {
+        return byPlayer.containsKey(player.getUniqueId());
+    }
+
+    void index(Player player, ActiveSession session) {
+        byPlayer.put(player.getUniqueId(), session);
+    }
+
+    void unindex(UUID playerId, ActiveSession session) {
+        byPlayer.remove(playerId, session);
     }
 
     // --- lifecycle ---
 
     /**
-     * Starts a game immediately with the given players, or everyone online when no
-     * selector was supplied.
+     * Starts a game immediately with the given players.
+     *
+     * @param mode one of the game's modes ({@code ""} for single-mode games)
+     * @param teamPicks colours chosen in the queue; empty for admin starts
+     * @param queued whether the roster came from the queue, which decides whether saved colours apply
      */
-    public void start(Minigame game, List<Player> selected) throws CommandFailure {
-        if (phase != GamePhase.IDLE) {
+    public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
+            boolean queued) throws CommandFailure {
+        ActiveSession running = sessions.get(game.id());
+        if (running != null) {
             throw new CommandFailure(Component.text()
-                    .append(activeGame.displayName())
-                    .append(Component.text(" is already " + phase.name().toLowerCase() + ".", NamedTextColor.RED))
+                    .append(running.displayName())
+                    .append(Component.text(" is already " + running.phase().name().toLowerCase() + ".",
+                            NamedTextColor.RED))
                     .build());
         }
-        List<Player> roster = selected == null || selected.isEmpty()
-                ? List.copyOf(plugin.getServer().getOnlinePlayers())
-                : selected;
         if (roster.isEmpty()) {
             throw new CommandFailure("No players to start the game with.");
         }
-
-        participants = new ParticipantRegistry();
-        teams.attach(participants);
-        activeGame = game;
-        session = game.createSession(new SessionServices(plugin, this, participants, playerState, teams,
-                sidebar, bossBars, arena, slimeWorlds, throwawayWorlds, spawnFinder, messages, points));
-
         for (Player player : roster) {
-            Participant participant = participants.add(player);
-            if (game.usesTeams()) {
-                teams.resolveForStart(game.id(), participant);
+            ActiveSession other = byPlayer.get(player.getUniqueId());
+            if (other != null && other.isParticipant(player)) {
+                throw new CommandFailure(player.getName() + " is already playing "
+                        + other.game().id() + ".");
             }
-            playerState.snapshot(player);
+        }
+        // Spectating something else is no reason to miss a game: they just stop watching.
+        for (Player player : roster) {
+            ActiveSession other = byPlayer.get(player.getUniqueId());
+            if (other != null) {
+                other.stopSpectating(player, false);
+            }
         }
 
-        phase = GamePhase.RUNNING;
-        elapsedSeconds = 0;
+        ActiveSession session = new ActiveSession(plugin, this, game, mode, playerState, lobby,
+                new TeamService(teamRegistry), new SessionWorlds(throwawayWorlds, slimeWorlds));
+        sessions.put(game.id(), session);
         try {
-            session.onStart();
+            session.start(roster, teamPicks, queued);
         } catch (CommandFailure failure) {
-            // Put everyone back and tear the half-built session down completely.
-            cleanup();
+            sessions.remove(game.id(), session);
             throw failure;
         }
-
-        ticker = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            elapsedSeconds++;
-            session.onSecondTick(elapsedSeconds);
-        }, 20L, 20L);
-        messages.broadcast(Component.text()
-                .append(game.displayName())
-                .append(Component.text(" started with " + participants.size() + " players!", NamedTextColor.GREEN))
-                .build());
-        messages.playSound(participants.onlinePlayers(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
+        for (Consumer<ActiveSession> listener : startListeners) {
+            listener.accept(session);
+        }
+        return session;
     }
 
-    /**
-     * Ends the running game and starts a fresh one right away — with the same
-     * players unless a selector is given. Works as a plain start when idle, so it
-     * doubles as a "go again" button.
-     */
-    public void restart(Minigame game, List<Player> selected) throws CommandFailure {
-        List<Player> roster = selected;
-        if (phase != GamePhase.IDLE) {
-            if (!isSessionOf(game)) {
-                throw new CommandFailure(Component.text()
-                        .append(activeGame.displayName())
-                        .append(Component.text(" is active — stop it first.", NamedTextColor.RED))
-                        .build());
-            }
-            if (roster == null || roster.isEmpty()) {
-                roster = participants.onlinePlayers();
-            }
-            stopNow(EndReason.ABORTED);
+    /** Called by a session once it is fully torn down. */
+    void onSessionEnded(ActiveSession session, Collection<UUID> involved) {
+        sessions.remove(session.game().id(), session);
+        for (UUID id : involved) {
+            byPlayer.remove(id, session);
         }
-        start(game, roster);
-    }
-
-    /**
-     * Late-joins a player into a game already in progress, or puts a participant who
-     * was knocked out back into it.
-     */
-    public void join(Player player) throws CommandFailure {
-        if (phase != GamePhase.RUNNING) {
-            throw new CommandFailure("No game is running.");
-        }
-        boolean returning = participants.isParticipant(player);
-        if (returning && session.isInGame(player)) {
-            throw new CommandFailure(player.getName() + " is already in the game.");
-        }
-        if (!session.allowLateJoin()) {
-            throw new CommandFailure(player.getName() + " cannot join this game once it has started.");
-        }
-        // A returning player already has their pre-game snapshot; taking another now
-        // would record them as a spectator and "restore" that at the end.
-        if (!returning) {
-            Participant participant = participants.add(player);
-            if (activeGame.usesTeams()) {
-                teams.resolveForStart(activeGame.id(), participant);
-            }
-            playerState.snapshot(player);
-        }
-        session.onParticipantJoin(player);
-        messages.broadcast(Component.text()
-                .append(Component.text(player.getName(), NamedTextColor.AQUA))
-                .append(Component.text(" joined the game", NamedTextColor.GREEN))
-                .build());
-    }
-
-    public void leave(Player player) throws CommandFailure {
-        if (phase == GamePhase.IDLE) {
-            throw new CommandFailure("No game is running.");
-        }
-        if (!participants.isParticipant(player)) {
-            throw new CommandFailure(player.getName() + " is not in the game.");
-        }
-        if (phase == GamePhase.RUNNING && !session.allowLeave()) {
-            throw new CommandFailure("You cannot leave " + activeGame.id() + " once it has started.");
-        }
-        if (phase == GamePhase.RUNNING || phase == GamePhase.ENDING) {
-            sidebar.clear(player);
-            playerState.restore(player);
-        }
-        participants.remove(player.getUniqueId());
-        session.onParticipantLeave(player);
-        messages.broadcast(Component.text()
-                .append(Component.text(player.getName(), NamedTextColor.AQUA))
-                .append(Component.text(" left the game", NamedTextColor.YELLOW))
-                .build());
-        if (phase == GamePhase.RUNNING && participants.isEmpty()) {
-            endGame(EndReason.ALL_PLAYERS_LEFT);
+        for (Consumer<ActiveSession> listener : endListeners) {
+            listener.accept(session);
         }
     }
 
-    /** Finishes the running game: announce (session.onEnd), then cleanup. */
-    public void endGame(EndReason reason) {
-        if (phase != GamePhase.RUNNING) {
-            return;
+    void runCleanupHooks(Collection<UUID> players) {
+        for (Consumer<Collection<UUID>> hook : cleanupHooks) {
+            hook.accept(players);
         }
-        phase = GamePhase.ENDING;
-        cancelTicker();
-        session.onEnd(reason);
-        // Next tick rather than inline: endGame is reached from inside a death handler,
-        // and restoring a player there fights with the respawn screen about to open.
-        endingTask = plugin.getServer().getScheduler().runTask(plugin, this::cleanup);
     }
 
-    /** Immediate teardown from any phase (also used from onDisable). */
-    public void stopNow(EndReason reason) {
-        if (phase == GamePhase.IDLE) {
-            return;
+    public void stopAll(EndReason reason) {
+        for (ActiveSession session : List.copyOf(sessions.values())) {
+            session.stopNow(reason);
         }
-        cancelTicker();
-        if (endingTask != null) {
-            endingTask.cancel();
-            endingTask = null;
-        }
-        if (phase == GamePhase.RUNNING) {
-            session.onEnd(reason);
-        }
-        cleanup();
     }
 
-    private void cleanup() {
-        endingTask = null;
-        for (Runnable hook : cleanupHooks) {
-            hook.run();
-        }
-        for (Player player : participants.onlinePlayers()) {
-            sidebar.clear(player);
-            playerState.restore(player);
-        }
-        sidebar.clearAll();
-        bossBars.hideAll();
-        arena.restoreAllBorders();
-        // After players are back in their own world, the game's scratch worlds go away.
-        throwawayWorlds.destroyAll();
-        teams.detach();
-        session = null;
-        activeGame = null;
-        participants = null;
-        phase = GamePhase.IDLE;
-    }
-
-    // --- called by the core listener ---
+    // --- connection changes, from the core listener ---
 
     public void handleQuit(Player player) {
-        if (phase == GamePhase.IDLE || !participants.isParticipant(player)) {
-            return;
+        ActiveSession session = byPlayer.get(player.getUniqueId());
+        if (session != null) {
+            session.handleQuit(player);
         }
-        participants.find(player.getUniqueId()).ifPresent(participant -> participant.setOnline(false));
-        session.onParticipantQuit(player);
     }
 
-    public void handleJoin(Player player) {
-        // A snapshot with no active session means the player quit mid-game and the game
-        // ended without them: put them back the way they were.
-        if (phase == GamePhase.IDLE || !participants.isParticipant(player)) {
-            if (playerState.hasSnapshot(player.getUniqueId())) {
-                sidebar.clear(player);
-                playerState.restore(player);
-            }
-            return;
+    /** @return whether the player is back in a running game (so nothing else should move them). */
+    public boolean handleJoin(Player player) {
+        ActiveSession session = byPlayer.get(player.getUniqueId());
+        if (session != null && session.isParticipant(player) && session.phase() != GamePhase.IDLE) {
+            session.handleRejoin(player);
+            return true;
         }
-        participants.find(player.getUniqueId()).ifPresent(participant -> participant.setOnline(true));
-        session.onParticipantRejoin(player);
+        return false;
     }
 
-    private void cancelTicker() {
-        if (ticker != null) {
-            ticker.cancel();
-            ticker = null;
+    // --- naming shared by sessions, queues and commands ---
+
+    /** "Bingo", or "Bingo (butfast)" for a game with several modes. */
+    public static Component displayName(Minigame game, String mode) {
+        if (game.modes().size() <= 1 || mode == null || mode.isEmpty()) {
+            return game.displayName();
         }
+        return Component.text().append(game.displayName())
+                .append(Component.text(" (" + mode + ")", NamedTextColor.GRAY)).build();
+    }
+
+    /** The command that queues for this game and mode. */
+    public String playCommand(Minigame game, String mode) {
+        return game.modes().size() <= 1 || mode == null || mode.isEmpty()
+                ? "/play " + game.id()
+                : "/play " + game.id() + " " + mode;
     }
 }

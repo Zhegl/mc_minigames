@@ -1,5 +1,6 @@
 package me.petr1furious.potatominigames.core.world;
 
+import java.io.File;
 import java.util.Objects;
 
 import org.bukkit.Bukkit;
@@ -9,6 +10,8 @@ import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
+import com.infernalsuite.asp.api.world.SlimeWorld;
+import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 
 import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
@@ -27,9 +30,74 @@ public final class SlimeWorldService {
     private final Property<Boolean> resetOnStart = config.define("resetOnStart", PropertyCodec.BOOL, true);
 
     private AdvancedSlimePaperAPI asp;
+    private SlimeFileLoader fileLoader;
 
     public SlimeWorldService(JavaPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    /** Templates and imports live where the ASP plugin keeps its file worlds. */
+    public SlimeFileLoader fileLoader() {
+        if (fileLoader == null) {
+            fileLoader = new SlimeFileLoader(new File(Bukkit.getWorldContainer(), "slime_worlds"));
+        }
+        return fileLoader;
+    }
+
+    public boolean templateExists(String templateName) {
+        return fileLoader().worldExists(templateName);
+    }
+
+    /**
+     * Loads a fresh in-memory copy of a slime file under a new name. The template file
+     * is only read; the copy is never saved anywhere and goes away with
+     * {@link #discardClone}.
+     */
+    public World cloneTemplate(String templateName, String worldName) {
+        init();
+        if (Bukkit.getWorld(worldName) != null) {
+            throw new IllegalStateException("A world called " + worldName + " is already loaded");
+        }
+        SlimeWorld template;
+        try {
+            template = asp.readWorld(fileLoader(), templateName, true, new SlimePropertyMap());
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not read slime template " + templateName, exception);
+        }
+        asp.loadWorld(template.clone(worldName), true);
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            throw new IllegalStateException("Slime clone " + worldName + " did not load");
+        }
+        return world;
+    }
+
+    /** Unloads a clone made by {@link #cloneTemplate} without saving it, moving anyone left inside out first. */
+    public void discardClone(String worldName) {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        final var spawn = Bukkit.getWorlds().getFirst().getSpawnLocation();
+        for (final var player : world.getPlayers()) {
+            player.teleport(spawn);
+        }
+        if (!Bukkit.unloadWorld(world, false)) {
+            plugin.getLogger().warning("ASP: failed to unload clone " + worldName);
+        }
+    }
+
+    /**
+     * Converts a vanilla world folder (which must not be loaded) into a slime file
+     * called {@code templateName}, replacing any older one.
+     */
+    public void importVanilla(File worldFolder, String templateName) throws Exception {
+        init();
+        if (fileLoader().worldExists(templateName)) {
+            fileLoader().deleteWorld(templateName);
+        }
+        SlimeWorld imported = asp.readVanillaWorld(worldFolder, templateName, fileLoader());
+        asp.saveWorld(imported);
     }
 
     public PropertyBag config() {

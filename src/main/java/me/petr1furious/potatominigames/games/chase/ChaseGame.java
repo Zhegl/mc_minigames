@@ -1,5 +1,7 @@
 package me.petr1furious.potatominigames.games.chase;
 
+import org.bukkit.Material;
+
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
@@ -35,7 +37,17 @@ public final class ChaseGame implements Minigame {
     }
 
     @Override
-    public GameSession createSession(SessionServices services) {
+    public Material icon() {
+        return Material.COMPASS;
+    }
+
+    @Override
+    public Component description(String mode) {
+        return Component.text("Hunters track runners by compass, round after round");
+    }
+
+    @Override
+    public GameSession createSession(SessionServices services, String mode) {
         return new ChaseSession(services, config, gadgets);
     }
 }

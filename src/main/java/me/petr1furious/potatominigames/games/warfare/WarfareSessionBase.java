@@ -44,12 +44,12 @@ abstract class WarfareSessionBase implements GameSession {
      * one being reset.
      */
     protected org.bukkit.World gameWorld() {
-        return services.slimeWorlds().resolveWorld(config.gameWorld.get());
+        return services.worlds().resolveWorld(config.gameWorld.get());
     }
 
     /** World reset, gamerules and border; call first from onStart. */
     protected void setupArena() {
-        services.slimeWorlds().setupWorld(false);
+        services.worlds().setupWorld(false);
         var world = gameWorld();
         if (config.enforceGameRules.get()) {
             services.arena().applyStandardGameRules(world);

@@ -27,16 +27,17 @@ import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.player.Participant;
 import me.petr1furious.potatominigames.core.score.PointsService;
-import me.petr1furious.potatominigames.core.session.GamePhase;
+import me.petr1furious.potatominigames.core.session.ActiveSession;
 import me.petr1furious.potatominigames.core.session.SessionManager;
 import me.petr1furious.potatominigames.core.team.TeamColor;
 import me.petr1furious.potatominigames.core.team.TeamService;
 import me.petr1furious.potatominigames.core.text.Messages;
 
 /**
- * Builds each game's command root (/bingo, /war, /chase): the shared subtree —
- * start/stop/join/leave/list/points/team/config/reload — plus the game's own
- * extensions via {@link Minigame#extendCommands}.
+ * Builds each game's command root (/bingo, /war, /chase, /pillars): the shared
+ * subtree — start/stop/join/leave/list/points/team/config/reload — plus the
+ * game's own extensions via {@link Minigame#extendCommands}. Players queue with
+ * /play; most of this is for admins.
  */
 public final class GameCommands {
     public static final String ADMIN_PERMISSION = "potatominigames.admin";
@@ -96,62 +97,52 @@ public final class GameCommands {
 
         root.then(Commands.literal("start")
                 .requires(GameCommands::isAdmin)
-                .executes(ctx -> run(ctx, c -> sessions.start(game, null)))
+                .executes(ctx -> run(ctx, c -> start(game, null)))
                 .then(Commands.argument("players", ArgumentTypes.players())
-                        .executes(ctx -> run(ctx, c -> sessions.start(game,
+                        .executes(ctx -> run(ctx, c -> start(game,
                                 c.getArgument("players", PlayerSelectorArgumentResolver.class)
                                         .resolve(c.getSource()))))));
 
         root.then(Commands.literal("restart")
                 .requires(GameCommands::isAdmin)
-                .executes(ctx -> run(ctx, c -> sessions.restart(game, null)))
+                .executes(ctx -> run(ctx, c -> restart(game, null)))
                 .then(Commands.argument("players", ArgumentTypes.players())
-                        .executes(ctx -> run(ctx, c -> sessions.restart(game,
+                        .executes(ctx -> run(ctx, c -> restart(game,
                                 c.getArgument("players", PlayerSelectorArgumentResolver.class)
                                         .resolve(c.getSource()))))));
 
         root.then(Commands.literal("stop")
                 .requires(GameCommands::isAdmin)
                 .executes(ctx -> run(ctx, c -> {
-                    requireOwnSession(game);
-                    sessions.stopNow(EndReason.ABORTED);
-                    messages.broadcast(Component.text("Game stopped.", NamedTextColor.RED));
+                    ActiveSession session = requireOwnSession(game);
+                    session.stopNow(EndReason.ABORTED);
+                    messages.broadcast(Component.text().append(session.displayName())
+                            .append(Component.text(" stopped.", NamedTextColor.RED)).build());
                 })));
 
+        // Players spectate a running game through /play; pulling someone into one,
+        // or putting a knocked-out player back, is an admin's call.
         root.then(Commands.literal("join")
-                .executes(ctx -> run(ctx, c -> {
-                    requireOwnSession(game);
-                    Player self = requirePlayer(c);
-                    // Joining puts a knocked-out player back in; that's an admin's call,
-                    // or the dead would simply revive themselves.
-                    if (sessions.isParticipant(self) && !isAdmin(c.getSource())) {
-                        throw new CommandFailure(
-                                "You are already part of this game. If you were knocked out, an admin can bring you back.");
-                    }
-                    sessions.join(self);
-                }))
+                .requires(GameCommands::isAdmin)
+                .executes(ctx -> run(ctx, c -> requireOwnSession(game).join(requirePlayer(c))))
                 .then(Commands.argument("players", ArgumentTypes.players())
-                        .requires(GameCommands::isAdmin)
                         .executes(ctx -> run(ctx, c -> {
-                            requireOwnSession(game);
+                            ActiveSession session = requireOwnSession(game);
                             for (Player target : c.getArgument("players", PlayerSelectorArgumentResolver.class)
                                     .resolve(c.getSource())) {
-                                sessions.join(target);
+                                session.join(target);
                             }
                         }))));
 
         root.then(Commands.literal("leave")
-                .executes(ctx -> run(ctx, c -> {
-                    requireOwnSession(game);
-                    sessions.leave(requirePlayer(c));
-                }))
+                .executes(ctx -> run(ctx, c -> requireOwnSession(game).leave(requirePlayer(c))))
                 .then(Commands.argument("players", ArgumentTypes.players())
                         .requires(GameCommands::isAdmin)
                         .executes(ctx -> run(ctx, c -> {
-                            requireOwnSession(game);
+                            ActiveSession session = requireOwnSession(game);
                             for (Player target : c.getArgument("players", PlayerSelectorArgumentResolver.class)
                                     .resolve(c.getSource())) {
-                                sessions.leave(target);
+                                session.leave(target);
                             }
                         }))));
 
@@ -190,37 +181,70 @@ public final class GameCommands {
         return root.build();
     }
 
-    private void requireOwnSession(Minigame game) throws CommandFailure {
-        if (sessions.phase() == GamePhase.IDLE) {
-            throw new CommandFailure("No " + game.id() + " game is active.");
+    private ActiveSession requireOwnSession(Minigame game) throws CommandFailure {
+        return sessions.sessionOf(game)
+                .orElseThrow(() -> new CommandFailure("No " + game.id() + " game is active."));
+    }
+
+    /**
+     * An admin's start: right away, in the configured mode, with the given players or
+     * everyone online who is not already playing something else.
+     */
+    private void start(Minigame game, List<Player> selected) throws CommandFailure {
+        List<Player> roster = selected;
+        if (roster == null || roster.isEmpty()) {
+            roster = new ArrayList<>();
+            for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
+                if (!sessions.isPlaying(player)) {
+                    roster.add(player);
+                }
+            }
         }
-        if (!sessions.isSessionOf(game)) {
-            throw new CommandFailure("A different game ("
-                    + sessions.activeGame().map(Minigame::id).orElse("?") + ") is active.");
+        sessions.start(game, game.defaultMode(), roster, java.util.Map.of(), false);
+    }
+
+    /**
+     * Ends the running game and starts a fresh one right away — with the same
+     * players unless a selector is given. Works as a plain start when idle, so it
+     * doubles as a "go again" button.
+     */
+    private void restart(Minigame game, List<Player> selected) throws CommandFailure {
+        List<Player> roster = selected;
+        var running = sessions.sessionOf(game);
+        if (running.isPresent()) {
+            if (roster == null || roster.isEmpty()) {
+                roster = running.get().participants().onlinePlayers();
+            }
+            running.get().stopNow(EndReason.ABORTED);
         }
+        start(game, roster);
     }
 
     private void sendStatus(CommandContext<CommandSourceStack> ctx, Minigame game) {
         var sender = ctx.getSource().getSender();
-        if (sessions.phase() == GamePhase.IDLE || !sessions.isSessionOf(game)) {
+        var running = sessions.sessionOf(game);
+        if (running.isEmpty()) {
             sender.sendMessage(Component.text()
                     .append(game.displayName())
-                    .append(Component.text(" — not active. Start with ", NamedTextColor.GRAY))
-                    .append(Component.text("/" + game.id() + " start", NamedTextColor.GOLD))
+                    .append(Component.text(" — not running. Queue with ", NamedTextColor.GRAY))
+                    .append(Component.text(sessions.playCommand(game, game.defaultMode()), NamedTextColor.GOLD))
                     .build());
             return;
         }
+        ActiveSession session = running.get();
         sender.sendMessage(Component.text()
-                .append(game.displayName())
-                .append(Component.text(" — " + sessions.phase().name().toLowerCase() + ", "
-                        + sessions.participants().size() + " players", NamedTextColor.GRAY))
+                .append(session.displayName())
+                .append(Component.text(" — " + session.phase().name().toLowerCase() + ", "
+                        + session.participants().size() + " players, "
+                        + session.spectatorIds().size() + " spectators", NamedTextColor.GRAY))
                 .build());
     }
 
     private void sendList(CommandContext<CommandSourceStack> ctx, Minigame game) throws CommandFailure {
+        var running = sessions.sessionOf(game);
         // With no game running there is still something useful to show: who is
-        // signed up to which colour for next time.
-        if (sessions.phase() == GamePhase.IDLE || !sessions.isSessionOf(game)) {
+        // signed up to which colour for the next admin-started game.
+        if (running.isEmpty()) {
             if (game.usesTeams()) {
                 sendStandingTeams(ctx, game);
             } else {
@@ -230,7 +254,7 @@ public final class GameCommands {
             return;
         }
         List<Component> names = new ArrayList<>();
-        for (Participant participant : sessions.participants().all()) {
+        for (Participant participant : running.get().participants().all()) {
             NamedTextColor color = participant.team() != null ? participant.team().textColor()
                     : NamedTextColor.WHITE;
             Component name = Component.text(participant.name(), color);
@@ -273,6 +297,7 @@ public final class GameCommands {
                 .then(Commands.literal("list")
                         .executes(ctx -> run(ctx, c -> sendTeamList(c, game))))
                 .then(Commands.literal("join")
+                        .requires(GameCommands::isAdmin)
                         .then(Commands.argument("color", StringArgumentType.word())
                                 .suggests(Suggest.strings(teamColors))
                                 .executes(ctx -> run(ctx, c -> teamJoin(game, requirePlayer(c),
@@ -287,6 +312,7 @@ public final class GameCommands {
                                             }
                                         })))))
                 .then(Commands.literal("leave")
+                        .requires(GameCommands::isAdmin)
                         .executes(ctx -> run(ctx, c -> teamLeave(game, requirePlayer(c))))
                         .then(Commands.argument("players", ArgumentTypes.players())
                                 .requires(GameCommands::isAdmin)
@@ -298,10 +324,11 @@ public final class GameCommands {
                                     }
                                 }))))
                 .then(Commands.literal("cycle")
+                        .requires(GameCommands::isAdmin)
                         .executes(ctx -> run(ctx, c -> {
                             Player player = requirePlayer(c);
                             TeamColor next = teams.cycle(game.id(), player.getUniqueId());
-                            applyTeamChange(player, next);
+                            applyTeamChange(game, player, next);
                             c.getSource().getSender().sendMessage(Component.text()
                                     .append(Component.text("You are now on ", NamedTextColor.GREEN))
                                     .append(next.displayNameComponent())
@@ -319,16 +346,19 @@ public final class GameCommands {
                                                     .getArgument("second", PlayerSelectorArgumentResolver.class)
                                                     .resolve(c.getSource()).getFirst();
                                             teams.swap(game.id(), first.getUniqueId(), second.getUniqueId());
-                                            applyTeamChange(first,
+                                            applyTeamChange(game, first,
                                                     teams.standingTeam(game.id(), first.getUniqueId()));
-                                            applyTeamChange(second,
+                                            applyTeamChange(game, second,
                                                     teams.standingTeam(game.id(), second.getUniqueId()));
                                             c.getSource().getSender()
                                                     .sendMessage(messages.success("Swapped teams."));
                                         })))));
     }
 
-    /** Team assignment is a standing thing — it deliberately works with no game running. */
+    /**
+     * Saved colours, for games an admin starts directly; queued games use the picks
+     * made with /play team instead. Works with no game running.
+     */
     private void teamJoin(Minigame game, Player player, String colorId,
             CommandContext<CommandSourceStack> ctx) throws CommandFailure {
         TeamColor color = TeamColor.fromId(colorId);
@@ -336,7 +366,7 @@ public final class GameCommands {
             throw new CommandFailure("Unknown team color: " + colorId);
         }
         teams.assign(game.id(), player.getUniqueId(), color);
-        applyTeamChange(player, color);
+        applyTeamChange(game, player, color);
         messages.broadcast(Component.text()
                 .append(Component.text(player.getName(), NamedTextColor.AQUA))
                 .append(Component.text(" joined ", NamedTextColor.GREEN))
@@ -356,14 +386,19 @@ public final class GameCommands {
                 .build());
     }
 
-    private void applyTeamChange(Player player, TeamColor color) {
-        sessions.activeSession().ifPresent(session -> session.onTeamChange(player, color));
+    /** Saved colours are written by now; a running game of this type also hears about it. */
+    private void applyTeamChange(Minigame game, Player player, TeamColor color) {
+        sessions.sessionOf(game).ifPresent(session -> {
+            session.participants().find(player.getUniqueId()).ifPresent(participant -> participant.setTeam(color));
+            session.gameSession().onTeamChange(player, color);
+        });
     }
 
     private void sendTeamList(CommandContext<CommandSourceStack> ctx, Minigame game) {
-        if (sessions.phase() != GamePhase.IDLE && sessions.isSessionOf(game)) {
+        var running = sessions.sessionOf(game);
+        if (running.isPresent()) {
             var sender = ctx.getSource().getSender();
-            var byTeam = teams.byTeam();
+            var byTeam = running.get().teams().byTeam();
             if (byTeam.isEmpty()) {
                 sender.sendMessage(messages.info("No teams assigned yet."));
                 return;

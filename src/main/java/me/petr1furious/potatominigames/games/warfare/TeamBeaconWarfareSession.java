@@ -139,7 +139,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
     @Override
     public void onTeamChange(Player player, TeamColor newTeam) {
         // Team commands work at any time; only a live round needs re-spawning.
-        if (!services.sessions().isRunning()) {
+        if (!services.session().isRunning()) {
             return;
         }
         cancelPendingRespawn(player.getUniqueId());
@@ -568,7 +568,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
     }
 
     private void checkGameEnd() {
-        if (ended || !services.sessions().isRunning()) {
+        if (ended || !services.session().isRunning()) {
             return;
         }
         List<TeamColor> activeTeams = new ArrayList<>();
@@ -589,11 +589,11 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
                     services.points().add("war", player.getUniqueId(), 1);
                 }
             }
-            services.sessions().endGame(EndReason.FINISHED);
+            services.session().endGame(EndReason.FINISHED);
         } else if (activeTeams.isEmpty()) {
             ended = true;
             services.messages().broadcast(Component.text("Game over! No teams left!", NamedTextColor.RED));
-            services.sessions().endGame(EndReason.FINISHED);
+            services.session().endGame(EndReason.FINISHED);
         }
     }
 

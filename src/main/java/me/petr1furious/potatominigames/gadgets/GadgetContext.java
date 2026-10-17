@@ -7,14 +7,18 @@ import org.bukkit.plugin.Plugin;
 
 /**
  * Decouples gadgets from any specific game: friendliness, targeting and name
- * masking come from the active session when one is running, with sensible
+ * masking come from the session the player is playing in, with sensible
  * defaults outside games.
  */
 public interface GadgetContext {
 
     Plugin plugin();
 
-    boolean gameRunning();
+    /** Whether the player is playing (not spectating) in a running game. */
+    boolean inGame(Player player);
+
+    /** Whether the player is in the lobby, where gadgets never work. */
+    boolean inLobby(Player player);
 
     boolean friendly(Player first, Player second);
 

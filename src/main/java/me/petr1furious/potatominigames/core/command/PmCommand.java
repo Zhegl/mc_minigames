@@ -24,7 +24,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.Minigame;
-import me.petr1furious.potatominigames.core.session.GamePhase;
+import me.petr1furious.potatominigames.core.queue.QueueService;
 import me.petr1furious.potatominigames.core.session.SessionManager;
 import me.petr1furious.potatominigames.core.text.Messages;
 
@@ -41,11 +41,13 @@ public final class PmCommand {
     private final ConfigRegistry configs;
     private final Messages messages;
     private final GameCommands gameCommands;
+    private final QueueService queues;
     private final File kitsFile;
 
     public PmCommand(JavaPlugin plugin, SessionManager sessions, ConfigRegistry configs, Messages messages,
-            GameCommands gameCommands) {
+            GameCommands gameCommands, QueueService queues) {
         this.plugin = plugin;
+        this.queues = queues;
         this.sessions = sessions;
         this.configs = configs;
         this.messages = messages;
@@ -68,12 +70,24 @@ public final class PmCommand {
                 .then(Commands.literal("stop")
                         .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
                         .executes(ctx -> run(ctx, c -> {
-                            if (sessions.phase() == GamePhase.IDLE) {
+                            if (sessions.activeSessions().isEmpty()) {
                                 throw new CommandFailure("No game is active.");
                             }
-                            sessions.stopNow(EndReason.ABORTED);
-                            messages.broadcast(Component.text("Game stopped.", NamedTextColor.RED));
-                        })))
+                            sessions.stopAll(EndReason.ABORTED);
+                            messages.broadcast(Component.text("All games stopped.", NamedTextColor.RED));
+                        }))
+                        .then(Commands.argument("game", StringArgumentType.word())
+                                .suggests(Suggest.dynamic(() -> sessions.activeSessions().stream()
+                                        .map(session -> session.game().id()).toList()))
+                                .executes(ctx -> run(ctx, c -> {
+                                    Minigame game = requireGame(c.getArgument("game", String.class));
+                                    var session = sessions.sessionOf(game)
+                                            .orElseThrow(() -> new CommandFailure(game.id() + " is not running."));
+                                    session.stopNow(EndReason.ABORTED);
+                                    messages.broadcast(Component.text().append(session.displayName())
+                                            .append(Component.text(" stopped.", NamedTextColor.RED)).build());
+                                }))))
+                .then(buildForceStart())
                 .then(Commands.literal("reload")
                         .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
                         .executes(ctx -> run(ctx, c -> {
@@ -88,18 +102,74 @@ public final class PmCommand {
 
     private void sendStatus(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx) {
         var sender = ctx.getSource().getSender();
-        if (sessions.phase() == GamePhase.IDLE) {
+        var running = sessions.activeSessions();
+        if (running.isEmpty()) {
             sender.sendMessage(Component.text(
                     "PotatoMinigames " + plugin.getPluginMeta().getVersion() + " — no game running.",
                     NamedTextColor.GRAY));
+        }
+        for (var session : running) {
+            sender.sendMessage(Component.text()
+                    .append(Component.text("PotatoMinigames: ", NamedTextColor.GRAY))
+                    .append(session.displayName())
+                    .append(Component.text(" is " + session.phase().name().toLowerCase() + " with "
+                            + session.participants().size() + " players and " + session.spectatorIds().size()
+                            + " spectators.", NamedTextColor.GRAY))
+                    .build());
+        }
+        for (var queue : queues.visibleQueues()) {
+            if (queue.size() > 0) {
+                sender.sendMessage(Component.text()
+                        .append(Component.text("Queue ", NamedTextColor.GRAY))
+                        .append(queue.displayName())
+                        .append(Component.text(": " + queue.countText()
+                                + (queue.countdown() != null ? ", starts in " + queue.countdown() + "s" : ""),
+                                NamedTextColor.GRAY))
+                        .build());
+            }
+        }
+    }
+
+    /** /pm forcestart <game> [mode]: skip the queue's minimum and timers and start now. */
+    private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildForceStart() {
+        return Commands.literal("forcestart")
+                .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
+                .then(Commands.argument("game", StringArgumentType.word())
+                        .suggests(Suggest.dynamic(() -> sessions.games().stream().map(Minigame::id).toList()))
+                        .executes(ctx -> run(ctx, c -> forceStart(c, null)))
+                        .then(Commands.argument("mode", StringArgumentType.word())
+                                .suggests((context, builder) -> {
+                                    Minigame game = sessions.game(context.getArgument("game", String.class));
+                                    return Suggest.strings(game == null ? List.of() : game.modes())
+                                            .getSuggestions(context, builder);
+                                })
+                                .executes(ctx -> run(ctx, c -> forceStart(c, c.getArgument("mode", String.class))))));
+    }
+
+    private void forceStart(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, String mode)
+            throws CommandFailure {
+        Minigame game = requireGame(ctx.getArgument("game", String.class));
+        if (mode == null) {
+            // Without a mode, the fullest queue of that game is the one people are waiting in.
+            var fullest = queues.queuesOf(game).stream()
+                    .max(java.util.Comparator.comparingInt(QueueService.Queue::size));
+            if (fullest.isEmpty()) {
+                throw new CommandFailure(game.id() + " has no open queues.");
+            }
+            queues.forceStart(fullest.get());
             return;
         }
-        sender.sendMessage(Component.text()
-                .append(Component.text("PotatoMinigames: ", NamedTextColor.GRAY))
-                .append(sessions.activeGame().map(Minigame::displayName).orElse(Component.text("?")))
-                .append(Component.text(" is " + sessions.phase().name().toLowerCase() + " with "
-                        + sessions.participants().size() + " players.", NamedTextColor.GRAY))
-                .build());
+        var queue = queues.find(game, mode)
+                .orElseThrow(() -> new CommandFailure("Unknown mode for " + game.id() + ": " + mode));
+        queues.forceStart(queue);
+    }
+
+    private Minigame requireGame(String id) throws CommandFailure {
+        Minigame game = sessions.game(id);
+        if (game == null) {
+            throw new CommandFailure("Unknown game: " + id);
+        }
+        return game;
     }
 
     private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildInventorySubtree() {

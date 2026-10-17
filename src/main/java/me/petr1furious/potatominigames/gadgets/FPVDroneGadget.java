@@ -580,8 +580,12 @@ public class FPVDroneGadget extends AbstractGadget {
     }
 
     @Override
-    public void onGameEnd() {
-        endAllSessions();
+    public void onGameEnd(Collection<UUID> players) {
+        for (UUID playerId : players) {
+            if (sessions.containsKey(playerId)) {
+                endSession(playerId);
+            }
+        }
     }
 
     private void explodeDrone(Player player, Location previousTickLocation) {

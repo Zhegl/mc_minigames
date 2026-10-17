@@ -1,6 +1,13 @@
 package me.petr1furious.potatominigames.core.session;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.function.Consumer;
+
+import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -20,7 +27,6 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
@@ -29,8 +35,9 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import me.petr1furious.potatominigames.core.game.GameSession;
 
 /**
- * The only Bukkit listener for game logic. Every handler early-returns while no
- * session is active, keeping the plugin inert on an idle server.
+ * The only Bukkit listener for game logic. An event reaches the sessions of the
+ * players it involves and the session whose world it happens in — never a game
+ * that has nothing to do with it — and nothing at all while no game is running.
  */
 public final class GameplayListener implements Listener {
     private final SessionManager sessions;
@@ -39,18 +46,31 @@ public final class GameplayListener implements Listener {
         this.sessions = sessions;
     }
 
-    // Events are also forwarded during ENDING so post-round UI (e.g. viewing the
-    // final bingo board during the grace period) keeps working.
-    private GameSession running() {
-        GamePhase phase = sessions.phase();
-        return phase == GamePhase.RUNNING || phase == GamePhase.ENDING
-                ? sessions.activeSession().orElse(null)
-                : null;
-    }
-
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        sessions.handleJoin(event.getPlayer());
+    /**
+     * Forwards to every distinct session that the given players belong to or that
+     * owns the world. Events keep flowing during ENDING so post-round UI (e.g.
+     * viewing the final bingo board during the grace period) keeps working.
+     */
+    private void dispatch(World world, Consumer<GameSession> handler, Entity... involved) {
+        if (sessions.activeSessions().isEmpty()) {
+            return;
+        }
+        Set<ActiveSession> targets = new LinkedHashSet<>();
+        for (Entity entity : involved) {
+            Entity source = entity instanceof Projectile projectile
+                    && projectile.getShooter() instanceof Entity shooter ? shooter : entity;
+            if (source instanceof Player player) {
+                sessions.sessionOf(player).ifPresent(targets::add);
+            }
+        }
+        if (world != null) {
+            sessions.sessionOwning(world).ifPresent(targets::add);
+        }
+        for (ActiveSession session : targets) {
+            if (session.phase() != GamePhase.IDLE && session.gameSession() != null) {
+                handler.accept(session.gameSession());
+            }
+        }
     }
 
     @EventHandler
@@ -60,153 +80,100 @@ public final class GameplayListener implements Listener {
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
     public void onPlayerDeath(PlayerDeathEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onPlayerDeath(event);
-        }
+        Player player = event.getPlayer();
+        dispatch(player.getWorld(), session -> session.onPlayerDeath(event), player, player.getKiller());
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onBlockBreak(BlockBreakEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onBlockBreak(event);
-        }
+        dispatch(event.getBlock().getWorld(), session -> session.onBlockBreak(event), event.getPlayer());
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onBlockPlace(BlockPlaceEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onBlockPlace(event);
-        }
+        dispatch(event.getBlock().getWorld(), session -> session.onBlockPlace(event), event.getPlayer());
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onEntityExplode(event);
-        }
+        dispatch(event.getLocation().getWorld(), session -> session.onEntityExplode(event));
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onBlockExplode(BlockExplodeEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onBlockExplode(event);
-        }
+        dispatch(event.getBlock().getWorld(), session -> session.onBlockExplode(event));
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onEntityDamageByEntity(event);
-        }
+        dispatch(event.getEntity().getWorld(), session -> session.onEntityDamageByEntity(event),
+                event.getDamager(), event.getEntity());
     }
 
     @EventHandler(ignoreCancelled = true)
     public void onEntityDamage(EntityDamageEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onEntityDamage(event);
-        }
+        dispatch(event.getEntity().getWorld(), session -> session.onEntityDamage(event), event.getEntity());
     }
 
     @EventHandler
     public void onEntityShootBow(EntityShootBowEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onEntityShootBow(event);
-        }
+        dispatch(event.getEntity().getWorld(), session -> session.onEntityShootBow(event), event.getEntity());
     }
 
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onPlayerInteract(event);
-        }
+        dispatch(event.getPlayer().getWorld(), session -> session.onPlayerInteract(event), event.getPlayer());
     }
 
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onPlayerMove(event);
-        }
+        dispatch(event.getTo().getWorld(), session -> session.onPlayerMove(event), event.getPlayer());
     }
 
     @EventHandler
     public void onPlayerTeleport(PlayerTeleportEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onPlayerTeleport(event);
-        }
+        dispatch(event.getFrom().getWorld(), session -> session.onPlayerTeleport(event), event.getPlayer());
     }
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onInventoryClick(event);
-        }
+        dispatch(event.getWhoClicked().getWorld(), session -> session.onInventoryClick(event),
+                event.getWhoClicked());
     }
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onInventoryDrag(event);
-        }
+        dispatch(event.getWhoClicked().getWorld(), session -> session.onInventoryDrag(event),
+                event.getWhoClicked());
     }
 
     @EventHandler
     public void onItemHeld(PlayerItemHeldEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onItemHeld(event);
-        }
+        dispatch(event.getPlayer().getWorld(), session -> session.onItemHeld(event), event.getPlayer());
     }
 
     @EventHandler
     public void onSwapHandItems(PlayerSwapHandItemsEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onSwapHandItems(event);
-        }
+        dispatch(event.getPlayer().getWorld(), session -> session.onSwapHandItems(event), event.getPlayer());
     }
 
     @EventHandler
     public void onDropItem(PlayerDropItemEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onDropItem(event);
-        }
+        dispatch(event.getPlayer().getWorld(), session -> session.onDropItem(event), event.getPlayer());
     }
 
     @EventHandler
     public void onPickupItem(EntityPickupItemEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onPickupItem(event);
-        }
+        dispatch(event.getEntity().getWorld(), session -> session.onPickupItem(event), event.getEntity());
     }
 
     @EventHandler
     public void onCraftItem(CraftItemEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onCraftItem(event);
-        }
+        dispatch(event.getWhoClicked().getWorld(), session -> session.onCraftItem(event), event.getWhoClicked());
     }
 
     @EventHandler
     public void onFurnaceExtract(FurnaceExtractEvent event) {
-        GameSession session = running();
-        if (session != null) {
-            session.onFurnaceExtract(event);
-        }
+        dispatch(event.getPlayer().getWorld(), session -> session.onFurnaceExtract(event), event.getPlayer());
     }
 }
