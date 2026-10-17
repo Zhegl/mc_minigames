@@ -56,6 +56,7 @@ public final class SessionManager {
     private final List<Consumer<Collection<UUID>>> cleanupHooks = new ArrayList<>();
     private final List<Consumer<ActiveSession>> startListeners = new ArrayList<>();
     private final List<Consumer<ActiveSession>> endListeners = new ArrayList<>();
+    private final List<Consumer<Player>> joinListeners = new ArrayList<>();
 
     private final Map<String, ActiveSession> sessions = new LinkedHashMap<>();
     /** Participants and spectators, each in exactly one session. */
@@ -114,6 +115,11 @@ public final class SessionManager {
         endListeners.add(listener);
     }
 
+    /** Runs whenever a player becomes part of a session, playing or spectating. */
+    public void addJoinListener(Consumer<Player> listener) {
+        joinListeners.add(listener);
+    }
+
     SpawnFinder spawnFinder() {
         return spawnFinder;
     }
@@ -163,6 +169,9 @@ public final class SessionManager {
 
     void index(Player player, ActiveSession session) {
         byPlayer.put(player.getUniqueId(), session);
+        for (Consumer<Player> listener : joinListeners) {
+            listener.accept(player);
+        }
     }
 
     void unindex(UUID playerId, ActiveSession session) {

@@ -174,23 +174,23 @@ public final class ActiveSession {
      * games an admin started directly use the saved colours instead.
      */
     void start(List<Player> roster, Map<UUID, TeamColor> teamPicks, boolean queued) throws CommandFailure {
-        teams.configureStart(teamPicks, !queued);
-        teams.attach(participants);
-        session = game.createSession(new SessionServices(plugin, this, participants, playerState, teams,
-                sidebar, bossBars, arena, worlds, manager.spawnFinder(), messages, manager.points()), mode);
-
-        for (Player player : roster) {
-            Participant participant = participants.add(player);
-            if (game.usesTeams()) {
-                teams.resolveForStart(game.id(), participant);
-            }
-            lobby.prepareForGame(player);
-            manager.index(player, this);
-        }
-
+        // Running from the first step, so that a failure anywhere below is cleaned up.
         phase = GamePhase.RUNNING;
         elapsedSeconds = 0;
         try {
+            teams.configureStart(teamPicks, !queued);
+            teams.attach(participants);
+            session = game.createSession(new SessionServices(plugin, this, participants, playerState, teams,
+                    sidebar, bossBars, arena, worlds, manager.spawnFinder(), messages, manager.points()), mode);
+
+            for (Player player : roster) {
+                Participant participant = participants.add(player);
+                if (game.usesTeams()) {
+                    teams.resolveForStart(game.id(), participant);
+                }
+                lobby.prepareForGame(player);
+                manager.index(player, this);
+            }
             session.onStart();
         } catch (CommandFailure | RuntimeException failure) {
             // Tear the half-built session down completely. Queued players stay queued, so
@@ -304,6 +304,11 @@ public final class ActiveSession {
     /** Stops spectating without sending them anywhere, for a player who is moving on to something else. */
     public void dropSpectator(Player player) {
         stopSpectating(player, false);
+        // Admins skip the lobby state that would otherwise take them out of spectator mode.
+        if (player.getGameMode() == GameMode.SPECTATOR && LobbyService.isExempt(player)) {
+            GameMode before = playerState.snapshotGameMode(player.getUniqueId());
+            player.setGameMode(before != null && before != GameMode.SPECTATOR ? before : GameMode.SURVIVAL);
+        }
     }
 
     void stopSpectating(Player player, boolean sendBack) {
@@ -363,6 +368,8 @@ public final class ActiveSession {
             endingTask = null;
         }
         if (phase == GamePhase.RUNNING) {
+            // ENDING first: a game that ends itself from onEnd must not schedule a second cleanup.
+            phase = GamePhase.ENDING;
             session.onEnd(reason);
         }
         cleanup(false, false);
@@ -376,7 +383,13 @@ public final class ActiveSession {
     }
 
     private void cleanup(boolean offerReplay, boolean backToQueue) {
-        endingTask = null;
+        if (phase == GamePhase.IDLE) {
+            return;
+        }
+        if (endingTask != null) {
+            endingTask.cancel();
+            endingTask = null;
+        }
         cancelTicker();
         List<Player> returning = audiencePlayers();
         Set<UUID> involved = new LinkedHashSet<>();
@@ -403,6 +416,8 @@ public final class ActiveSession {
         teams.detach();
         phase = GamePhase.IDLE;
         manager.onSessionEnded(this, involved);
+        participants.clear();
+        spectators.clear();
 
         if (offerReplay) {
             String command = manager.playCommand(game, mode);

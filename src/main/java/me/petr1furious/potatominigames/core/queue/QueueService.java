@@ -183,6 +183,13 @@ public final class QueueService implements Listener {
             }
         }
         sessions.addStartListener(this::onGameStarted);
+        // However somebody ends up in a game (an admin's join, spectating), they are not queued any more.
+        sessions.addJoinListener(player -> {
+            Queue queue = byPlayer.get(player.getUniqueId());
+            if (queue != null) {
+                remove(player, queue);
+            }
+        });
         plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
     }
 

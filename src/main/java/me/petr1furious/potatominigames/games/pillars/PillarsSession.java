@@ -434,7 +434,7 @@ final class PillarsSession implements GameSession {
         Style value = Style.style(NamedTextColor.GRAY).decoration(TextDecoration.BOLD, false);
         for (PillarPlayer pillarPlayer : players.values()) {
             Player player = pillarPlayer.player();
-            if (player == null) {
+            if (player == null || services.participants().find(pillarPlayer.id).isEmpty()) {
                 continue;
             }
             services.sidebar().update(player, title, List.of(
@@ -592,7 +592,8 @@ final class PillarsSession implements GameSession {
     /** Eliminated players watch from above the arena until it is over. */
     private void placeEliminated(PillarPlayer pillarPlayer) {
         Player player = pillarPlayer.player();
-        if (player == null) {
+        // Somebody who left the game in the meantime is no longer ours to move.
+        if (player == null || services.participants().find(pillarPlayer.id).isEmpty()) {
             return;
         }
         if (player.isDead()) {
@@ -792,6 +793,10 @@ final class PillarsSession implements GameSession {
     @Override
     public void onParticipantLeave(Player player) {
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
+        player.setInvulnerable(false);
+        if (bossBar != null) {
+            player.hideBossBar(bossBar);
+        }
         if (pillarPlayer != null && alive.contains(pillarPlayer)) {
             eliminate(pillarPlayer);
         }

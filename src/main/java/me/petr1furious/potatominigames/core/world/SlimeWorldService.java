@@ -96,12 +96,21 @@ public final class SlimeWorldService {
     public void importVanilla(File worldFolder, String templateName, int spawnX, int spawnY, int spawnZ)
             throws Exception {
         init();
-        if (fileLoader().worldExists(templateName)) {
+        // ASP refuses to import over an existing world, so the old one goes first; it comes back if this fails.
+        byte[] previous = fileLoader().worldExists(templateName) ? fileLoader().readWorld(templateName) : null;
+        if (previous != null) {
             fileLoader().deleteWorld(templateName);
         }
-        SlimeWorld imported = asp.readVanillaWorld(worldFolder, templateName, fileLoader());
-        setSpawn(imported.getPropertyMap(), spawnX, spawnY, spawnZ);
-        asp.saveWorld(imported);
+        try {
+            SlimeWorld imported = asp.readVanillaWorld(worldFolder, templateName, fileLoader());
+            setSpawn(imported.getPropertyMap(), spawnX, spawnY, spawnZ);
+            asp.saveWorld(imported);
+        } catch (Exception failure) {
+            if (previous != null) {
+                fileLoader().saveWorld(templateName, previous);
+            }
+            throw failure;
+        }
     }
 
     /** Saves an empty slime template (a world of nothing but void), replacing any older one. */

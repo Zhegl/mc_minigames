@@ -148,7 +148,8 @@ public final class GameplayListener implements Listener {
 
     @EventHandler
     public void onPlayerTeleport(PlayerTeleportEvent event) {
-        dispatch(event.getFrom().getWorld(), session -> session.onPlayerTeleport(event), event.getPlayer());
+        // The player's own session sees every teleport of theirs; the destination's owner sees arrivals.
+        dispatch(event.getTo().getWorld(), session -> session.onPlayerTeleport(event), event.getPlayer());
     }
 
     @EventHandler

@@ -37,6 +37,8 @@ public final class PlayerStateService {
     private final JavaPlugin plugin;
     private final File folder;
     private final Map<UUID, PlayerSnapshot> snapshots = new HashMap<>();
+    /** Players whose saved snapshot could not be read; their file must never be overwritten. */
+    private final java.util.Set<UUID> unreadable = new java.util.HashSet<>();
 
     public PlayerStateService(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -59,6 +61,12 @@ public final class PlayerStateService {
     public void put(UUID id, PlayerSnapshot snapshot) {
         snapshots.put(id, snapshot);
         write(id, snapshot);
+    }
+
+    /** The gamemode a player had when their snapshot was taken, or null without one. */
+    public GameMode snapshotGameMode(UUID id) {
+        PlayerSnapshot snapshot = snapshots.get(id);
+        return snapshot == null ? null : snapshot.gameMode();
     }
 
     public boolean hasSnapshot(UUID id) {
@@ -102,6 +110,14 @@ public final class PlayerStateService {
     }
 
     private void write(UUID id, PlayerSnapshot snapshot) {
+        if (unreadable.remove(id)) {
+            // Kept aside instead: it may only be its world that is missing, and it holds their things.
+            File old = fileFor(id);
+            File aside = new File(folder, id + ".yml.unreadable-" + System.currentTimeMillis());
+            if (old.renameTo(aside)) {
+                plugin.getLogger().warning("Kept the unreadable snapshot of " + id + " as " + aside.getName());
+            }
+        }
         YamlConfiguration yaml = new YamlConfiguration();
         snapshot.save(yaml);
         try {
@@ -123,16 +139,24 @@ public final class PlayerStateService {
         }
         for (File file : files) {
             String name = file.getName();
+            UUID id;
             try {
-                UUID id = UUID.fromString(name.substring(0, name.length() - ".yml".length()));
+                id = UUID.fromString(name.substring(0, name.length() - ".yml".length()));
+            } catch (IllegalArgumentException notOurs) {
+                continue;
+            }
+            try {
                 PlayerSnapshot snapshot = PlayerSnapshot.load(YamlConfiguration.loadConfiguration(file));
                 if (snapshot != null) {
                     snapshots.put(id, snapshot);
                 } else {
+                    unreadable.add(id);
                     // Kept on disk rather than deleted: it may only be its world that is missing.
                     plugin.getLogger().warning("Snapshot " + name + " is unreadable (world gone?), skipping it");
                 }
             } catch (RuntimeException exception) {
+                // An unknown world in the location lands here; the file stays, untouched.
+                unreadable.add(id);
                 plugin.getLogger().log(Level.WARNING, "Could not read snapshot " + name, exception);
             }
         }

@@ -145,6 +145,10 @@ public final class LobbyService implements Listener {
      * lobby. Players already in the lobby will come back to it.
      */
     public void enterQueue(Player player) {
+        if (world() == null) {
+            // No lobby to wait in: they carry on as they are, and the game snapshots them when it starts.
+            return;
+        }
         UUID id = player.getUniqueId();
         if (isLobby(player.getWorld())) {
             if (isExempt(player)) {
@@ -169,7 +173,12 @@ public final class LobbyService implements Listener {
      */
     public void leaveQueue(Player player) {
         UUID id = player.getUniqueId();
-        if (targets.get(id) == Target.LOBBY) {
+        Target target = targets.get(id);
+        if (target == null) {
+            // Queueing never moved them (no lobby), so there is nothing to undo.
+            return;
+        }
+        if (target == Target.LOBBY) {
             targets.remove(id);
             if (isExempt(player)) {
                 // The snapshot taken for the queue is just what they still have on them.
@@ -286,8 +295,8 @@ public final class LobbyService implements Listener {
             }
             applyLobbyState(player);
         } else if (wasInLobby && !nowInLobby) {
-            if (sessions.sessionOf(player).map(session -> session.owns(player.getWorld())).orElse(false)) {
-                // Into their game, which takes it from here.
+            if (sessions.isBusy(player)) {
+                // Into their game (or wherever it sent them), which takes it from here.
                 return;
             }
             // Walking out on their own: their things come back, but they stay where they went.
