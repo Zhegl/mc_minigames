@@ -43,6 +43,8 @@ tasks.jar {
 
 tasks.processResources {
     val pluginVersion = version.toString()
+    // Declared, or a version bump leaves the old plugin.yml in place.
+    inputs.property("version", pluginVersion)
     filesMatching("plugin.yml") {
         expand("version" to pluginVersion)
     }

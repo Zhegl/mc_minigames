@@ -109,9 +109,17 @@ public final class LobbyService implements Listener {
         return lobby != null && lobby.equals(world);
     }
 
+    /** The lobby world's spawn, moved up onto the ground if the stored spawn is inside a block. */
     public Location spawn() {
         World lobby = world();
-        return lobby == null ? null : lobby.getSpawnLocation().toCenterLocation().add(0, -0.5, 0);
+        if (lobby == null) {
+            return null;
+        }
+        Location spawn = lobby.getSpawnLocation().toCenterLocation().add(0, -0.5, 0);
+        if (!spawn.getBlock().isPassable() || !spawn.getBlock().getRelative(0, 1, 0).isPassable()) {
+            spawn.setY(lobby.getHighestBlockYAt(spawn) + 1);
+        }
+        return spawn;
     }
 
     public static boolean isExempt(Player player) {
@@ -186,6 +194,18 @@ public final class LobbyService implements Listener {
             return;
         }
         targets.putIfAbsent(id, inLobby ? Target.LOBBY : Target.RESTORE);
+    }
+
+    /**
+     * A queued game failed to start: the player stays queued, so they go back to the
+     * lobby (or stay there) still holding their snapshot and their way back.
+     */
+    public void backToQueue(Player player) {
+        if (isLobby(player.getWorld())) {
+            applyLobbyState(player);
+        } else if (!sendToLobby(player)) {
+            returnPlayer(player);
+        }
     }
 
     /** The queue or game is over for this player: send them where they belong. */

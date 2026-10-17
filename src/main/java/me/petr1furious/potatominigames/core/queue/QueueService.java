@@ -531,7 +531,7 @@ public final class QueueService implements Listener {
         Component others = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s with " + queue.countText()
-                        + " players. ", NamedTextColor.GRAY))
+                        + (queue.size() == 1 ? " player. " : " players. "), NamedTextColor.GRAY))
                 .append(button("Join", queue.command(), "Join this queue"))
                 .build();
         for (Player player : freePlayers()) {

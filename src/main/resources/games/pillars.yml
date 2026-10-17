@@ -1,0 +1,196 @@
+# Pillars: everyone spawns on a bedrock pillar high above an arena, gets a random item
+# every few seconds, and the last one standing wins.
+# Based on PillarPeril by MarcPG (https://github.com/MarcPG1905/PillarPeril, Apache-2.0).
+# Every value below is what the PillarPeril configuration on the server played with.
+
+# The mode an admin's plain `/pillars start` plays. Players pick theirs with /play.
+mode: original
+
+# Seconds everyone stays frozen and invulnerable on their pillar before the game starts.
+startCountdown: 3
+
+# Seconds a player who disconnects keeps their spot. 0 eliminates them on the spot.
+reconnectGraceSeconds: 60
+
+# Where players stand, and what the pillars are made of.
+platformHeight: 200.0
+platformMaterial: BEDROCK
+
+# How far below the platform a player can fall before they are out.
+maxFall: 40.0
+
+# The pillar circle's circumference per player, in blocks.
+platformDistanceFactor: 10.0
+
+# Whether players dying at the same moment as the last survivor share the win.
+enableDraws: true
+
+# The ticking before an item arrives (for the last soundCooldownSeconds), and the pickup sound.
+soundEffects: true
+soundCooldownSeconds: 3
+itemSound: true
+
+# Each mode's settings. cooldownSeconds is the time between items, timeLimit takes "30s",
+# "5min" or "1h"; layout is circular (an even ring) or random (scattered in a circle).
+modes:
+  original:
+    cooldownSeconds: 5
+    timeLimit: 5min
+    color: '#FFFFFF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+  chaos:
+    cooldownSeconds: 3
+    timeLimit: 8min
+    color: '#FF5555'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: random
+  item-shuffle:
+    cooldownSeconds: 10
+    timeLimit: 5min
+    color: '#A3FF54'
+    scoreboard: true
+    actionBar: true
+    bossBar: false
+    layout: circular
+
+# What can be handed out. Read again for every game, so edits apply after /pillars reload.
+items:
+
+  # Items which are never given.
+  blacklist:
+  - air
+  - ender_dragon_spawn_egg
+
+  # The same as patterns, where '*' stands for any part of an item's name. Much of the item
+  # registry is filler: one of 23 pottery sherds wastes an item cycle, and command blocks or a
+  # debug stick are not a game mechanic. Useful items stay however many there are of them.
+  blacklist-patterns:
+  - '*_banner_pattern'
+  - '*_pottery_sherd'
+  - '*_smithing_template'
+  - '*_harness'
+  - '*_dye'
+  - '*_horse_armor'
+  - '*_nautilus_armor'
+  - music_disc_*
+  - disc_fragment_*
+  - chain_command_block
+  - command_block
+  - command_block_minecart
+  - debug_stick
+  - frogspawn
+  - jigsaw
+  - knowledge_book
+  - light
+  - repeating_command_block
+  - structure_block
+  - structure_void
+
+  # Items kept although a pattern above matches them: one harness is a fine joke of an
+  # item to be handed, sixteen are a colour catalogue.
+  blacklist-exceptions:
+  - white_harness
+
+  # How often items come up relative to the rest (default 1; 0 removes an item). When several
+  # patterns match, the longest wins. Potions are weighted up because there are only four
+  # potion items against hundreds of blocks; the rest open the item groups below.
+  weights:
+    potion: 25
+    splash_potion: 25
+    lingering_potion: 25
+    tipped_arrow: 25
+    happy_ghast_spawn_egg: 10
+    bow: 10
+    crossbow: 10
+    tnt: 15
+    minecart: 10
+    saddle: 10
+    respawn_anchor: 10
+
+  # Variants of items under a name of their own, written exactly the way /give takes them.
+  custom:
+    explosive_firework_rocket: firework_rocket[fireworks={flight_duration:1,explosions:[{shape:"large_ball",colors:[I;16711680,16776960],has_trail:true}]},item_name={text:"Explosive Firework Rocket"}]
+
+  # Items that only make sense together. Being given one of a group's triggers (or, without
+  # triggers, any of its items) makes the others far more likely for that player: until they
+  # get each one (mode once, the default) or for the rest of the game (mode repeating).
+  groups:
+    happy-ghast:
+      weight: 600
+      items:
+      - happy_ghast_spawn_egg
+      - '*_harness'
+    elytra:
+      weight: 400
+      items:
+      - elytra
+      - firework_rocket
+    explosives:
+      weight: 400
+      items:
+      - tnt
+      - flint_and_steel
+    minecart:
+      weight: 300
+      items:
+      - minecart
+      - rail
+    saddle:
+      weight: 300
+      items:
+      - saddle
+      - horse_spawn_egg
+    respawn-anchor:
+      weight: 300
+      items:
+      - respawn_anchor
+      - glowstone
+    archery:
+      mode: repeating
+      weight: 150
+      triggers:
+      - bow
+      - crossbow
+      items:
+      - arrow
+      - spectral_arrow
+      - tipped_arrow
+    rockets:
+      mode: repeating
+      weight: 150
+      triggers:
+      - crossbow
+      items:
+      - explosive_firework_rocket
+
+# The arenas, one picked at random for each game. Each plays in a fresh copy of its slime
+# template (slime_worlds/pillars_<name>.slime unless `template:` says otherwise), at x/z.
+# `time` is a tick of the day or day/noon/sunset/night/midnight/sunrise, and an optional
+# `gamerules:` section sets game rules for the arena's games only.
+# `/pillars arena import all` cuts the templates out of the old `pillars` world.
+arenas:
+  ice: {x: -704, z: -528, time: night}
+  cobble: {x: -352, z: -528, time: midnight}
+  lodestone: {x: 0, z: -528}
+  grass: {x: 352, z: -528}
+  magma: {x: 704, z: -528}
+  honey: {x: -704, z: -176}
+  paleoak: {x: -352, z: -176, time: midnight}
+  soul: {x: 0, z: -176, time: midnight}
+  snow: {x: 352, z: -176}
+  bedrock: {x: 704, z: -176}
+  slime: {x: -704, z: 176}
+  tnt: {x: -352, z: 176}
+  coal: {x: 0, z: 176, time: midnight}
+  sulfur: {x: 352, z: 176}
+  oak: {x: 704, z: 176}
+  air: {x: -704, z: 528}
+  moss: {x: -352, z: 528, time: midnight}
+  resin: {x: 0, z: 528}
+  copper: {x: 352, z: 528, time: midnight}
+  purpur: {x: 704, z: 528, time: midnight}

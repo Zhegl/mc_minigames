@@ -193,8 +193,9 @@ public final class ActiveSession {
         try {
             session.onStart();
         } catch (CommandFailure | RuntimeException failure) {
-            // Put everyone back and tear the half-built session down completely.
-            cleanup(false);
+            // Tear the half-built session down completely. Queued players stay queued, so
+            // they wait in the lobby again; everyone else is put back.
+            cleanup(false, queued);
             if (failure instanceof CommandFailure commandFailure) {
                 throw commandFailure;
             }
@@ -208,7 +209,7 @@ public final class ActiveSession {
         }, 20L, 20L);
         messages.broadcastGlobal(Component.text()
                 .append(displayName())
-                .append(Component.text(" started with " + participants.size() + " players!", NamedTextColor.GREEN))
+                .append(Component.text(" started with " + Messages.count(participants.size(), "player") + "!", NamedTextColor.GREEN))
                 .build());
         messages.playSound(participants.onlinePlayers(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
     }
@@ -348,7 +349,7 @@ public final class ActiveSession {
         announceResult();
         // Next tick rather than inline: endGame is reached from inside a death handler,
         // and restoring a player there fights with the respawn screen about to open.
-        endingTask = plugin.getServer().getScheduler().runTask(plugin, () -> cleanup(true));
+        endingTask = plugin.getServer().getScheduler().runTask(plugin, () -> cleanup(true, false));
     }
 
     /** Immediate teardown from any phase (also used from onDisable). */
@@ -364,7 +365,7 @@ public final class ActiveSession {
         if (phase == GamePhase.RUNNING) {
             session.onEnd(reason);
         }
-        cleanup(false);
+        cleanup(false, false);
     }
 
     private void announceResult() {
@@ -374,7 +375,7 @@ public final class ActiveSession {
                         .append(Component.text(" has ended.", NamedTextColor.GRAY)).build());
     }
 
-    private void cleanup(boolean offerReplay) {
+    private void cleanup(boolean offerReplay, boolean backToQueue) {
         endingTask = null;
         cancelTicker();
         List<Player> returning = audiencePlayers();
@@ -388,7 +389,11 @@ public final class ActiveSession {
         for (Player player : returning) {
             sidebar.clear(player);
             bossBars.hideFrom(player);
-            lobby.returnPlayer(player);
+            if (backToQueue) {
+                lobby.backToQueue(player);
+            } else {
+                lobby.returnPlayer(player);
+            }
         }
         sidebar.clearAll();
         bossBars.hideAll();

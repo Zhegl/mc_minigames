@@ -130,6 +130,22 @@ public final class GameplayListener implements Listener {
         dispatch(event.getTo().getWorld(), session -> session.onPlayerMove(event), event.getPlayer());
     }
 
+    /**
+     * The spectator menu can teleport to anyone on the server; somebody watching a game
+     * (or out of it) stays within that game's worlds.
+     */
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.LOW)
+    public void onSpectatorTeleport(PlayerTeleportEvent event) {
+        if (event.getCause() != PlayerTeleportEvent.TeleportCause.SPECTATE) {
+            return;
+        }
+        sessions.sessionOf(event.getPlayer()).ifPresent(session -> {
+            if (!session.owns(event.getTo().getWorld())) {
+                event.setCancelled(true);
+            }
+        });
+    }
+
     @EventHandler
     public void onPlayerTeleport(PlayerTeleportEvent event) {
         dispatch(event.getFrom().getWorld(), session -> session.onPlayerTeleport(event), event.getPlayer());

@@ -116,10 +116,11 @@ public final class QueueMenu implements Listener {
             return;
         }
         event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player player) || event.getClickedInventory() != holder.inventory) {
+        // Raw slots below the menu's size are the menu itself; the rest is their own inventory.
+        int slot = event.getRawSlot();
+        if (!(event.getWhoClicked() instanceof Player player) || slot >= holder.inventory.getSize()) {
             return;
         }
-        int slot = event.getSlot();
         if (slot < 0 || slot >= holder.slots.size()) {
             return;
         }

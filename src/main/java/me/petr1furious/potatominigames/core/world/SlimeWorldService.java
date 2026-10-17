@@ -11,6 +11,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
 import com.infernalsuite.asp.api.world.SlimeWorld;
+import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 
 import me.petr1furious.potatominigames.core.config.Property;
@@ -89,15 +90,35 @@ public final class SlimeWorldService {
 
     /**
      * Converts a vanilla world folder (which must not be loaded) into a slime file
-     * called {@code templateName}, replacing any older one.
+     * called {@code templateName}, replacing any older one, with its spawn point at
+     * the given block.
      */
-    public void importVanilla(File worldFolder, String templateName) throws Exception {
+    public void importVanilla(File worldFolder, String templateName, int spawnX, int spawnY, int spawnZ)
+            throws Exception {
         init();
         if (fileLoader().worldExists(templateName)) {
             fileLoader().deleteWorld(templateName);
         }
         SlimeWorld imported = asp.readVanillaWorld(worldFolder, templateName, fileLoader());
+        setSpawn(imported.getPropertyMap(), spawnX, spawnY, spawnZ);
         asp.saveWorld(imported);
+    }
+
+    /** Saves an empty slime template (a world of nothing but void), replacing any older one. */
+    public void createEmptyTemplate(String templateName, int spawnX, int spawnY, int spawnZ) throws Exception {
+        init();
+        if (fileLoader().worldExists(templateName)) {
+            fileLoader().deleteWorld(templateName);
+        }
+        SlimePropertyMap properties = new SlimePropertyMap();
+        setSpawn(properties, spawnX, spawnY, spawnZ);
+        asp.saveWorld(asp.createEmptyWorld(templateName, false, properties, fileLoader()));
+    }
+
+    private static void setSpawn(SlimePropertyMap properties, int x, int y, int z) {
+        properties.setValue(SlimeProperties.SPAWN_X, x);
+        properties.setValue(SlimeProperties.SPAWN_Y, y);
+        properties.setValue(SlimeProperties.SPAWN_Z, z);
     }
 
     public PropertyBag config() {

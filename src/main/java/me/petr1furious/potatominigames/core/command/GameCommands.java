@@ -235,8 +235,8 @@ public final class GameCommands {
         sender.sendMessage(Component.text()
                 .append(session.displayName())
                 .append(Component.text(" — " + session.phase().name().toLowerCase() + ", "
-                        + session.participants().size() + " players, "
-                        + session.spectatorIds().size() + " spectators", NamedTextColor.GRAY))
+                        + Messages.count(session.participants().size(), "player") + ", "
+                        + Messages.count(session.spectatorIds().size(), "spectator"), NamedTextColor.GRAY))
                 .build());
     }
 

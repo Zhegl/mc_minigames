@@ -113,8 +113,8 @@ public final class PmCommand {
                     .append(Component.text("PotatoMinigames: ", NamedTextColor.GRAY))
                     .append(session.displayName())
                     .append(Component.text(" is " + session.phase().name().toLowerCase() + " with "
-                            + session.participants().size() + " players and " + session.spectatorIds().size()
-                            + " spectators.", NamedTextColor.GRAY))
+                            + Messages.count(session.participants().size(), "player") + " and "
+                            + Messages.count(session.spectatorIds().size(), "spectator") + ".", NamedTextColor.GRAY))
                     .build());
         }
         for (var queue : queues.visibleQueues()) {

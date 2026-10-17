@@ -37,7 +37,7 @@ import me.petr1furious.potatominigames.gadgets.TrackerCompassGadget;
 import me.petr1furious.potatominigames.games.bingo.BingoGame;
 import me.petr1furious.potatominigames.games.chase.ChaseGame;
 import me.petr1furious.potatominigames.games.dummy.DummyGame;
-//PILLARS import me.petr1furious.potatominigames.games.pillars.PillarsGame;
+import me.petr1furious.potatominigames.games.pillars.PillarsGame;
 import me.petr1furious.potatominigames.games.warfare.WarfareGame;
 
 public final class PotatoMinigamesPlugin extends JavaPlugin {
@@ -89,10 +89,11 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         gadgets.registerEvents(this);
         sessions.addCleanupHook(gadgets::endForPlayers);
 
-        sessions.registerGame(new WarfareGame(configs, fpvDrone));
+        // Registration order is the order /play and the lobby menu list the games in.
+        sessions.registerGame(new PillarsGame(this, configs, slimeWorlds));
         sessions.registerGame(new BingoGame(this, configs));
+        sessions.registerGame(new WarfareGame(configs, fpvDrone));
         sessions.registerGame(new ChaseGame(configs, gadgets));
-        //PILLARS sessions.registerGame(new PillarsGame(this, configs, slimeWorlds));
 
         QueueService queues = new QueueService(this, sessions, lobby);
         queues.createQueues(configs);

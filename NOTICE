@@ -1,0 +1,14 @@
+Potato Minigames
+Copyright 2026 Petr Tsopa
+
+This product includes software derived from PillarPeril
+(https://github.com/MarcPG1905/PillarPeril), Copyright MarcPG, licensed under
+the Apache License, Version 2.0, by way of the fork at
+https://github.com/Petr1Furious/PillarPeril.
+
+The Pillars game (src/main/java/me/petr1furious/potatominigames/games/pillars/
+and src/main/resources/games/pillars.yml) is a Java rewrite of PillarPeril's
+Kotlin code, written by Claude (Anthropic's AI assistant) and modified: it runs
+on the Potato Minigames framework and its slime-world arenas, and drops
+PillarPeril's translations, metrics, update checker, command hooks, block
+rollback and game modifiers. Each file derived from PillarPeril says so at its top.

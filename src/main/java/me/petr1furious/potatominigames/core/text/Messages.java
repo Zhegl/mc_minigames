@@ -28,6 +28,11 @@ public final class Messages {
         this.audience = audience;
     }
 
+    /** "1 player", "3 players". */
+    public static String count(int amount, String noun) {
+        return amount + " " + noun + (amount == 1 ? "" : "s");
+    }
+
     public Component success(String message) {
         return Component.text(message, NamedTextColor.GREEN);
     }
