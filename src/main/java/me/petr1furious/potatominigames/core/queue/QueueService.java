@@ -436,8 +436,18 @@ public final class QueueService implements Listener {
         }
     }
 
-    /** When a game starts, whoever is still queued for it in any mode watches instead. */
+    /**
+     * When a game starts, whoever is still queued for it in any mode watches instead,
+     * and its players leave whatever queue they were in (an admin can start a game with
+     * anybody, queued or not).
+     */
     private void onGameStarted(ActiveSession session) {
+        for (Player player : session.participants().onlinePlayers()) {
+            Queue queue = byPlayer.get(player.getUniqueId());
+            if (queue != null) {
+                remove(player, queue);
+            }
+        }
         for (Queue queue : queues.values()) {
             if (queue.game == session.game()) {
                 moveToSpectators(queue, session);

@@ -201,6 +201,20 @@ public final class PillarsGame implements Minigame, Listener {
 
     @Override
     public void extendCommands(LiteralArgumentBuilder<CommandSourceStack> root) {
+        root.then(Commands.literal("mode")
+                .requires(PillarsGame::isAdmin)
+                .then(Commands.argument("mode", StringArgumentType.word())
+                        .suggests(Suggest.strings(PillarsConfig.MODES))
+                        .executes(ctx -> run(ctx, c -> {
+                            String mode = c.getArgument("mode", String.class).toLowerCase(java.util.Locale.ROOT);
+                            if (!PillarsConfig.MODES.contains(mode)) {
+                                throw new CommandFailure("Unknown mode: " + mode);
+                            }
+                            config.setDefaultMode(mode);
+                            c.getSource().getSender().sendMessage(
+                                    Component.text("Pillars mode set to " + mode, NamedTextColor.GREEN));
+                        }))));
+
         root.then(Commands.literal("respawn")
                 .requires(PillarsGame::isAdmin)
                 .executes(ctx -> run(ctx, c -> respawn(c, requirePlayer(c))))
@@ -318,11 +332,17 @@ public final class PillarsGame implements Minigame, Listener {
             try {
                 ArenaImporter.deleteRecursively(work);
                 int chunks = ArenaImporter.cut(source, work, arena.x(), arena.z(), radius);
+                if (chunks > 0) {
+                    copyLevelData(source, work);
+                    try {
+                        slimeWorlds.importVanilla(work, arena.template(), (int) arena.x(), spawnY, (int) arena.z());
+                    } catch (com.infernalsuite.asp.api.exceptions.InvalidWorldException nothingThere) {
+                        // Chunks that were generated but hold nothing are no world to ASP.
+                        chunks = 0;
+                    }
+                }
                 if (chunks == 0) {
                     slimeWorlds.createEmptyTemplate(arena.template(), (int) arena.x(), spawnY, (int) arena.z());
-                } else {
-                    copyLevelData(source, work);
-                    slimeWorlds.importVanilla(work, arena.template(), (int) arena.x(), spawnY, (int) arena.z());
                 }
                 sender.sendMessage(Component.text("Imported " + arena.name() + " as " + arena.template() + " ("
                         + (chunks == 0 ? "empty" : chunks + " chunks") + ")", NamedTextColor.GREEN));
@@ -348,10 +368,12 @@ public final class PillarsGame implements Minigame, Listener {
             loaded.save();
             return loaded.getWorldFolder();
         }
-        File container = Bukkit.getWorldContainer();
+        // Since 1.21.9 every world sits next to the primary one in <level>/dimensions/minecraft/;
+        // before that, worlds were folders of their own in the world container.
+        File primary = Bukkit.getWorlds().getFirst().getWorldFolder();
         for (File candidate : List.of(
-                new File(Bukkit.getWorlds().getFirst().getWorldFolder(), "dimensions/minecraft/" + worldName),
-                new File(container, worldName))) {
+                new File(primary.getParentFile(), worldName),
+                new File(Bukkit.getWorldContainer(), worldName))) {
             if (new File(candidate, "region").isDirectory()) {
                 return candidate;
             }

@@ -107,6 +107,11 @@ public final class PillarsConfig {
         configs.register(modeBag, FILE, "modes." + id);
     }
 
+    /** Sets what a plain /pillars start plays, saved to the file. */
+    public void setDefaultMode(String id) {
+        configs.set("pillars", "mode", id);
+    }
+
     public Mode mode(String id) {
         Mode found = modes.get(id);
         return found != null ? found : modes.get("original");

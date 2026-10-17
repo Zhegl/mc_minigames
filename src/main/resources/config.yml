@@ -1,15 +1,56 @@
 # Potato Minigames core settings.
 
-# Games start the moment you run `start` — there is no lobby or pre-game countdown.
-# (Bingo has its own cage countdown, see games/bingo.yml.)
+# Admins start a game right away with `/<game> start`. Players queue with /play instead
+# (see `queue` and `queues` below), and wait in the lobby (see `lobby`).
 
 # Register the /dummy lifecycle-testing game (development only).
 enableDummyGame: false
 
-# Advanced Slime Paper world reset: clone a template slime world over the game
+# Advanced Slime Paper world reset for warfare: clone a template slime world over the game
 # world before each game, so terrain damage never persists.
 asp:
   enable: false
   templateWorld: template
   gameWorld: game
   resetOnStart: true
+
+# The lobby players wait in. Entering it puts players (admins excepted) into adventure mode
+# with an empty inventory and the game menu; whatever they had is kept in a snapshot and
+# given back when they leave, after their game, or after a restart.
+# If Multiverse's `enforce-gamemode` is on, set the lobby world's gamemode to adventure too,
+# or Multiverse switches players back a tick after they arrive.
+lobby:
+  enabled: true
+  world: lobby
+  # Send players who have never played here to the lobby.
+  firstJoinToLobby: true
+  # The hotbar slot of the menu item.
+  menuSlot: 4
+
+# How queues count down once they have enough players. The countdown only ever shortens:
+# everyoneQueuedSeconds once every free player online is in the queue (anyone not in a
+# game, not AFK and not in creative or spectator mode), voteSeconds once the queue votes
+# to start with /play vote (all but one of three or more, both of two).
+queue:
+  countdownSeconds: 60
+  everyoneQueuedSeconds: 15
+  voteSeconds: 5
+  # Seconds without moving, chatting or running a command before a player leaves their queue.
+  afkSeconds: 300
+
+# One queue per game and mode. `enabled: false` hides one from /play and the menu;
+# maxPlayers 0 means no limit. Whoever does not fit into a game spectates it.
+queues:
+  pillars:
+    original: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    chaos: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    item-shuffle: {enabled: true, minPlayers: 2, maxPlayers: 16}
+  bingo:
+    default: {enabled: true, minPlayers: 1, maxPlayers: 0}
+    butfast: {enabled: true, minPlayers: 1, maxPlayers: 0}
+    collectall: {enabled: true, minPlayers: 1, maxPlayers: 0}
+  war:
+    classic: {enabled: true, minPlayers: 2, maxPlayers: 0}
+    team_beacon: {enabled: true, minPlayers: 2, maxPlayers: 0}
+  chase:
+    default: {enabled: true, minPlayers: 2, maxPlayers: 0}

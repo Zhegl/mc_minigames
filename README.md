@@ -1,61 +1,136 @@
 # Potato Minigames
 
-One Paper plugin unifying three minigames (formerly the separate `bingo-plugin`,
-`hide-and-seek`, and `ultimate-tag-plugin` repos) on a shared framework.
-Targets Paper/AdvancedSlimePaper **26.2**, Java 25.
+One Paper plugin with four minigames on a shared framework, built for a server
+anybody can join and play at any time: players queue for a game, wait in a lobby,
+and the game starts by itself. Different games run side by side.
+Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Java 25.
 
 ## Games
 
-| Game | Command | What it is |
-|---|---|---|
-| **Bingo** | `/bingo` | Teams race to collect items on a generated 5×5 board (modes: `default` line bingo, `butfast` first-come scoring, `collectall` 3×3). Cage drop into a random arena; deaths are short spectator punishments. |
-| **Warfare** | `/war` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
-| **Chase** | `/chase` | Formerly ultimate tag. Fixed number of rounds; a fair rotation picks hunters who track runners by compass (plus optional gadgets); survivors and catchers score. |
+| Game | Command | Modes | What it is |
+|---|---|---|---|
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins. Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Bingo** | `/bingo` | `default`, `butfast`, `collectall` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. |
+| **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
+| **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
 
-## Shared commands
+## Playing: queues and the lobby
 
-There is no lobby. A game starts the moment you run `start`, with the players you
-name or everyone online; `join` means "join the game already in progress".
-Anything you want arranged beforehand — teams, settings — is set while idle.
+Every game and mode has a queue. Players join one with `/play <game> [mode]`, by
+clicking a game in the lobby menu (the compass), or by clicking `[Join]` in chat. A
+player is in one queue at a time.
 
 | command | what it does |
 |---|---|
-| `start [players]` | start now with the selector, or everyone online |
-| `stop` | stop the running game |
-| `restart [players]` | end the current game and immediately start another with the same players (or a new selector). Works as a plain start when nothing is running, so it's a "go again" button. |
-| `join [players]` | late-join a game in progress |
-| `leave [players]` | leave the game |
-| `list` | who's playing; with no game running, the teams arranged for next time |
-| `team join <color> [players]` / `team leave` / `team cycle` / `team swap` / `team list` | **works with no game running** — colours are per game, saved to disk |
-| `points [reset]`, `give <gadget>`, `config <section> <get\|set>`, `reload` | as before |
+| `/play` | list the queues; click one to join |
+| `/play <game> [mode]` | join that queue (or spectate, if that game is being played) |
+| `/play vote` | vote to start without waiting |
+| `/play team <colour>` | pick a team for the queued game (team games only) |
+| `/play leave` | leave the queue, or stop spectating or playing |
+| `/lobby` | go to the lobby from anywhere |
 
-Colours are remembered per game, so you can be red in bingo and blue in warfare.
+Once a queue has its minimum (`queues.<game>.<mode>.minPlayers`) it counts down from
+60 s. The countdown only ever gets shorter: 15 s once every free player online is
+queued, 5 s once the queue votes (all but one of three or more, both of two, the only
+one of one). It is cancelled if the queue drops below its minimum. Leaving the server
+or being AFK for 5 minutes leaves the queue.
 
-`/pm` is the cross-game admin root: `status`, `games`, `stop`, `reload`,
-`config <section> ...` (all sections incl. `core` and `arena.asp`),
-`inventory <save|load|copy>` (named kit helpers), `give <gadget>`.
+A game type plays one session at a time, so joining the queue of a running game
+spectates it, and when a game starts, everyone left in its queues (other modes,
+players past its maximum) becomes a spectator. Spectators see the game's sidebar,
+boss bars and chat, cannot teleport out of it, and leave with `/play leave`.
+
+A game's chat (deaths, rounds, results) goes only to its players and spectators;
+the rest of the server just sees "Pillars started with 4 players" and the result.
+
+**The lobby** is the `lobby` world. Entering it — on a first login, by queueing, with
+`/lobby`, or any other way — saves the player's state and puts them in adventure
+mode with an empty inventory and the menu compass. The lobby takes no damage, no
+hunger and no item drops, and falling out of it lands you back at spawn. Leaving it
+on your own gives everything back where you arrive. Players who queued from outside
+the lobby are restored there after their game; players who queued in the lobby come
+back to it. Admins are never put into the lobby state, so they can build there.
+
+Saved states (`data/snapshots/<uuid>.yml`) survive restarts. If a game ends while a
+player is offline, they get their things back when they log in.
+
+## Admin commands
+
+Each game's root (`/pillars`, `/bingo`, `/war`, `/chase`) has the shared subtree.
+Starting, stopping and joining games, changing teams, `config set`, `reload` and
+`mode` need `potatominigames.admin`; the rest is open to everyone.
+
+| command | what it does |
+|---|---|
+| `start [players]` | start now in the configured mode, with the selector or everyone online who is not playing |
+| `stop` | stop this game |
+| `restart [players]` | end the current game and start another with the same players |
+| `join [players]` | put players into the running game, or a knocked-out player back in |
+| `leave [players]` | take players out of the game |
+| `list`, `points [reset]` | who's playing; standings |
+| `team join <color> [players]` / `leave` / `cycle` / `swap` / `list` | saved colours, used only by games an admin starts (queued games use `/play team`) |
+| `config <section> <get\|set>`, `reload` | settings |
+| `mode <mode>` | games with modes: what a plain `start` plays |
+
+Pillars adds `respawn [player]`, `time add|remove|set <time>`, `info`, `arenas` and
+`arena import <arena|all> [world] [radius]` (see below).
+
+`/pm` is the cross-game root: `status` (games and queues), `games`, `stop [game]`,
+`forcestart <game> [mode]` (start a queue's game now with whoever is in it, ignoring
+its minimum and timers; without a mode, the fullest queue), `reload`,
+`config <section> ...` (every section, including `core`, `lobby`, `queue`,
+`queues.<game>.<mode>` and `arena.asp`), `inventory <save|load|copy>`, `give <gadget>`.
+
+## Pillars arenas
+
+Every pillars game picks a random arena from `games/pillars.yml` and plays in a fresh
+in-memory copy of that arena's slime template (`slime_worlds/pillars_<arena>.slime`),
+which is thrown away afterwards. Templates keep the coordinates of the world they were
+cut from, so an arena's `x`/`z` stay valid.
+
+To create or rebuild templates, build the arena in a normal world and run
+`/pillars arena import <arena|all> [world] [radius]` (default world `pillars`, radius
+64): it copies the chunks within the radius of each arena's center into its template.
+An arena with nothing in it becomes an empty (void) template. `/pillars arenas` shows
+which arenas have a template.
 
 ## Gadgets
 
 The former hide-and-seek weapons, now game-agnostic: `infinite-crossbow`,
 `oreshnik`, `himars`, `locator`, `fpv-drone`, `radar`, `grapple-bow`.
-Each has an `allowOutsideGame` config (default true, except oreshnik) — with no
-game running the plugin is otherwise fully inert.
+Each has an `allowOutsideGame` config (default true, except oreshnik); gadgets never
+work in the lobby.
 
 ## Config layout (plugin data folder)
 
 ```
-config.yml                    core: end-of-game grace seconds, asp world-reset settings
+config.yml                    core, lobby, queue timers, per-queue limits, asp world reset
+games/pillars.yml             pillars modes, platform, item pool and groups, arenas
 games/bingo.yml               mode, difficulty (+ difficulty-levels table), timings
 games/bingo-board-entries.yml the crafting-cost node graph behind board generation
 games/warfare.yml             mode, arena/border, distances, lifts, teamBeacon, beacons, kit
 games/chase.yml               rounds, hunters, timings, build limits, hunterGadgets
 gadgets.yml                   one section per gadget
-data/                         points.yml, teams.yml (standing colours per game), inventories.yml
+data/                         points.yml, teams.yml, inventories.yml, snapshots/
 ```
 
 All flat values are editable at runtime via the generic `config set` commands
 and are written back to the files.
+
+## Building
+
+```
+nix-shell -p temurin-bin-25 --run 'sh ./gradlew build --no-daemon'            # 26.3
+nix-shell -p temurin-bin-25 --run 'sh ./gradlew build --no-daemon -Pmc=26.2'  # 26.2
+```
+
+The jar name says which API it was built against (`potato-minigames-<version>-mc26.3.jar`).
+The 26.2 build exists for the bot-tested dev server; the servers run 26.3.
+
+## License
+
+Apache-2.0 (see `LICENSE`). Pillars is derived from PillarPeril by MarcPG, also
+Apache-2.0; see `NOTICE`.
 
 ## Throwaway worlds (Bingo and Chase)
 

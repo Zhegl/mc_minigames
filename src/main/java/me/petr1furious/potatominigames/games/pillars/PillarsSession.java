@@ -139,7 +139,6 @@ final class PillarsSession implements GameSession {
         arena = usable.get(ThreadLocalRandom.current().nextInt(usable.size()));
         world = services.worlds().cloneSlime(arena.template(), "pillars_game_" + arena.name());
         applyArenaSettings();
-        game.setActiveSession(this);
 
         double platformHeight = config.platformHeight.get();
         center = new Location(world, arena.x(), platformHeight + 1.0, arena.z());
@@ -206,6 +205,8 @@ final class PillarsSession implements GameSession {
                 pillarPlayer.player().setInvulnerable(true);
             }
         }
+        // Only now that nothing can fail any more do the game's listeners start answering for it.
+        game.setActiveSession(this);
         services.plugin().getLogger().info("Pillars (" + mode.id + ") started in arena " + arena.name() + " with "
                 + alive.size() + " players and " + items.size() + " items in the pool");
         updateHud();
