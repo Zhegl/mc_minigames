@@ -50,6 +50,7 @@ public final class ActiveSession {
     private final SessionManager manager;
     private final Minigame game;
     private final String mode;
+    private final Map<String, String> options;
     private final PlayerStateService playerState;
     private final LobbyService lobby;
 
@@ -69,14 +70,15 @@ public final class ActiveSession {
     private long elapsedSeconds;
     /** Set when the game ends; sent once everyone is back. */
     private List<Component> summaryLines;
-    private Map<String, String> options = Map.of();
 
     ActiveSession(JavaPlugin plugin, SessionManager manager, Minigame game, String mode,
-            PlayerStateService playerState, LobbyService lobby, TeamService teams, SessionWorlds worlds) {
+            Map<String, String> options, PlayerStateService playerState, LobbyService lobby, TeamService teams,
+            SessionWorlds worlds) {
         this.plugin = plugin;
         this.manager = manager;
         this.game = game;
         this.mode = mode;
+        this.options = Map.copyOf(options);
         this.messages = new Messages(this::audience, Messages.tag(game.displayName()));
         this.playerState = playerState;
         this.lobby = lobby;
@@ -90,6 +92,11 @@ public final class ActiveSession {
 
     public String mode() {
         return mode;
+    }
+
+    /** See {@link SessionManager#start}. */
+    public Map<String, String> options() {
+        return options;
     }
 
     public Component displayName() {
@@ -164,14 +171,7 @@ public final class ActiveSession {
         return Audience.audience(members);
     }
 
-    /** A per-start setting, or null; fix2-queue carrier. */
-    public String option(String key) {
-        return options.get(key);
-    }
-
-    void start(List<Player> roster, Map<UUID, TeamColor> teamPicks, boolean queued, Map<String, String> options)
-            throws CommandFailure {
-        this.options = Map.copyOf(options);
+    void start(List<Player> roster, Map<UUID, TeamColor> teamPicks, boolean queued) throws CommandFailure {
         // RUNNING from the start so a failure below gets cleaned up.
         phase = GamePhase.RUNNING;
         elapsedSeconds = 0;

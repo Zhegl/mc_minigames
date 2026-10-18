@@ -93,6 +93,9 @@ final class BingoSession implements GameSession {
     private int arenaX;
     private int arenaZ;
 
+    /** Start option overriding the configured difficulty; the queue passes it too. */
+    static final String DIFFICULTY_OPTION = "difficulty";
+
     BingoSession(SessionServices services, BingoConfig config, ItemPoolService itemPool,
             BoardService boardService, BoardUiService boardUi, BingoKit kit, GameMode mode) {
         this.services = services;
@@ -114,7 +117,8 @@ final class BingoSession implements GameSession {
 
     @Override
     public void onStart() throws CommandFailure {
-        difficulty = config.difficultyOr(services.option("difficulty"));
+        String forced = services.option(DIFFICULTY_OPTION);
+        difficulty = forced != null ? config.requireDifficulty(forced) : config.gameDifficulty();
 
         // Colours were already resolved when the session started.
         teamStates.clear();

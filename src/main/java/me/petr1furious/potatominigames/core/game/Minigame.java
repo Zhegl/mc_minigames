@@ -70,7 +70,13 @@ public interface Minigame {
         return false;
     }
 
+    /** Start options, e.g. a forced arena, are in {@link SessionServices#option}. */
     GameSession createSession(SessionServices services, String mode);
+
+    /** The game-specific last argument of {@code /<game> start}; null for none. */
+    default StartOption startOption() {
+        return null;
+    }
 
     default void extendCommands(LiteralArgumentBuilder<CommandSourceStack> root) {
     }

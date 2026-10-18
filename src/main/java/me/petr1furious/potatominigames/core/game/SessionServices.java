@@ -28,8 +28,14 @@ public record SessionServices(
         SpawnFinder spawnFinder,
         Messages messages,
         PointsService points) {
-    /** A per-start setting such as "difficulty", or null; fix2-queue carrier. */
+
+    /** From the start command or queue, e.g. {@code arena} for pillars, {@code difficulty} for bingo. */
+    public java.util.Map<String, String> options() {
+        return session.options();
+    }
+
+    /** Null when not given. */
     public String option(String key) {
-        return session.option(key);
+        return session.options().get(key);
     }
 }

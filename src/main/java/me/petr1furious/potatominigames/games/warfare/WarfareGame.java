@@ -1,7 +1,6 @@
 package me.petr1furious.potatominigames.games.warfare;
 
 import java.util.List;
-import java.util.Locale;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -98,20 +97,6 @@ public final class WarfareGame implements Minigame {
 
     @Override
     public void extendCommands(LiteralArgumentBuilder<CommandSourceStack> root) {
-        root.then(Commands.literal("mode")
-                .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
-                .then(Commands.argument("mode", StringArgumentType.word())
-                        .suggests(Suggest.strings(List.of("classic", "team_beacon")))
-                        .executes(ctx -> run(ctx, c -> {
-                            String mode = c.getArgument("mode", String.class).toLowerCase(Locale.ROOT);
-                            if (!mode.equals("classic") && !mode.equals("team_beacon")) {
-                                throw new CommandFailure("Unknown mode: " + mode);
-                            }
-                            configs.set("war", "mode", mode);
-                            c.getSource().getSender().sendMessage(
-                                    Component.text("Warfare mode set to " + mode, NamedTextColor.GREEN));
-                        }))));
-
         root.then(Commands.literal("setcenter")
                 .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
                 .executes(ctx -> run(ctx, c -> {

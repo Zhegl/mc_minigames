@@ -54,12 +54,6 @@ public final class BingoConfig {
         return found != null ? found : difficulties().getFirst();
     }
 
-    /** The level named by key, else the configured one. */
-    public GameDifficulty difficultyOr(String key) {
-        GameDifficulty found = key == null ? null : difficultiesByKey.get(key.toLowerCase(Locale.ROOT));
-        return found != null ? found : gameDifficulty();
-    }
-
     public List<GameDifficulty> difficulties() {
         List<GameDifficulty> list = new ArrayList<>(difficultiesByKey.values());
         list.sort(Comparator.naturalOrder());

@@ -166,18 +166,17 @@ public final class SessionManager {
         byPlayer.remove(playerId, session);
     }
 
-    /**
-     * @param mode {@code ""} for single-mode games
-     * @param teamPicks queue colour picks; empty for admin starts
-     * @param queued saved colours apply only when false
-     */
     public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
             boolean queued) throws CommandFailure {
         return start(game, mode, roster, teamPicks, queued, Map.of());
     }
 
-    // fix2-queue options carrier; reconcile with fix2-cmd's at merge.
-    /** @param options per-start settings the session reads with {@code SessionServices.option}, e.g. "difficulty" */
+    /**
+     * @param mode {@code ""} for single-mode games
+     * @param teamPicks queue colour picks; empty for admin starts
+     * @param queued saved colours apply only when false
+     * @param options game-specific, e.g. {@code arena} for pillars, {@code difficulty} for bingo
+     */
     public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
             boolean queued, Map<String, String> options) throws CommandFailure {
         ActiveSession running = sessions.get(game.id());
@@ -206,11 +205,11 @@ public final class SessionManager {
             }
         }
 
-        ActiveSession session = new ActiveSession(plugin, this, game, mode, playerState, lobby,
+        ActiveSession session = new ActiveSession(plugin, this, game, mode, options, playerState, lobby,
                 new TeamService(teamRegistry), new SessionWorlds(throwawayWorlds, slimeWorlds));
         sessions.put(game.id(), session);
         try {
-            session.start(roster, teamPicks, queued, options);
+            session.start(roster, teamPicks, queued);
         } catch (CommandFailure failure) {
             sessions.remove(game.id(), session);
             throw failure;
