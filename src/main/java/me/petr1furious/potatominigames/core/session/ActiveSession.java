@@ -50,6 +50,7 @@ public final class ActiveSession {
     private final SessionManager manager;
     private final Minigame game;
     private final String mode;
+    private final Map<String, String> options;
     private final PlayerStateService playerState;
     private final LobbyService lobby;
 
@@ -71,11 +72,13 @@ public final class ActiveSession {
     private List<Component> summaryLines;
 
     ActiveSession(JavaPlugin plugin, SessionManager manager, Minigame game, String mode,
-            PlayerStateService playerState, LobbyService lobby, TeamService teams, SessionWorlds worlds) {
+            Map<String, String> options, PlayerStateService playerState, LobbyService lobby, TeamService teams,
+            SessionWorlds worlds) {
         this.plugin = plugin;
         this.manager = manager;
         this.game = game;
         this.mode = mode;
+        this.options = Map.copyOf(options);
         this.messages = new Messages(this::audience, Messages.tag(game.displayName()));
         this.playerState = playerState;
         this.lobby = lobby;
@@ -89,6 +92,11 @@ public final class ActiveSession {
 
     public String mode() {
         return mode;
+    }
+
+    /** See {@link SessionManager#start}. */
+    public Map<String, String> options() {
+        return options;
     }
 
     public Component displayName() {

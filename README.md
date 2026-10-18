@@ -57,20 +57,25 @@ player is offline, they get their things back when they log in.
 ## Admin commands
 
 Each game's root (`/pillars`, `/bingo`, `/war`, `/chase`) has the shared subtree.
-Starting, stopping and joining games, changing teams, `config set`, `reload` and
-`mode` need `potatominigames.admin`; the rest is open to everyone.
+Starting, stopping and joining games, changing teams, `config set` and `reload` need
+`potatominigames.admin`; the rest is open to everyone.
 
 | command | what it does |
 |---|---|
-| `start [players]` | start now in the configured mode, with the selector or everyone online who is not playing |
+| `start [mode] [players] [arena\|difficulty]` | start now, with the selector or everyone online who is not playing; see below |
 | `stop` | stop this game |
-| `restart [players]` | end the current game and start another with the same players |
+| `restart [mode] [players] [arena\|difficulty]` | end the current game and start another; by default with the same players, mode and arena/difficulty |
 | `join [players]` | put players into the running game, or a knocked-out player back in |
 | `leave [players]` | take players out of the game |
 | `list`, `points [reset]` | who's playing; standings |
 | `team join <color> [players]` / `leave` / `cycle` / `swap` / `list` | saved colours, used only by games an admin starts (queued games use `/play team`) |
 | `config <section> <get\|set>`, `reload` | settings |
-| `mode <mode>` | games with modes: what a plain `start` plays |
+
+`start` takes its arguments in order: the mode (games with several modes; without one,
+the configured `mode`), a player selector, then a game-specific value: `/pillars start
+chaos @a lodestone` forces an imported arena, `/bingo start butfast @a hard` a
+difficulty (otherwise the configured one). `/chase start [players]` has neither. The
+defaults are set with `config <game> set mode|difficulty <value>`.
 
 Pillars adds `respawn [player]`, `time add|remove|set <time>`, `info`, `arenas` and
 `arena import <arena|all> [world] [radius]` (see below).
@@ -83,9 +88,9 @@ its minimum and timers; without a mode, the fullest queue), `reload`,
 
 ## Pillars arenas
 
-Every pillars game picks a random arena from `games/pillars.yml` and plays in a fresh
-in-memory copy of that arena's slime template (`slime_worlds/pillars_<arena>.slime`),
-which is thrown away afterwards. Templates keep the coordinates of the world they were
+Every pillars game picks a random arena from `games/pillars.yml`, unless `/pillars start`
+names one, and plays in a fresh in-memory copy of that arena's slime template
+(`slime_worlds/pillars_<arena>.slime`), which is thrown away afterwards. Templates keep the coordinates of the world they were
 cut from, so an arena's `x`/`z` stay valid.
 
 To create or rebuild templates, build the arena in a normal world and run

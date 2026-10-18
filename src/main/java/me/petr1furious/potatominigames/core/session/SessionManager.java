@@ -166,13 +166,19 @@ public final class SessionManager {
         byPlayer.remove(playerId, session);
     }
 
+    public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
+            boolean queued) throws CommandFailure {
+        return start(game, mode, roster, teamPicks, queued, Map.of());
+    }
+
     /**
      * @param mode {@code ""} for single-mode games
      * @param teamPicks queue colour picks; empty for admin starts
      * @param queued saved colours apply only when false
+     * @param options game-specific, e.g. {@code arena} for pillars, {@code difficulty} for bingo
      */
     public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
-            boolean queued) throws CommandFailure {
+            boolean queued, Map<String, String> options) throws CommandFailure {
         ActiveSession running = sessions.get(game.id());
         if (running != null) {
             throw new CommandFailure(Component.text()
@@ -199,7 +205,7 @@ public final class SessionManager {
             }
         }
 
-        ActiveSession session = new ActiveSession(plugin, this, game, mode, playerState, lobby,
+        ActiveSession session = new ActiveSession(plugin, this, game, mode, options, playerState, lobby,
                 new TeamService(teamRegistry), new SessionWorlds(throwawayWorlds, slimeWorlds));
         sessions.put(game.id(), session);
         try {

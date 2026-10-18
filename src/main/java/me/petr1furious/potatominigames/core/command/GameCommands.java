@@ -1,12 +1,15 @@
 package me.petr1furious.potatominigames.core.command;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.bukkit.entity.Player;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -25,6 +28,7 @@ import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.Minigame;
+import me.petr1furious.potatominigames.core.game.StartOption;
 import me.petr1furious.potatominigames.core.player.Participant;
 import me.petr1furious.potatominigames.core.score.PointsService;
 import me.petr1furious.potatominigames.core.session.ActiveSession;
@@ -90,21 +94,8 @@ public final class GameCommands {
 
         root.executes(ctx -> run(ctx, c -> sendStatus(c, game)));
 
-        root.then(Commands.literal("start")
-                .requires(GameCommands::isAdmin)
-                .executes(ctx -> run(ctx, c -> start(game, null)))
-                .then(Commands.argument("players", ArgumentTypes.players())
-                        .executes(ctx -> run(ctx, c -> start(game,
-                                c.getArgument("players", PlayerSelectorArgumentResolver.class)
-                                        .resolve(c.getSource()))))));
-
-        root.then(Commands.literal("restart")
-                .requires(GameCommands::isAdmin)
-                .executes(ctx -> run(ctx, c -> restart(game, null)))
-                .then(Commands.argument("players", ArgumentTypes.players())
-                        .executes(ctx -> run(ctx, c -> restart(game,
-                                c.getArgument("players", PlayerSelectorArgumentResolver.class)
-                                        .resolve(c.getSource()))))));
+        root.then(buildStart("start", game, false));
+        root.then(buildStart("restart", game, true));
 
         root.then(Commands.literal("stop")
                 .requires(GameCommands::isAdmin)
@@ -180,8 +171,105 @@ public final class GameCommands {
                 .orElseThrow(() -> new CommandFailure("No " + game.id() + " game is active."));
     }
 
+    /** {@code start [mode] [players] [option]}; single-mode games have no mode. Modes are literals. */
+    private LiteralArgumentBuilder<CommandSourceStack> buildStart(String name, Minigame game, boolean restart) {
+        LiteralArgumentBuilder<CommandSourceStack> start = Commands.literal(name).requires(GameCommands::isAdmin);
+        addStartTail(start, game, null, restart);
+        if (game.modes().size() > 1) {
+            for (String mode : game.modes()) {
+                LiteralArgumentBuilder<CommandSourceStack> literal = Commands.literal(mode);
+                addStartTail(literal, game, mode, restart);
+                start.then(literal);
+            }
+        }
+        return start;
+    }
+
+    private void addStartTail(ArgumentBuilder<CommandSourceStack, ?> node, Minigame game, String mode,
+            boolean restart) {
+        node.executes(ctx -> run(ctx, c -> launch(c, game, mode, false, null, restart)));
+        var players = Commands.argument("players", ArgumentTypes.players())
+                .executes(ctx -> run(ctx, c -> launch(c, game, mode, true, null, restart)));
+        StartOption option = game.startOption();
+        if (option != null) {
+            players.then(Commands.argument(option.key(), StringArgumentType.word())
+                    .suggests(Suggest.dynamic(() -> option.values().get()))
+                    .executes(ctx -> run(ctx, c -> launch(c, game, mode, true,
+                            c.getArgument(option.key(), String.class), restart))));
+        }
+        node.then(players);
+    }
+
+    /** @param mode null for the default, or the running mode on restart */
+    private void launch(CommandContext<CommandSourceStack> ctx, Minigame game, String mode, boolean selected,
+            String optionValue, boolean restart) throws CommandFailure, CommandSyntaxException {
+        List<Player> roster = selected ? resolveRoster(ctx, game, mode == null) : null;
+        Map<String, String> options = new HashMap<>();
+        if (optionValue != null) {
+            StartOption option = game.startOption();
+            options.put(option.key(), requireOptionValue(option, optionValue));
+        }
+        var running = sessions.sessionOf(game);
+        if (restart && running.isPresent()) {
+            if (roster == null || roster.isEmpty()) {
+                roster = running.get().participants().onlinePlayers();
+            }
+            if (mode == null) {
+                mode = running.get().mode();
+            }
+            if (options.isEmpty()) {
+                options.putAll(running.get().options());
+            }
+            running.get().stopNow(EndReason.ABORTED);
+        }
+        start(game, mode != null ? mode : game.defaultMode(), roster, options);
+    }
+
+    /** A selector matching nobody fails; a bare word is usually a mistyped mode or a missing selector. */
+    private static List<Player> resolveRoster(CommandContext<CommandSourceStack> ctx, Minigame game,
+            boolean firstArgument) throws CommandFailure, CommandSyntaxException {
+        List<Player> players = ctx.getArgument("players", PlayerSelectorArgumentResolver.class)
+                .resolve(ctx.getSource());
+        if (!players.isEmpty()) {
+            return players;
+        }
+        String raw = ctx.getNodes().stream()
+                .filter(node -> node.getNode().getName().equals("players"))
+                .findFirst().map(node -> node.getRange().get(ctx.getInput())).orElse("@");
+        if (raw.startsWith("@")) {
+            throw new CommandFailure("No players match " + raw + ".");
+        }
+        StartOption option = game.startOption();
+        if (option != null && option.values().get().stream().anyMatch(raw::equalsIgnoreCase)) {
+            throw new CommandFailure("Give players before the " + option.key() + " " + raw + ": " + usage(game));
+        }
+        if (firstArgument && game.modes().size() > 1) {
+            throw new CommandFailure("Unknown mode or player: " + raw + " (modes: "
+                    + String.join(", ", game.modes()) + ")");
+        }
+        throw new CommandFailure("No player called " + raw + " is online.");
+    }
+
+    private static String requireOptionValue(StartOption option, String raw) throws CommandFailure {
+        List<String> values = option.values().get();
+        for (String value : values) {
+            if (value.equalsIgnoreCase(raw)) {
+                return value;
+            }
+        }
+        throw new CommandFailure("Unknown " + option.key() + ": " + raw + " ("
+                + (values.isEmpty() ? "none available" : "options: " + String.join(", ", values)) + ")");
+    }
+
+    private static String usage(Minigame game) {
+        StartOption option = game.startOption();
+        return "/" + game.id() + " start" + (game.modes().size() > 1 ? " [mode]" : "") + " [players]"
+                + (option != null ? " [" + option.key() + "]" : "");
+    }
+
     /** Defaults to everyone online not already in a game. */
-    private void start(Minigame game, List<Player> selected) throws CommandFailure {
+    private void start(Minigame game, String mode, List<Player> selected, Map<String, String> options)
+            throws CommandFailure {
         List<Player> roster = selected;
         if (roster == null || roster.isEmpty()) {
             roster = new ArrayList<>();
@@ -191,20 +279,7 @@ public final class GameCommands {
                 }
             }
         }
-        sessions.start(game, game.defaultMode(), roster, java.util.Map.of(), false);
-    }
-
-    /** Ends and restarts with the same players unless a selector is given; a plain start when idle. */
-    private void restart(Minigame game, List<Player> selected) throws CommandFailure {
-        List<Player> roster = selected;
-        var running = sessions.sessionOf(game);
-        if (running.isPresent()) {
-            if (roster == null || roster.isEmpty()) {
-                roster = running.get().participants().onlinePlayers();
-            }
-            running.get().stopNow(EndReason.ABORTED);
-        }
-        start(game, roster);
+        sessions.start(game, mode, roster, Map.of(), false, options);
     }
 
     private void sendStatus(CommandContext<CommandSourceStack> ctx, Minigame game) {
@@ -216,6 +291,14 @@ public final class GameCommands {
                     .append(Component.text(" — not running. Queue with ", NamedTextColor.GRAY))
                     .append(Component.text(sessions.playCommand(game, game.defaultMode()), NamedTextColor.GOLD))
                     .build());
+            if (isAdmin(ctx.getSource())) {
+                sender.sendMessage(Component.text()
+                        .append(Component.text("Start now: ", NamedTextColor.GRAY))
+                        .append(Component.text(usage(game), NamedTextColor.GOLD))
+                        .append(Component.text(game.modes().size() > 1
+                                ? " (modes: " + String.join(", ", game.modes()) + ")" : "", NamedTextColor.GRAY))
+                        .build());
+            }
             return;
         }
         ActiveSession session = running.get();

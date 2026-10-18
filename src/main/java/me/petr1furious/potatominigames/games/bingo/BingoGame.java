@@ -1,14 +1,12 @@
 package me.petr1furious.potatominigames.games.bingo;
 
 import java.util.List;
-import java.util.Locale;
 
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -19,11 +17,11 @@ import net.kyori.adventure.text.format.NamedTextColor;
 
 import me.petr1furious.potatominigames.core.command.CommandFailure;
 import me.petr1furious.potatominigames.core.command.GameCommands;
-import me.petr1furious.potatominigames.core.command.Suggest;
 import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.core.game.StartOption;
 import me.petr1furious.potatominigames.games.bingo.board.BoardService;
 import me.petr1furious.potatominigames.games.bingo.board.BoardUiService;
 import me.petr1furious.potatominigames.games.bingo.board.DependencyCostService;
@@ -34,7 +32,6 @@ import static me.petr1furious.potatominigames.core.command.GameCommands.run;
 import static me.petr1furious.potatominigames.core.command.GameCommands.requirePlayer;
 
 public final class BingoGame implements Minigame {
-    private final ConfigRegistry configs;
     private final BingoConfig config;
     private final ItemPoolService itemPool;
     private final DependencyCostService dependencyCosts;
@@ -45,7 +42,6 @@ public final class BingoGame implements Minigame {
     private BingoSession activeSession;
 
     public BingoGame(JavaPlugin plugin, ConfigRegistry configs) {
-        this.configs = configs;
         this.config = new BingoConfig(configs);
         this.itemPool = new ItemPoolService(plugin);
         this.dependencyCosts = new DependencyCostService();
@@ -113,35 +109,12 @@ public final class BingoGame implements Minigame {
     }
 
     @Override
+    public StartOption startOption() {
+        return new StartOption(BingoSession.DIFFICULTY_OPTION, config::difficultyKeys);
+    }
+
+    @Override
     public void extendCommands(LiteralArgumentBuilder<CommandSourceStack> root) {
-        root.then(Commands.literal("mode")
-                .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
-                .then(Commands.argument("mode", StringArgumentType.word())
-                        .suggests(Suggest.strings(List.of("default", "butfast", "collectall")))
-                        .executes(ctx -> run(ctx, c -> {
-                            String raw = c.getArgument("mode", String.class).toLowerCase(Locale.ROOT);
-                            try {
-                                GameMode.fromKey(raw);
-                            } catch (IllegalArgumentException exception) {
-                                throw new CommandFailure("Unknown mode: " + raw);
-                            }
-                            configs.set("bingo", "mode", raw);
-                            c.getSource().getSender().sendMessage(
-                                    Component.text("Bingo mode set to " + raw, NamedTextColor.GREEN));
-                        }))));
-
-        root.then(Commands.literal("difficulty")
-                .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
-                .then(Commands.argument("difficulty", StringArgumentType.word())
-                        .suggests(Suggest.dynamic(config::difficultyKeys))
-                        .executes(ctx -> run(ctx, c -> {
-                            String raw = c.getArgument("difficulty", String.class).toLowerCase(Locale.ROOT);
-                            config.requireDifficulty(raw);
-                            configs.set("bingo", "difficulty", raw);
-                            c.getSource().getSender().sendMessage(
-                                    Component.text("Bingo difficulty set to " + raw, NamedTextColor.GREEN));
-                        }))));
-
         root.then(Commands.literal("returncard")
                 .executes(ctx -> run(ctx, c -> {
                     Player player = requirePlayer(c);

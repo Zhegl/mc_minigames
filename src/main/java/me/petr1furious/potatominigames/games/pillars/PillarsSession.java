@@ -116,6 +116,9 @@ final class PillarsSession implements GameSession {
     private BukkitTask actionBarTask;
     private double actionBarPhase;
 
+    /** Start option forcing an arena by name; random otherwise. */
+    static final String ARENA_OPTION = "arena";
+
     PillarsSession(SessionServices services, PillarsGame game, PillarsConfig config, String modeId) {
         this.services = services;
         this.game = game;
@@ -125,14 +128,19 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onStart() throws CommandFailure {
-        List<PillarsArena> usable = config.arenas().stream()
-                .filter(candidate -> game.slimeWorlds().templateExists(candidate.template()))
-                .toList();
+        List<PillarsArena> usable = game.importedArenas();
         if (usable.isEmpty()) {
             throw new CommandFailure("No pillars arenas imported. Use "
                     + "/pillars arena import all.");
         }
-        arena = usable.get(ThreadLocalRandom.current().nextInt(usable.size()));
+        String forced = services.option(ARENA_OPTION);
+        if (forced != null) {
+            arena = usable.stream().filter(candidate -> candidate.name().equalsIgnoreCase(forced)).findFirst()
+                    .orElseThrow(() -> new CommandFailure("Unknown arena: " + forced + " (imported: "
+                            + String.join(", ", usable.stream().map(PillarsArena::name).toList()) + ")"));
+        } else {
+            arena = usable.get(ThreadLocalRandom.current().nextInt(usable.size()));
+        }
         world = services.worlds().cloneSlime(arena.template(), "pillars_game_" + arena.name());
         applyArenaSettings();
 

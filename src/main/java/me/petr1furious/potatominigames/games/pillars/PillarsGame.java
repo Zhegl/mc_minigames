@@ -46,6 +46,7 @@ import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.core.game.StartOption;
 import me.petr1furious.potatominigames.core.world.SlimeWorldService;
 
 import static me.petr1furious.potatominigames.core.command.GameCommands.requirePlayer;
@@ -64,10 +65,6 @@ public final class PillarsGame implements Minigame, Listener {
         this.config = new PillarsConfig(configs);
         this.slimeWorlds = slimeWorlds;
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
-    }
-
-    SlimeWorldService slimeWorlds() {
-        return slimeWorlds;
     }
 
     void setActiveSession(PillarsSession session) {
@@ -127,6 +124,18 @@ public final class PillarsGame implements Minigame, Listener {
     @Override
     public GameSession createSession(SessionServices services, String mode) {
         return new PillarsSession(services, this, config, mode);
+    }
+
+    @Override
+    public StartOption startOption() {
+        return new StartOption(PillarsSession.ARENA_OPTION, () -> importedArenas().stream()
+                .map(PillarsArena::name).toList());
+    }
+
+    List<PillarsArena> importedArenas() {
+        return config.arenas().stream()
+                .filter(arena -> slimeWorlds.templateExists(arena.template()))
+                .toList();
     }
 
     private boolean inGame(Player player) {
@@ -193,20 +202,6 @@ public final class PillarsGame implements Minigame, Listener {
 
     @Override
     public void extendCommands(LiteralArgumentBuilder<CommandSourceStack> root) {
-        root.then(Commands.literal("mode")
-                .requires(PillarsGame::isAdmin)
-                .then(Commands.argument("mode", StringArgumentType.word())
-                        .suggests(Suggest.strings(PillarsConfig.MODES))
-                        .executes(ctx -> run(ctx, c -> {
-                            String mode = c.getArgument("mode", String.class).toLowerCase(java.util.Locale.ROOT);
-                            if (!PillarsConfig.MODES.contains(mode)) {
-                                throw new CommandFailure("Unknown mode: " + mode);
-                            }
-                            config.setDefaultMode(mode);
-                            c.getSource().getSender().sendMessage(
-                                    Component.text("Pillars mode set to " + mode, NamedTextColor.GREEN));
-                        }))));
-
         root.then(Commands.literal("respawn")
                 .requires(PillarsGame::isAdmin)
                 .executes(ctx -> run(ctx, c -> respawn(c, requirePlayer(c))))
