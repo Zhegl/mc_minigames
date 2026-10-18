@@ -272,17 +272,12 @@ public final class QueueService implements Listener {
         queue.members.add(player.getUniqueId());
         byPlayer.put(player.getUniqueId(), queue);
 
-        var joined = Component.text()
+        QUEUE.send(player, Component.text()
                 .append(Component.text("You joined ", NamedTextColor.GREEN))
                 .append(queue.displayName())
                 .append(Component.text(" (" + queue.countText() + "). ", NamedTextColor.GREEN))
-                .append(button("Vote start", "/play vote", "Vote to start early"))
-                .append(Component.space());
-        if (!queue.teamColors().isEmpty()) {
-            joined.append(button("Pick team", "/play team", "Choose your team colour"))
-                    .append(Component.space());
-        }
-        QUEUE.send(player, joined.append(button("Leave", "/play leave", "Leave the queue")).build());
+                .append(memberButtons(queue))
+                .build());
         announce(queue, player, true);
     }
 
@@ -590,9 +585,7 @@ public final class QueueService implements Listener {
         Component members = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s. ", NamedTextColor.GREEN))
-                .append(button("Vote start", "/play vote", "Vote to start early"))
-                .append(Component.space())
-                .append(button("Leave", "/play leave", "Leave the queue"))
+                .append(memberButtons(queue))
                 .build();
         for (Player member : online(queue)) {
             QUEUE.send(member, members);
@@ -636,6 +629,18 @@ public final class QueueService implements Listener {
                 member.playSound(member.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 0.5f, 1.0f);
             }
         }
+    }
+
+    /** [Vote start] [Pick team] [Leave]; the team button only for games with colours to pick. */
+    private static Component memberButtons(Queue queue) {
+        var buttons = Component.text()
+                .append(button("Vote start", "/play vote", "Vote to start early"))
+                .append(Component.space());
+        if (!queue.teamColors().isEmpty()) {
+            buttons.append(button("Pick team", "/play team", "Choose your team colour"))
+                    .append(Component.space());
+        }
+        return buttons.append(button("Leave", "/play leave", "Leave the queue")).build();
     }
 
     private static Component button(String label, String command, String hover) {
