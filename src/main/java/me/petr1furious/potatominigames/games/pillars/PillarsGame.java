@@ -146,6 +146,7 @@ public final class PillarsGame implements Minigame, Listener {
     public void onRespawn(PlayerRespawnEvent event) {
         if (inGame(event.getPlayer())) {
             event.setRespawnLocation(activeSession.respawnPoint());
+            activeSession.onRespawn(event.getPlayer());
         }
     }
 

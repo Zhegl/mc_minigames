@@ -576,8 +576,11 @@ final class PillarsSession implements GameSession {
         if (player.isDead()) {
             player.spigot().respawn();
         }
-        player.setGameMode(GameMode.SPECTATOR);
-        player.teleport(center);
+        // Died players already respawned as spectators; leave them where they are.
+        if (player.getGameMode() != GameMode.SPECTATOR) {
+            player.setGameMode(GameMode.SPECTATOR);
+            player.teleport(center);
+        }
         services.messages().send(player, Component.text()
                 .append(Component.text("You are out! ", NamedTextColor.RED))
                 .append(Component.text("Spectating until the end. ", NamedTextColor.GRAY))
@@ -590,6 +593,14 @@ final class PillarsSession implements GameSession {
     /** Never the template's spawn. */
     Location respawnPoint() {
         return center;
+    }
+
+    /** In the respawn event, so the out never appear at the centre in survival. */
+    void onRespawn(Player player) {
+        PillarPlayer pillarPlayer = players.get(player.getUniqueId());
+        if (pillarPlayer != null && !ending && !alive.contains(pillarPlayer)) {
+            player.setGameMode(GameMode.SPECTATOR);
+        }
     }
 
     boolean isParticipant(Player player) {
