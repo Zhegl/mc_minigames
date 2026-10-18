@@ -163,7 +163,7 @@ final class PillarsSession implements GameSession {
             alive.add(pillarPlayer);
         }
 
-        radius = alive.size() * config.platformDistanceFactor.get() / (Math.PI * 2);
+        radius = ringRadius(alive.size());
         List<Location> spots = mode.layout.get().equalsIgnoreCase("random") ? randomLayout() : circularLayout();
         Location centered = center.toCenterLocation();
         for (int i = 0; i < alive.size(); i++) {
@@ -269,35 +269,54 @@ final class PillarsSession implements GameSession {
         return true;
     }
 
+    /** Neighbours pillarDistance apart. */
+    private double ringRadius(int count) {
+        return count < 2 ? 0 : config.pillarDistance.get() / (2 * Math.sin(Math.PI / count));
+    }
+
     private List<Location> circularLayout() {
         List<Location> spots = new ArrayList<>();
         for (int i = 0; i < alive.size(); i++) {
             double angle = Math.PI * 2 * i / alive.size();
-            spots.add(spot(center.getX() + radius * Math.cos(angle), center.getZ() + radius * Math.sin(angle)));
+            spots.add(spot(Math.round(radius * Math.cos(angle)), Math.round(radius * Math.sin(angle))));
         }
         return spots;
     }
 
+    /** Any two at least pillarDistance apart; the area grows until everyone fits. */
     private List<Location> randomLayout() {
-        radius *= 1.2;
-        List<Location> candidates = new ArrayList<>();
-        int extent = (int) radius;
-        for (int x = -extent; x < extent; x++) {
-            for (int z = -extent; z < extent; z++) {
-                if (Math.hypot(x, z) <= radius) {
-                    candidates.add(spot(center.getX() + x, center.getZ() + z));
+        double minDistance = config.pillarDistance.get();
+        double start = radius * 1.2;
+        for (double area = start; area <= start + 64; area++) {
+            List<int[]> candidates = new ArrayList<>();
+            int extent = (int) area;
+            for (int x = -extent; x <= extent; x++) {
+                for (int z = -extent; z <= extent; z++) {
+                    if (Math.hypot(x, z) <= area) {
+                        candidates.add(new int[] {x, z});
+                    }
+                }
+            }
+            for (int attempt = 0; attempt < 5; attempt++) {
+                java.util.Collections.shuffle(candidates, ThreadLocalRandom.current());
+                List<int[]> chosen = new ArrayList<>();
+                for (int[] candidate : candidates) {
+                    if (chosen.stream().allMatch(other ->
+                            Math.hypot(other[0] - candidate[0], other[1] - candidate[1]) >= minDistance)) {
+                        chosen.add(candidate);
+                        if (chosen.size() == alive.size()) {
+                            return chosen.stream().map(offset -> spot(offset[0], offset[1])).toList();
+                        }
+                    }
                 }
             }
         }
-        if (candidates.size() < alive.size()) {
-            return circularLayout();
-        }
-        java.util.Collections.shuffle(candidates);
-        return candidates.subList(0, alive.size());
+        return circularLayout();
     }
 
-    private Location spot(double x, double z) {
-        return new Location(world, x, config.platformHeight.get(), z);
+    /** Offsets in whole blocks from the centre block. */
+    private Location spot(long dx, long dz) {
+        return new Location(world, center.getBlockX() + dx, config.platformHeight.get(), center.getBlockZ() + dz);
     }
 
     private void placePillar(int x, int z) {
@@ -576,8 +595,11 @@ final class PillarsSession implements GameSession {
         if (player.isDead()) {
             player.spigot().respawn();
         }
-        player.setGameMode(GameMode.SPECTATOR);
-        player.teleport(center);
+        // Died players already respawned as spectators; leave them where they are.
+        if (player.getGameMode() != GameMode.SPECTATOR) {
+            player.setGameMode(GameMode.SPECTATOR);
+            player.teleport(center);
+        }
         services.messages().send(player, Component.text()
                 .append(Component.text("You are out! ", NamedTextColor.RED))
                 .append(Component.text("Spectating until the end. ", NamedTextColor.GRAY))
@@ -590,6 +612,14 @@ final class PillarsSession implements GameSession {
     /** Never the template's spawn. */
     Location respawnPoint() {
         return center;
+    }
+
+    /** In the respawn event, so the out never appear at the centre in survival. */
+    void onRespawn(Player player) {
+        PillarPlayer pillarPlayer = players.get(player.getUniqueId());
+        if (pillarPlayer != null && !ending && !alive.contains(pillarPlayer)) {
+            player.setGameMode(GameMode.SPECTATOR);
+        }
     }
 
     boolean isParticipant(Player player) {
