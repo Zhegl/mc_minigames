@@ -352,6 +352,9 @@ public final class QueueMenu implements Listener {
             if (level.equals(queue.leadingDifficulty())) {
                 lore.add(plain(Component.text("Leading", NamedTextColor.GOLD)));
             }
+            if (level.equals(queue.game().defaultDifficulty())) {
+                lore.add(plain(Component.text("Default, wins ties", NamedTextColor.DARK_GRAY)));
+            }
             if (voters.isEmpty()) {
                 lore.add(plain(Component.text("No votes yet", NamedTextColor.DARK_GRAY)));
             } else {
