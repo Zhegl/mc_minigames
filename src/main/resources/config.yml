@@ -1,4 +1,6 @@
 # Potato Minigames core settings.
+# Edit at runtime with `/pm config <path> [value]`, e.g. `/pm config queue.countdownSeconds 30`;
+# `/pm config` alone lists everything. Game settings live in games/<game>.yml (`/<game> config`).
 
 # Register the /dummy test game (development only).
 enableDummyGame: false

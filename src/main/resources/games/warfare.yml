@@ -1,3 +1,3 @@
-# Warfare (formerly hide-and-seek). Values managed by `/war config war set ...`.
+# Warfare (formerly hide-and-seek). Edit at runtime with `/war config <path> <value>`.
 # mode: classic | team_beacon
 # Kit inventory is saved with `/war kit save`; beacons with `/war beacon set <team>`.

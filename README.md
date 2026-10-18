@@ -57,8 +57,8 @@ player is offline, they get their things back when they log in.
 ## Admin commands
 
 Each game's root (`/pillars`, `/bingo`, `/war`, `/chase`) has the shared subtree.
-Starting, stopping and joining games, changing teams, `config set` and `reload` need
-`potatominigames.admin`; the rest is open to everyone.
+Starting, stopping and joining games, changing teams, setting `config` values and
+`reload` need `potatominigames.admin`; the rest is open to everyone.
 
 | command | what it does |
 |---|---|
@@ -69,13 +69,13 @@ Starting, stopping and joining games, changing teams, `config set` and `reload` 
 | `leave [players]` | take players out of the game |
 | `list`, `points [reset]` | who's playing; standings |
 | `team join <color> [players]` / `leave` / `cycle` / `swap` / `list` | saved colours, used only by games an admin starts (queued games use `/play team`) |
-| `config <section> <get\|set>`, `reload` | settings |
+| `config [path] [value]`, `reload` | settings in `games/<game>.yml`; see [Config commands](#config-commands) |
 
 `start` takes its arguments in order: the mode (games with several modes; without one,
 the configured `mode`), a player selector, then a game-specific value: `/pillars start
 chaos @a lodestone` forces an imported arena, `/bingo start butfast @a hard` a
 difficulty (otherwise the configured one). `/chase start [players]` has neither. The
-defaults are set with `config <game> set mode|difficulty <value>`.
+defaults are set with `config mode <value>` (and `/bingo config difficulty <value>`).
 
 Pillars adds `respawn [player]`, `time add|remove|set <time>`, `info`, `arenas` and
 `arena import <arena|all> [world] [radius]` (see below).
@@ -83,8 +83,8 @@ Pillars adds `respawn [player]`, `time add|remove|set <time>`, `info`, `arenas` 
 `/pm` is the cross-game root: `status` (games and queues), `games`, `stop [game]`,
 `forcestart <game> [mode]` (start a queue's game now with whoever is in it, ignoring
 its minimum and timers; without a mode, the fullest queue), `reload`,
-`config <section> ...` (every section, including `core`, `lobby`, `queue`,
-`queues.<game>.<mode>` and `arena.asp`), `inventory <save|load|copy>`, `give <gadget>`.
+`config [path] [value]` (`config.yml`, plus `gadgets.yml` under `gadgets.`),
+`inventory <save|load|copy>`, `give <gadget>`.
 
 ## Pillars arenas
 
@@ -119,8 +119,30 @@ gadgets.yml                   one section per gadget
 data/                         points.yml, teams.yml, inventories.yml, snapshots/
 ```
 
-All flat values are editable at runtime via the generic `config set` commands
-and are written back to the files.
+Values are edited at runtime with the `config` commands below and written back to the files.
+
+## Config commands
+
+`/<game> config` edits `games/<game>.yml`; `/pm config` edits `config.yml` and, under
+`gadgets.`, `gadgets.yml`. A path is dotted, mirroring the YAML, and tab-completes a
+segment at a time.
+
+```
+/pillars config                              # the whole file; click a value to edit it
+/pillars config modes.chaos                  # one section
+/pillars config modes.chaos.layout random    # set: prints `path: old → new`
+/pillars config modes.chaos.layout default   # reset a declared setting, removing it from the file
+/pillars config arenas.lodestone.time night
+/pillars config items.blacklist add bedrock  # flat lists: add / remove <entry>
+/pm config queues.pillars.chaos.maxPlayers 12
+/pm config gadgets.himars.cooldown 5
+```
+
+Settings the code declares apply at once; other keys (arenas, item weights, lists) are
+re-read by the next game. Structured sections are hidden and edited in the file:
+pillars `items.groups` and `items.custom`, bingo `difficulty-levels`, warfare `beacons`
+(`/war beacon`) and `gameInventory` (`/war kit`). Each game declares its hidden prefixes
+with `ConfigRegistry.hide` next to its config registration.
 
 ## Building
 
@@ -181,14 +203,14 @@ Server-side setup (once), matching how production is configured:
 Plugin-side:
 
 ```
-/pm config arena.asp set enable true
-/pm config arena.asp set templateWorld <template>
-/pm config arena.asp set gameWorld <arena>      # cloned world; created automatically
-/pm config arena.asp set resetOnStart true
+/pm config asp.enable true
+/pm config asp.templateWorld <template>
+/pm config asp.gameWorld <arena>      # cloned world; created automatically
+/pm config asp.resetOnStart true
 ```
 
-While enabled, `arena.asp.gameWorld` is the single source of truth — it overrides
-`war.gameWorld`, so the world being played and the world being reset cannot drift apart.
+While enabled, `asp.gameWorld` is the single source of truth — it overrides
+warfare's `gameWorld`, so the world being played and the world being reset cannot drift apart.
 Beacon coordinates for team-beacon mode should be set inside the arena world
 (`/war beacon set <team>` while standing in it).
 

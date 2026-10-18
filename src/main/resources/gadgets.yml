@@ -1,3 +1,3 @@
 # Per-gadget settings. Each gadget also has allowOutsideGame: whether the item
 # works while no game is running (default true for all except oreshnik).
-# Values here are written back automatically by `config gadgets.<id> set ...`.
+# Edit at runtime with `/pm config gadgets.<id>.<key> <value>`, e.g. `/pm config gadgets.himars.cooldown 5`.
