@@ -46,13 +46,18 @@ abstract class WarfareSessionBase implements GameSession {
         if (config.enforceGameRules.get()) {
             services.arena().applyStandardGameRules(world);
         }
-        if (config.arenaBorderEnabled.get()) {
+        if (config.arenaBorderEnabled.get() && borderAtStart()) {
             Location center = chooseArenaBorderCenter();
             double initialSize = Math.max(1.0, config.arenaBorderInitialSize.get());
             double finalSize = Math.max(1.0, Math.min(initialSize, config.arenaBorderFinalSize.get()));
             services.arena().applyBorder(world, center, initialSize, finalSize,
                     Math.max(0, config.arenaBorderTimeToFinalSeconds.get()));
         }
+    }
+
+    /** False when the session brings the border in itself, later in the game. */
+    protected boolean borderAtStart() {
+        return true;
     }
 
     private Location chooseArenaBorderCenter() {

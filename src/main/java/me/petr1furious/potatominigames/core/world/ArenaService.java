@@ -20,7 +20,7 @@ public final class ArenaService {
         border.setCenter(center);
         border.setSize(Math.max(1.0, initialSize));
         if (secondsToFinal > 0 && initialSize != finalSize) {
-            border.changeSize(Math.max(1.0, finalSize), secondsToFinal);
+            border.changeSize(Math.max(1.0, finalSize), secondsToFinal * 20L); // takes ticks
         }
     }
 

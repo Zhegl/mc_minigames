@@ -39,6 +39,9 @@ import me.petr1furious.potatominigames.core.world.Locations;
 import me.petr1furious.potatominigames.gadgets.FPVDroneGadget;
 
 final class TeamBeaconWarfareSession extends WarfareSessionBase {
+    // Blocks kept between the border and an intact beacon or, when it comes in, an alive player.
+    private static final double BORDER_MARGIN = 8.0;
+
     private static final class PendingRespawn {
         final TeamColor team;
         final long respawnAtMillis;
@@ -72,6 +75,8 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
     private final Map<UUID, PendingRespawn> pendingRespawns = new HashMap<>();
     private final Map<UUID, Long> spawnProtectionExpirations = new HashMap<>();
     private boolean ended = false;
+    private boolean borderActive = false;
+    private double borderShrinkPerSecond;
 
     TeamBeaconWarfareSession(SessionServices services, WarfareConfig config, FPVDroneGadget fpvDrone) {
         super(services, config, fpvDrone);
@@ -335,6 +340,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
                 .append(Component.text(" beacon destroyed", NamedTextColor.RED)));
         cancelPendingRespawnsForTeam(beacon.team);
         updateBossBar(beacon);
+        updateArenaBorder();
         updateHud();
         checkGameEnd();
     }
@@ -503,8 +509,97 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
         return remaining;
     }
 
+    /** At most one beacon left: distances show and the border comes in. */
+    private boolean isEndgame() {
+        return getRemainingBeaconCount() <= 1;
+    }
+
     private boolean shouldHidePerPlayerDistances() {
-        return config.hidePerPlayerDistances.get() && getRemainingBeaconCount() > 1;
+        return config.hidePerPlayerDistances.get() && !isEndgame();
+    }
+
+    @Override
+    protected boolean borderAtStart() {
+        return false;
+    }
+
+    /**
+     * Brings the border in at the endgame, centred on the intact beacons and wide enough for every alive
+     * player; it never shrinks past an intact beacon. Called again when a beacon breaks to shrink further.
+     */
+    private void updateArenaBorder() {
+        if (!config.arenaBorderEnabled.get() || !isEndgame()) {
+            return;
+        }
+        var world = gameWorld();
+        List<Location> intact = new ArrayList<>();
+        for (BeaconState beacon : beacons.values()) {
+            if (!beacon.destroyed && world.equals(beacon.location.getWorld())) {
+                intact.add(beacon.location.clone().add(0.5, 0, 0.5));
+            }
+        }
+        List<Location> players = new ArrayList<>();
+        for (Player player : alivePlayers()) {
+            players.add(player.getLocation());
+        }
+        long seconds = Math.max(0, config.arenaBorderTimeToFinalSeconds.get());
+
+        if (!borderActive) {
+            List<Location> anchors = !intact.isEmpty() ? intact
+                    : !players.isEmpty() ? players : List.of(config.gameCenter.get().toLocation(world));
+            Location center = boxCenter(anchors);
+            List<Location> inside = new ArrayList<>(intact);
+            inside.addAll(players);
+            double initialSize = Math.max(sizeContaining(center, inside), config.arenaBorderInitialSize.get());
+            double finalSize = Math.min(initialSize, borderFloor(center, intact));
+            borderShrinkPerSecond = seconds == 0 ? 0.0
+                    : Math.max(initialSize - finalSize,
+                            config.arenaBorderInitialSize.get() - config.arenaBorderFinalSize.get()) / seconds;
+            services.arena().applyBorder(world, center, initialSize, finalSize, shrinkSeconds(initialSize, finalSize));
+            borderActive = true;
+            services.messages().broadcast(Component.text("The arena border is closing in", NamedTextColor.RED));
+            return;
+        }
+
+        var border = world.getWorldBorder();
+        double size = border.getSize();
+        double finalSize = Math.min(size, borderFloor(border.getCenter(), intact));
+        long shrink = shrinkSeconds(size, finalSize);
+        if (shrink > 0) {
+            border.changeSize(finalSize, shrink * 20L);
+        }
+    }
+
+    private long shrinkSeconds(double from, double to) {
+        if (borderShrinkPerSecond <= 0.0 || from <= to) {
+            return 0;
+        }
+        return Math.max(1, Math.round((from - to) / borderShrinkPerSecond));
+    }
+
+    /** The configured final size, but never small enough to leave an intact beacon outside. */
+    private double borderFloor(Location center, List<Location> intact) {
+        return Math.max(Math.max(1.0, config.arenaBorderFinalSize.get()), sizeContaining(center, intact));
+    }
+
+    private static double sizeContaining(Location center, List<Location> points) {
+        double halfSize = 0.0;
+        for (Location point : points) {
+            halfSize = Math.max(halfSize, Math.max(Math.abs(point.getX() - center.getX()),
+                    Math.abs(point.getZ() - center.getZ())));
+        }
+        return points.isEmpty() ? 1.0 : 2.0 * (halfSize + BORDER_MARGIN);
+    }
+
+    private static Location boxCenter(List<Location> points) {
+        double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE, minZ = Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+        for (Location point : points) {
+            minX = Math.min(minX, point.getX());
+            maxX = Math.max(maxX, point.getX());
+            minZ = Math.min(minZ, point.getZ());
+            maxZ = Math.max(maxZ, point.getZ());
+        }
+        return new Location(points.getFirst().getWorld(), (minX + maxX) / 2.0, 0, (minZ + maxZ) / 2.0);
     }
 
     private boolean isTeamStillAlive(BeaconState beacon) {
