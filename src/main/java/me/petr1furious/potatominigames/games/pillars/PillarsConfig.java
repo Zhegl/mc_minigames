@@ -31,7 +31,8 @@ public final class PillarsConfig {
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
-    public final Property<String> mode = bag.define("mode", PropertyCodec.STRING, "original");
+    public final Property<String> mode = bag.define("mode", PropertyCodec.STRING, "original")
+            .oneOf(() -> MODES);
     public final Property<Integer> startCountdown = bag.define("startCountdown", PropertyCodec.INT, 3);
     public final Property<Integer> reconnectGraceSeconds = bag.define("reconnectGraceSeconds", PropertyCodec.INT, 60);
     public final Property<Double> platformHeight = bag.define("platformHeight", PropertyCodec.DOUBLE, 200.0);
@@ -62,12 +63,15 @@ public final class PillarsConfig {
                 boolean bossBar, String layout) {
             this.id = id;
             this.cooldownSeconds = bag.define("cooldownSeconds", PropertyCodec.INT, cooldown);
-            this.timeLimit = bag.define("timeLimit", PropertyCodec.STRING, timeLimit);
-            this.color = bag.define("color", PropertyCodec.STRING, color);
+            this.timeLimit = bag.define("timeLimit", PropertyCodec.STRING, timeLimit)
+                    .type("duration like 5min").validate(value -> parseDuration(value) != null);
+            this.color = bag.define("color", PropertyCodec.STRING, color)
+                    .type("#RRGGBB colour").validate(value -> TextColor.fromHexString(value.trim()) != null);
             this.scoreboard = bag.define("scoreboard", PropertyCodec.BOOL, true);
             this.actionBar = bag.define("actionBar", PropertyCodec.BOOL, actionBar);
             this.bossBar = bag.define("bossBar", PropertyCodec.BOOL, bossBar);
-            this.layout = bag.define("layout", PropertyCodec.STRING, layout);
+            this.layout = bag.define("layout", PropertyCodec.STRING, layout)
+                    .oneOf(() -> List.of("circular", "random"));
         }
 
         public long timeLimitSeconds() {
@@ -88,6 +92,15 @@ public final class PillarsConfig {
     public PillarsConfig(ConfigRegistry configs) {
         this.configs = configs;
         configs.register(bag, FILE, "");
+        // For /pillars config; groups and custom items are structured, not single values.
+        configs.hide(FILE, "items.groups", "items.custom");
+        configs.key(FILE, "arenas.*.x", PropertyCodec.INT);
+        configs.key(FILE, "arenas.*.z", PropertyCodec.INT);
+        configs.key(FILE, "arenas.*.template", PropertyCodec.STRING);
+        configs.key(FILE, "arenas.*.time", PropertyCodec.STRING).type("tick or day/noon/night/...")
+                .suggest(PillarsArena::timeNames).validate(value -> PillarsArena.parseTimeOfDay(value) != null);
+        configs.key(FILE, "items.weights.*", PropertyCodec.INT).type("weight, 0 removes the item")
+                .validate(value -> value >= 0);
         addMode("original", 5, "5min", "#FFFFFF", false, true, "circular");
         addMode("chaos", 3, "8min", "#FF5555", false, true, "random");
         addMode("item-shuffle", 10, "5min", "#A3FF54", true, false, "circular");

@@ -22,8 +22,10 @@ public final class BingoConfig {
     private final ConfigRegistry configs;
 
     private final PropertyBag bag = new PropertyBag("bingo");
-    public final Property<String> mode = bag.define("mode", PropertyCodec.STRING, "default");
-    public final Property<String> difficulty = bag.define("difficulty", PropertyCodec.STRING, "medium");
+    public final Property<String> mode = bag.define("mode", PropertyCodec.STRING, "default")
+            .oneOf(GameMode::keys);
+    public final Property<String> difficulty = bag.define("difficulty", PropertyCodec.STRING, "medium")
+            .oneOf(this::difficultyKeys);
     public final Property<Integer> punishmentSeconds = bag.define("punishmentSeconds", PropertyCodec.INT, 10);
     public final Property<Integer> afterGameSeconds = bag.define("afterGameSeconds", PropertyCodec.INT, 10);
     /** Seconds caged above the arena before the drop. */
@@ -35,6 +37,9 @@ public final class BingoConfig {
         this.configs = configs;
         configs.register(bag, FILE, "");
         loadDifficultyLevels();
+        // A list of maps; edited in the file.
+        configs.hide(FILE, "difficulty-levels");
+        configs.onReload(FILE, this::loadDifficultyLevels);
     }
 
     public void reloadDifficulties() {

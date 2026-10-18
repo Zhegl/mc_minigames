@@ -1,5 +1,7 @@
 package me.petr1furious.potatominigames.core.config;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 
 import org.bukkit.Material;
@@ -13,6 +15,16 @@ public interface PropertyCodec<T> {
     T parse(String raw);
 
     String render(T value);
+
+    /** Shown in command hints. */
+    default String typeName() {
+        return "text";
+    }
+
+    /** Values offered on tab. */
+    default List<String> choices() {
+        return List.of();
+    }
 
     default Object toYaml(T value) {
         return value;
@@ -40,6 +52,10 @@ public interface PropertyCodec<T> {
             return value.toString();
         }
 
+        public String typeName() {
+            return "int";
+        }
+
         public Integer fromYaml(ConfigurationSection section, String key, Integer fallback) {
             return section.isInt(key) ? section.getInt(key) : fallback;
         }
@@ -52,6 +68,10 @@ public interface PropertyCodec<T> {
 
         public String render(Double value) {
             return value.toString();
+        }
+
+        public String typeName() {
+            return "number";
         }
 
         public Double fromYaml(ConfigurationSection section, String key, Double fallback) {
@@ -73,6 +93,14 @@ public interface PropertyCodec<T> {
 
         public String render(Boolean value) {
             return value.toString();
+        }
+
+        public String typeName() {
+            return "boolean";
+        }
+
+        public List<String> choices() {
+            return List.of("true", "false");
         }
 
         public Boolean fromYaml(ConfigurationSection section, String key, Boolean fallback) {
@@ -108,6 +136,15 @@ public interface PropertyCodec<T> {
             return value.getKey().getKey();
         }
 
+        public String typeName() {
+            return "material";
+        }
+
+        public List<String> choices() {
+            return Arrays.stream(Material.values()).filter(material -> !material.name().startsWith("LEGACY_"))
+                    .map(material -> material.getKey().getKey()).toList();
+        }
+
         public Object toYaml(Material value) {
             return value.getKey().getKey();
         }
@@ -135,6 +172,10 @@ public interface PropertyCodec<T> {
 
         public String render(Vector value) {
             return value.getX() + " " + value.getY() + " " + value.getZ();
+        }
+
+        public String typeName() {
+            return "x y z";
         }
 
         public Vector fromYaml(ConfigurationSection section, String key, Vector fallback) {

@@ -23,8 +23,10 @@ public final class SlimeWorldService {
     private final JavaPlugin plugin;
     private final PropertyBag config = new PropertyBag("arena.asp");
     private final Property<Boolean> enable = config.define("enable", PropertyCodec.BOOL, false);
-    private final Property<String> templateWorld = config.define("templateWorld", PropertyCodec.STRING, "template");
-    private final Property<String> gameWorld = config.define("gameWorld", PropertyCodec.STRING, "game");
+    private final Property<String> templateWorld = config.define("templateWorld", PropertyCodec.STRING, "template")
+            .suggest(() -> Bukkit.getWorlds().stream().map(World::getName).toList());
+    private final Property<String> gameWorld = config.define("gameWorld", PropertyCodec.STRING, "game")
+            .suggest(() -> Bukkit.getWorlds().stream().map(World::getName).toList());
     private final Property<Boolean> resetOnStart = config.define("resetOnStart", PropertyCodec.BOOL, true);
 
     private AdvancedSlimePaperAPI asp;

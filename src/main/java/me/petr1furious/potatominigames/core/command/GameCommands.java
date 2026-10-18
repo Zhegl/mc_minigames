@@ -25,7 +25,7 @@ import net.kyori.adventure.text.JoinConfiguration;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 import me.petr1furious.potatominigames.core.config.ConfigRegistry;
-import me.petr1furious.potatominigames.core.config.PropertyBag;
+import me.petr1furious.potatominigames.core.config.ConfigEditor;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.game.StartOption;
@@ -152,7 +152,11 @@ public final class GameCommands {
             root.then(buildGiveSubtree());
         }
 
-        root.then(buildConfigSubtree(game));
+        // Edits only the game's own file.
+        String configFile = configs.fileOf(game.id());
+        if (configFile != null) {
+            root.then(new ConfigCommand(game.id(), new ConfigEditor(configs).mount("", configFile)).build());
+        }
 
         root.then(Commands.literal("reload")
                 .requires(GameCommands::isAdmin)
@@ -511,72 +515,6 @@ public final class GameCommands {
         }
     }
 
-    private List<String> bagIdsFor(Minigame game) {
-        List<String> ids = new ArrayList<>();
-        for (String id : configs.bagIds()) {
-            if (id.equals(game.id()) || id.startsWith(game.id() + ".")
-                    || (game.usesGadgets() && id.startsWith("gadgets"))) {
-                ids.add(id);
-            }
-        }
-        return ids;
-    }
-
-    private LiteralArgumentBuilder<CommandSourceStack> buildConfigSubtree(Minigame game) {
-        return Commands.literal("config")
-                .executes(ctx -> run(ctx, c -> {
-                    var sender = c.getSource().getSender();
-                    for (String bagId : bagIdsFor(game)) {
-                        PropertyBag bag = configs.bag(bagId);
-                        sender.sendMessage(Component.text()
-                                .append(Component.text(bagId + ": ", NamedTextColor.GOLD))
-                                .append(Component.text(String.join(", ", bag.names()), NamedTextColor.GRAY))
-                                .build());
-                    }
-                }))
-                .then(Commands.argument("section", StringArgumentType.word())
-                        .suggests(Suggest.dynamic(() -> new ArrayList<>(bagIdsFor(game))))
-                        .then(Commands.literal("get")
-                                .then(Commands.argument("property", StringArgumentType.word())
-                                        .suggests((context, builder) -> Suggest
-                                                .strings(propertyNames(context.getArgument("section", String.class)))
-                                                .getSuggestions(context, builder))
-                                        .executes(ctx -> run(ctx, c -> {
-                                            PropertyBag bag = requireBag(game,
-                                                    c.getArgument("section", String.class));
-                                            String property = c.getArgument("property", String.class);
-                                            String value = bag.render(property);
-                                            if (value == null) {
-                                                throw new CommandFailure("Unknown property: " + property);
-                                            }
-                                            c.getSource().getSender().sendMessage(Component.text(
-                                                    bag.id() + "." + property + " = " + value,
-                                                    NamedTextColor.GRAY));
-                                        }))))
-                        .then(Commands.literal("set")
-                                .requires(GameCommands::isAdmin)
-                                .then(Commands.argument("property", StringArgumentType.word())
-                                        .suggests((context, builder) -> Suggest
-                                                .strings(propertyNames(context.getArgument("section", String.class)))
-                                                .getSuggestions(context, builder))
-                                        .then(Commands.argument("value", StringArgumentType.greedyString())
-                                                .executes(ctx -> run(ctx, c -> {
-                                                    String section = c.getArgument("section", String.class);
-                                                    PropertyBag bag = requireBag(game, section);
-                                                    String property = c.getArgument("property", String.class);
-                                                    String value = c.getArgument("value", String.class);
-                                                    switch (configs.set(bag.id(), property, value)) {
-                                                        case SUCCESS -> c.getSource().getSender().sendMessage(
-                                                                messages.success(bag.id() + "." + property
-                                                                        + " = " + bag.render(property)));
-                                                        case UNKNOWN_PROPERTY -> throw new CommandFailure(
-                                                                "Unknown property: " + property);
-                                                        case PARSE_ERROR -> throw new CommandFailure(
-                                                                "Invalid value for " + property + ": " + value);
-                                                    }
-                                                }))))));
-    }
-
     /** Also mounted under /pm. */
     public LiteralArgumentBuilder<CommandSourceStack> buildGiveSubtree() {
         return Commands.literal("give")
@@ -609,17 +547,5 @@ public final class GameCommands {
         }
         ctx.getSource().getSender().sendMessage(
                 messages.success("Gave " + gadgetId + " x" + count + " to " + targets.size() + " player(s)."));
-    }
-
-    private List<String> propertyNames(String bagId) {
-        PropertyBag bag = bagId == null ? null : configs.bag(bagId);
-        return bag == null ? List.of() : bag.names();
-    }
-
-    private PropertyBag requireBag(Minigame game, String section) throws CommandFailure {
-        if (!bagIdsFor(game).contains(section)) {
-            throw new CommandFailure("Unknown config section: " + section);
-        }
-        return configs.bag(section);
     }
 }

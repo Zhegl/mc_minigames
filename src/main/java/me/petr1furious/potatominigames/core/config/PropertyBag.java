@@ -1,12 +1,13 @@
 package me.petr1furious.potatominigames.core.config;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.bukkit.configuration.ConfigurationSection;
 
-/** Typed config properties, settable with {@code config <section> set <property> <value>}. */
+/** Typed config properties, settable with {@code config <path> <value>}. */
 public final class PropertyBag {
     public enum SetResult {
         SUCCESS, UNKNOWN_PROPERTY, PARSE_ERROR
@@ -37,6 +38,14 @@ public final class PropertyBag {
         return properties.containsKey(name);
     }
 
+    public Property<?> property(String name) {
+        return properties.get(name);
+    }
+
+    Collection<Property<?>> properties() {
+        return properties.values();
+    }
+
     public SetResult set(String name, String raw) {
         Property<?> property = properties.get(name);
         if (property == null) {
@@ -58,12 +67,6 @@ public final class PropertyBag {
     public void load(ConfigurationSection section) {
         for (Property<?> property : properties.values()) {
             property.load(section);
-        }
-    }
-
-    public void save(ConfigurationSection section) {
-        for (Property<?> property : properties.values()) {
-            property.save(section);
         }
     }
 }

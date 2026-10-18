@@ -21,6 +21,7 @@ import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSele
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
+import me.petr1furious.potatominigames.core.config.ConfigEditor;
 import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.Minigame;
@@ -92,7 +93,8 @@ public final class PmCommand {
                             c.getSource().getSender().sendMessage(messages.success("Configuration reloaded."));
                         })))
                 .then(buildInventorySubtree())
-                .then(buildConfigSubtree())
+                .then(new ConfigCommand("pm", new ConfigEditor(configs)
+                        .mount("", "config.yml").mount("gadgets", "gadgets.yml")).build())
                 .then(gameCommands.buildGiveSubtree())
                 .build();
     }
@@ -215,75 +217,6 @@ public final class PmCommand {
                                             c.getSource().getSender()
                                                     .sendMessage(messages.success("Copied inventory."));
                                         })))));
-    }
-
-    /** Covers every section, including "core" and "arena.asp". */
-    private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildConfigSubtree() {
-        return Commands.literal("config")
-                .executes(ctx -> run(ctx, c -> {
-                    for (String bagId : configs.bagIds()) {
-                        c.getSource().getSender().sendMessage(Component.text()
-                                .append(Component.text(bagId + ": ", NamedTextColor.GOLD))
-                                .append(Component.text(String.join(", ", configs.bag(bagId).names()),
-                                        NamedTextColor.GRAY))
-                                .build());
-                    }
-                }))
-                .then(Commands.argument("section", StringArgumentType.word())
-                        .suggests(Suggest.dynamic(configs::bagIds))
-                        .then(Commands.literal("get")
-                                .then(Commands.argument("property", StringArgumentType.word())
-                                        .suggests((context, builder) -> Suggest.strings(propertyNames(
-                                                context.getArgument("section", String.class)))
-                                                .getSuggestions(context, builder))
-                                        .executes(ctx -> run(ctx, c -> {
-                                            var bag = requireBag(c.getArgument("section", String.class));
-                                            String property = c.getArgument("property", String.class);
-                                            String value = bag.render(property);
-                                            if (value == null) {
-                                                throw new CommandFailure("Unknown property: " + property);
-                                            }
-                                            c.getSource().getSender().sendMessage(Component.text(
-                                                    bag.id() + "." + property + " = " + value,
-                                                    NamedTextColor.GRAY));
-                                        }))))
-                        .then(Commands.literal("set")
-                                .requires(source -> source.getSender()
-                                        .hasPermission(GameCommands.ADMIN_PERMISSION))
-                                .then(Commands.argument("property", StringArgumentType.word())
-                                        .suggests((context, builder) -> Suggest.strings(propertyNames(
-                                                context.getArgument("section", String.class)))
-                                                .getSuggestions(context, builder))
-                                        .then(Commands.argument("value", StringArgumentType.greedyString())
-                                                .executes(ctx -> run(ctx, c -> {
-                                                    var bag = requireBag(
-                                                            c.getArgument("section", String.class));
-                                                    String property = c.getArgument("property", String.class);
-                                                    String value = c.getArgument("value", String.class);
-                                                    switch (configs.set(bag.id(), property, value)) {
-                                                        case SUCCESS -> c.getSource().getSender().sendMessage(
-                                                                messages.success(bag.id() + "." + property
-                                                                        + " = " + bag.render(property)));
-                                                        case UNKNOWN_PROPERTY -> throw new CommandFailure(
-                                                                "Unknown property: " + property);
-                                                        case PARSE_ERROR -> throw new CommandFailure(
-                                                                "Invalid value for " + property + ": " + value);
-                                                    }
-                                                }))))));
-    }
-
-    private List<String> propertyNames(String bagId) {
-        var bag = configs.bag(bagId);
-        return bag == null ? List.of() : bag.names();
-    }
-
-    private me.petr1furious.potatominigames.core.config.PropertyBag requireBag(String section)
-            throws CommandFailure {
-        var bag = configs.bag(section);
-        if (bag == null) {
-            throw new CommandFailure("Unknown config section: " + section);
-        }
-        return bag;
     }
 
     private List<String> kitNames() {

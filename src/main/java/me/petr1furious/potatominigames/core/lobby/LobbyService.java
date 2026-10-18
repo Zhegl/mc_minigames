@@ -62,7 +62,8 @@ public final class LobbyService implements Listener {
 
     private final PropertyBag config = new PropertyBag("lobby");
     private final Property<Boolean> enabled = config.define("enabled", PropertyCodec.BOOL, true);
-    private final Property<String> worldName = config.define("world", PropertyCodec.STRING, "lobby");
+    private final Property<String> worldName = config.define("world", PropertyCodec.STRING, "lobby")
+            .suggest(() -> Bukkit.getWorlds().stream().map(World::getName).toList());
     private final Property<Boolean> firstJoinToLobby = config.define("firstJoinToLobby", PropertyCodec.BOOL, true);
     private final Property<Integer> menuSlot = config.define("menuSlot", PropertyCodec.INT, 4);
 

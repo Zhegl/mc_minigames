@@ -26,9 +26,11 @@ public final class WarfareConfig {
 
     private final PropertyBag bag = new PropertyBag("war");
     public final Property<Vector> gameCenter = bag.define("gameCenter", PropertyCodec.VECTOR, new Vector(0, 0, 0));
-    public final Property<String> gameWorld = bag.define("gameWorld", PropertyCodec.STRING, "world");
+    public final Property<String> gameWorld = bag.define("gameWorld", PropertyCodec.STRING, "world")
+            .suggest(() -> Bukkit.getWorlds().stream().map(World::getName).toList());
     public final Property<Integer> gameRadius = bag.define("gameRadius", PropertyCodec.INT, 200);
-    public final Property<String> mode = bag.define("mode", PropertyCodec.STRING, "classic");
+    public final Property<String> mode = bag.define("mode", PropertyCodec.STRING, "classic")
+            .oneOf(() -> List.of("classic", "team_beacon"));
     public final Property<Boolean> arenaBorderEnabled = bag.define("arenaBorderEnabled", PropertyCodec.BOOL, false);
     public final Property<Double> arenaBorderInitialSize = bag.define("arenaBorderInitialSize", PropertyCodec.DOUBLE,
             400.0);
@@ -70,6 +72,8 @@ public final class WarfareConfig {
         this.configs = configs;
         configs.register(bag, FILE, "");
         configs.register(teamBeaconBag, FILE, "teamBeacon");
+        // Set with /war beacon and /war kit, not /war config.
+        configs.hide(FILE, "beacons", "gameInventory");
     }
 
     // An enabled slime-world arena overrides this (see WarfareSessionBase#gameWorld).

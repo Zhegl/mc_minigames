@@ -5,6 +5,7 @@
  */
 package me.petr1furious.potatominigames.games.pillars;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -20,6 +21,10 @@ public record PillarsArena(String name, String template, double x, double z, Lon
             "night", 13000L,
             "midnight", 18000L,
             "sunrise", 23000L);
+
+    public static List<String> timeNames() {
+        return NAMED_TIMES.entrySet().stream().sorted(Map.Entry.comparingByValue()).map(Map.Entry::getKey).toList();
+    }
 
     /** Default template: {@code slime_worlds/pillars_<name>.slime}. */
     public static String templateFor(String arenaName) {
