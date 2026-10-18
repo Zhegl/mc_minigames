@@ -55,7 +55,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         SpawnFinder spawnFinder = new SpawnFinder();
         PointsService points = new PointsService(this);
 
-        // A crash can leave scratch worlds behind; clear them before anything runs.
+        // Clear worlds left by a crash.
         throwawayWorlds.cleanupStale();
 
         sessions = new SessionManager(this, playerState, teamRegistry, slimeWorlds, throwawayWorlds, spawnFinder,
@@ -89,7 +89,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         gadgets.registerEvents(this);
         sessions.addCleanupHook(gadgets::endForPlayers);
 
-        // Registration order is the order /play and the lobby menu list the games in.
+        // Registration order is the menu order.
         sessions.registerGame(new PillarsGame(this, configs, slimeWorlds));
         sessions.registerGame(new BingoGame(this, configs));
         sessions.registerGame(new WarfareGame(configs, fpvDrone));
@@ -102,7 +102,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
 
         GameCommands gameCommands = new GameCommands(sessions, teams, points, configs, messages, gadgets);
         PmCommand pmCommand = new PmCommand(this, sessions, configs, messages, gameCommands, queues);
-        PlayCommand playCommand = new PlayCommand(sessions, queues, lobby);
+        PlayCommand playCommand = new PlayCommand(sessions, queues, lobby, menu);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
             event.registrar().register(pmCommand.build(), "Potato Minigames admin command.");
             event.registrar().register(playCommand.buildPlay(), "Join a game's queue.");
@@ -120,7 +120,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         pluginManager.registerEvents(menu, this);
         pluginManager.registerEvents(new DimensionLinkListener(this, throwawayWorlds), this);
 
-        // Snapshots can point into worlds other plugins load, so wait until everything is up.
+        // Snapshots can point into worlds other plugins load.
         getServer().getScheduler().runTask(this, playerState::loadSaved);
     }
 

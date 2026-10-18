@@ -37,16 +37,13 @@ import me.petr1furious.potatominigames.core.player.PlayerStateService;
 import me.petr1furious.potatominigames.core.team.TeamColor;
 import me.petr1furious.potatominigames.core.team.TeamService;
 import me.petr1furious.potatominigames.core.text.Messages;
+import me.petr1furious.potatominigames.core.text.Summary;
 import me.petr1furious.potatominigames.core.world.ArenaService;
 import me.petr1furious.potatominigames.core.world.SessionWorlds;
 
 /**
- * One running game: its participants, spectators, clock and everything it shows.
- * The lifecycle is RUNNING → ENDING → IDLE; once IDLE the session is discarded.
- *
- * <p>Several sessions run side by side (one per game type), so everything that
- * used to be server-wide lives here instead: the sidebar, boss bars, borders, team
- * view and an audience-scoped {@link Messages} that reaches only this game.
+ * One running game: RUNNING → ENDING → IDLE, then discarded. Sessions run side by side,
+ * so HUDs, borders and {@link Messages} are scoped to this game's audience.
  */
 public final class ActiveSession {
     private final JavaPlugin plugin;
@@ -61,7 +58,7 @@ public final class ActiveSession {
     private final SidebarService sidebar = new SidebarService(this::spectatorPlayers);
     private final BossBarService bossBars = new BossBarService(this::audiencePlayers);
     private final ArenaService arena = new ArenaService();
-    private final Messages messages = new Messages(this::audience);
+    private final Messages messages;
     private final TeamService teams;
     private final SessionWorlds worlds;
 
@@ -70,6 +67,8 @@ public final class ActiveSession {
     private BukkitTask ticker;
     private BukkitTask endingTask;
     private long elapsedSeconds;
+    /** Set when the game ends; sent once everyone is back. */
+    private List<Component> summaryLines;
 
     ActiveSession(JavaPlugin plugin, SessionManager manager, Minigame game, String mode,
             PlayerStateService playerState, LobbyService lobby, TeamService teams, SessionWorlds worlds) {
@@ -77,13 +76,12 @@ public final class ActiveSession {
         this.manager = manager;
         this.game = game;
         this.mode = mode;
+        this.messages = new Messages(this::audience, Messages.tag(game.displayName()));
         this.playerState = playerState;
         this.lobby = lobby;
         this.teams = teams;
         this.worlds = worlds;
     }
-
-    // --- identity and state ---
 
     public Minigame game() {
         return game;
@@ -93,7 +91,6 @@ public final class ActiveSession {
         return mode;
     }
 
-    /** "Bingo" or, for games with several modes, "Bingo (butfast)". */
     public Component displayName() {
         return SessionManager.displayName(game, mode);
     }
@@ -153,7 +150,7 @@ public final class ActiveSession {
         return result;
     }
 
-    /** Everyone who should hear this game: online participants and spectators. */
+    /** Online participants and spectators. */
     public List<Player> audiencePlayers() {
         List<Player> result = new ArrayList<>(participants.onlinePlayers());
         result.addAll(spectatorPlayers());
@@ -162,19 +159,12 @@ public final class ActiveSession {
 
     private Audience audience() {
         List<Audience> members = new ArrayList<>(audiencePlayers());
-        // The console keeps a record of every game, as it did when all chat was global.
         members.add(Bukkit.getConsoleSender());
         return Audience.audience(members);
     }
 
-    // --- lifecycle ---
-
-    /**
-     * Starts with the given roster. Queue picks decide teams for queued games;
-     * games an admin started directly use the saved colours instead.
-     */
     void start(List<Player> roster, Map<UUID, TeamColor> teamPicks, boolean queued) throws CommandFailure {
-        // Running from the first step, so that a failure anywhere below is cleaned up.
+        // RUNNING from the start so a failure below gets cleaned up.
         phase = GamePhase.RUNNING;
         elapsedSeconds = 0;
         try {
@@ -193,8 +183,7 @@ public final class ActiveSession {
             }
             session.onStart();
         } catch (CommandFailure | RuntimeException failure) {
-            // Tear the half-built session down completely. Queued players stay queued, so
-            // they wait in the lobby again; everyone else is put back.
+            // Queued players stay queued; everyone else is restored.
             cleanup(false, queued);
             if (failure instanceof CommandFailure commandFailure) {
                 throw commandFailure;
@@ -209,15 +198,12 @@ public final class ActiveSession {
         }, 20L, 20L);
         messages.broadcastGlobal(Component.text()
                 .append(displayName())
-                .append(Component.text(" started with " + Messages.count(participants.size(), "player") + "!", NamedTextColor.GREEN))
+                .append(Component.text(" started with " + Messages.count(participants.size(), "player"), NamedTextColor.GREEN))
                 .build());
         messages.playSound(participants.onlinePlayers(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
     }
 
-    /**
-     * Late-joins a player into a game already in progress, or puts a participant who
-     * was knocked out back into it. Admin-only: players spectate instead.
-     */
+    /** Late join, or puts a knocked-out participant back in. Admin-only. */
     public void join(Player player) throws CommandFailure {
         if (phase != GamePhase.RUNNING) {
             throw new CommandFailure("No game is running.");
@@ -232,8 +218,7 @@ public final class ActiveSession {
         if (isSpectator(player)) {
             stopSpectating(player, false);
         }
-        // A returning player already has their pre-game snapshot; taking another now
-        // would record them as a spectator and "restore" that at the end.
+        // A returning player already has a pre-game snapshot; a new one would capture spectator state.
         if (!returning) {
             Participant participant = participants.add(player);
             if (game.usesTeams()) {
@@ -275,9 +260,6 @@ public final class ActiveSession {
         }
     }
 
-    // --- spectators ---
-
-    /** Puts a player into this game as a spectator, wherever they are. */
     public void spectate(Player player) throws CommandFailure {
         if (phase == GamePhase.IDLE) {
             throw new CommandFailure("That game is not running.");
@@ -293,7 +275,7 @@ public final class ActiveSession {
         player.setGameMode(GameMode.SPECTATOR);
         player.teleport(spectatorLocation(player));
         bossBars.sync(player);
-        player.sendMessage(Component.text()
+        messages.send(player, Component.text()
                 .append(Component.text("You are spectating ", NamedTextColor.GRAY))
                 .append(displayName())
                 .append(Component.text(". ", NamedTextColor.GRAY))
@@ -301,10 +283,10 @@ public final class ActiveSession {
                 .build());
     }
 
-    /** Stops spectating without sending them anywhere, for a player who is moving on to something else. */
+    /** Stops spectating without teleporting. */
     public void dropSpectator(Player player) {
         stopSpectating(player, false);
-        // Admins skip the lobby state that would otherwise take them out of spectator mode.
+        // Admins skip the lobby state, which would reset spectator mode.
         if (player.getGameMode() == GameMode.SPECTATOR && LobbyService.isExempt(player)) {
             GameMode before = playerState.snapshotGameMode(player.getUniqueId());
             player.setGameMode(before != null && before != GameMode.SPECTATOR ? before : GameMode.SURVIVAL);
@@ -341,9 +323,6 @@ public final class ActiveSession {
         return Bukkit.getWorlds().getFirst().getSpawnLocation();
     }
 
-    // --- ending ---
-
-    /** Finishes the running game: announce (session.onEnd), then cleanup. */
     public void endGame(EndReason reason) {
         if (phase != GamePhase.RUNNING) {
             return;
@@ -351,13 +330,13 @@ public final class ActiveSession {
         phase = GamePhase.ENDING;
         cancelTicker();
         session.onEnd(reason);
+        summaryLines = session.summary();
         announceResult();
-        // Next tick rather than inline: endGame is reached from inside a death handler,
-        // and restoring a player there fights with the respawn screen about to open.
+        // Next tick: restoring inside a death handler conflicts with the respawn screen.
         endingTask = plugin.getServer().getScheduler().runTask(plugin, () -> cleanup(true, false));
     }
 
-    /** Immediate teardown from any phase (also used from onDisable). */
+    /** Immediate teardown from any phase. */
     public void stopNow(EndReason reason) {
         if (phase == GamePhase.IDLE) {
             return;
@@ -368,18 +347,54 @@ public final class ActiveSession {
             endingTask = null;
         }
         if (phase == GamePhase.RUNNING) {
-            // ENDING first: a game that ends itself from onEnd must not schedule a second cleanup.
+            // ENDING first so ending again from onEnd does not schedule a second cleanup.
             phase = GamePhase.ENDING;
             session.onEnd(reason);
+            summaryLines = session.summary();
         }
         cleanup(false, false);
     }
 
+    /** Everyone outside the game gets one line; the game's own audience gets the summary instead. */
     private void announceResult() {
         Component result = session.globalResult();
-        messages.broadcastGlobal(result != null ? result
+        Component line = result != null ? result
                 : Component.text().append(displayName())
-                        .append(Component.text(" has ended.", NamedTextColor.GRAY)).build());
+                        .append(Component.text(" has ended", NamedTextColor.GRAY)).build();
+        List<Player> audience = audiencePlayers();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!audience.contains(player)) {
+                player.sendMessage(line);
+            }
+        }
+        Bukkit.getConsoleSender().sendMessage(line);
+    }
+
+    private void sendSummary(List<Player> players, boolean offerReplay) {
+        if (summaryLines == null) {
+            return;
+        }
+        List<Component> body = summaryLines;
+        summaryLines = null;
+        String command = manager.playCommand(game, mode);
+        for (Player player : players) {
+            if (!player.isOnline()) {
+                continue;
+            }
+            List<Component> buttons = new ArrayList<>();
+            if (offerReplay) {
+                buttons.add(button("Play again", command, command));
+            }
+            if (lobby.world() != null && !lobby.isLobby(player.getWorld())) {
+                buttons.add(Component.text("[Lobby]", NamedTextColor.GRAY)
+                        .clickEvent(ClickEvent.runCommand("/lobby"))
+                        .hoverEvent(HoverEvent.showText(Component.text("/lobby", NamedTextColor.GRAY))));
+            }
+            Component footer = buttons.isEmpty() ? null
+                    : Component.join(net.kyori.adventure.text.JoinConfiguration.separator(Component.text("  ")),
+                            buttons);
+            player.sendMessage(Summary.frame(displayName(), body, footer));
+        }
     }
 
     private void cleanup(boolean offerReplay, boolean backToQueue) {
@@ -411,7 +426,7 @@ public final class ActiveSession {
         sidebar.clearAll();
         bossBars.hideAll();
         arena.restoreAllBorders();
-        // After players are back in their own world, the game's scratch worlds go away.
+        // Only after players have left them.
         worlds.destroyOwn();
         teams.detach();
         phase = GamePhase.IDLE;
@@ -419,24 +434,12 @@ public final class ActiveSession {
         participants.clear();
         spectators.clear();
 
-        if (offerReplay) {
-            String command = manager.playCommand(game, mode);
-            for (Player player : returning) {
-                if (player.isOnline()) {
-                    player.sendMessage(Component.text()
-                            .append(Component.text("Thanks for playing! ", NamedTextColor.GRAY))
-                            .append(button("Play again", command, "Queue for another round"))
-                            .build());
-                }
-            }
-        }
+        sendSummary(returning, offerReplay);
     }
-
-    // --- connection changes, called by the manager ---
 
     void handleQuit(Player player) {
         if (spectators.contains(player.getUniqueId())) {
-            // Their snapshot stays saved; they are sent back when they reconnect.
+            // Snapshot stays saved for the reconnect.
             spectators.remove(player.getUniqueId());
             manager.unindex(player.getUniqueId(), this);
             sidebar.clear(player);
@@ -469,7 +472,6 @@ public final class ActiveSession {
                 .hoverEvent(HoverEvent.showText(Component.text(hover, NamedTextColor.GRAY)));
     }
 
-    /** The spectators' ids, for status output. */
     public Collection<UUID> spectatorIds() {
         return List.copyOf(spectators);
     }

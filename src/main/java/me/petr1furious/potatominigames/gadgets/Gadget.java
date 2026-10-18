@@ -12,17 +12,14 @@ import me.petr1furious.potatominigames.core.config.PropertyBag;
 
 public interface Gadget {
 
-    /** Stable identifier, used for the give command and the config section (e.g. "radar"). */
+    /** Used for the give command and config section, e.g. "radar". */
     String id();
 
     PropertyBag config();
 
     ItemStack createItem(int count);
 
-    /**
-     * Whether the gadget works for this player right now: they are playing a game, or
-     * allowOutsideGame is set and they are not in the lobby (where gadgets never work).
-     */
+    /** In a game, or allowOutsideGame and not in the lobby. */
     boolean usableBy(Player player);
 
     default void onPlayerInteract(PlayerInteractEvent event) {
@@ -31,13 +28,13 @@ public interface Gadget {
     default void onBowShoot(EntityShootBowEvent event) {
     }
 
-    /** @return true if this gadget consumed the impact (the projectile is handled). */
+    /** @return true if this gadget handled the impact */
     default boolean handleProjectileImpact(Projectile projectile, Location location, Entity shooter,
             Entity target) {
         return false;
     }
 
-    /** Called when a game session is cleaned up; despawn its players' entities and per-player state. */
+    /** Despawn the session players' entities and state. */
     default void onGameEnd(java.util.Collection<java.util.UUID> players) {
     }
 }

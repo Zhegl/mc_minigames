@@ -33,12 +33,7 @@ import me.petr1furious.potatominigames.core.team.TeamColor;
 import me.petr1furious.potatominigames.core.team.TeamService;
 import me.petr1furious.potatominigames.core.text.Messages;
 
-/**
- * Builds each game's command root (/bingo, /war, /chase, /pillars): the shared
- * subtree — start/stop/join/leave/list/points/team/config/reload — plus the
- * game's own extensions via {@link Minigame#extendCommands}. Players queue with
- * /play; most of this is for admins.
- */
+/** Each game's admin command root: the shared subtree plus {@link Minigame#extendCommands}. */
 public final class GameCommands {
     public static final String ADMIN_PERMISSION = "potatominigames.admin";
 
@@ -65,7 +60,7 @@ public final class GameCommands {
         void run(CommandContext<CommandSourceStack> ctx) throws CommandFailure, CommandSyntaxException;
     }
 
-    /** Runs the action, rendering {@link CommandFailure} as a red message instead of a stack trace. */
+    /** Renders {@link CommandFailure} as a red message. */
     public static int run(CommandContext<CommandSourceStack> ctx, Action action) {
         try {
             action.run(ctx);
@@ -120,8 +115,7 @@ public final class GameCommands {
                             .append(Component.text(" stopped.", NamedTextColor.RED)).build());
                 })));
 
-        // Players spectate a running game through /play; pulling someone into one,
-        // or putting a knocked-out player back, is an admin's call.
+        // Admin-only; players spectate through /play.
         root.then(Commands.literal("join")
                 .requires(GameCommands::isAdmin)
                 .executes(ctx -> run(ctx, c -> requireOwnSession(game).join(requirePlayer(c))))
@@ -186,10 +180,7 @@ public final class GameCommands {
                 .orElseThrow(() -> new CommandFailure("No " + game.id() + " game is active."));
     }
 
-    /**
-     * An admin's start: right away, in the configured mode, with the given players or
-     * everyone online who is not already playing something else.
-     */
+    /** Defaults to everyone online not already in a game. */
     private void start(Minigame game, List<Player> selected) throws CommandFailure {
         List<Player> roster = selected;
         if (roster == null || roster.isEmpty()) {
@@ -203,11 +194,7 @@ public final class GameCommands {
         sessions.start(game, game.defaultMode(), roster, java.util.Map.of(), false);
     }
 
-    /**
-     * Ends the running game and starts a fresh one right away — with the same
-     * players unless a selector is given. Works as a plain start when idle, so it
-     * doubles as a "go again" button.
-     */
+    /** Ends and restarts with the same players unless a selector is given; a plain start when idle. */
     private void restart(Minigame game, List<Player> selected) throws CommandFailure {
         List<Player> roster = selected;
         var running = sessions.sessionOf(game);
@@ -242,8 +229,7 @@ public final class GameCommands {
 
     private void sendList(CommandContext<CommandSourceStack> ctx, Minigame game) throws CommandFailure {
         var running = sessions.sessionOf(game);
-        // With no game running there is still something useful to show: who is
-        // signed up to which colour for the next admin-started game.
+        // No game running: show saved colours.
         if (running.isEmpty()) {
             if (game.usesTeams()) {
                 sendStandingTeams(ctx, game);
@@ -355,10 +341,7 @@ public final class GameCommands {
                                         })))));
     }
 
-    /**
-     * Saved colours, for games an admin starts directly; queued games use the picks
-     * made with /play team instead. Works with no game running.
-     */
+    /** Saved colours for admin-started games; queued games use /play team picks. */
     private void teamJoin(Minigame game, Player player, String colorId,
             CommandContext<CommandSourceStack> ctx) throws CommandFailure {
         TeamColor color = TeamColor.fromId(colorId);
@@ -386,7 +369,6 @@ public final class GameCommands {
                 .build());
     }
 
-    /** Saved colours are written by now; a running game of this type also hears about it. */
     private void applyTeamChange(Minigame game, Player player, TeamColor color) {
         sessions.sessionOf(game).ifPresent(session -> {
             session.participants().find(player.getUniqueId()).ifPresent(participant -> participant.setTeam(color));
@@ -418,7 +400,6 @@ public final class GameCommands {
         sendStandingTeams(ctx, game);
     }
 
-    /** The colours arranged for next time, when no game of this type is running. */
     private void sendStandingTeams(CommandContext<CommandSourceStack> ctx, Minigame game) {
         var sender = ctx.getSource().getSender();
         var byTeam = teams.standingByTeam(game.id());
@@ -506,7 +487,7 @@ public final class GameCommands {
                                                 }))))));
     }
 
-    /** The gadget give subtree; also mounted under /pm for out-of-game handouts. */
+    /** Also mounted under /pm. */
     public LiteralArgumentBuilder<CommandSourceStack> buildGiveSubtree() {
         return Commands.literal("give")
                 .requires(GameCommands::isAdmin)

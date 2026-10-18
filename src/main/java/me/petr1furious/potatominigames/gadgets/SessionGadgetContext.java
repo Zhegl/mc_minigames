@@ -16,10 +16,7 @@ import me.petr1furious.potatominigames.core.session.ActiveSession;
 import me.petr1furious.potatominigames.core.session.GamePhase;
 import me.petr1furious.potatominigames.core.session.SessionManager;
 
-/**
- * Gadget context backed by the session the player is playing in; outside games
- * it falls back to "any other non-spectator player who is not in a game either".
- */
+/** Outside games, targets are other non-spectators who are not in a game either. */
 public final class SessionGadgetContext implements GadgetContext {
     private final Plugin plugin;
     private final SessionManager sessions;
@@ -39,7 +36,7 @@ public final class SessionGadgetContext implements GadgetContext {
         return plugin;
     }
 
-    /** The running game the player plays in (spectators have none). */
+    /** None for spectators. */
     private Optional<GameSession> playing(Player player) {
         return sessions.sessionOf(player)
                 .filter(session -> session.phase() == GamePhase.RUNNING && session.isParticipant(player))

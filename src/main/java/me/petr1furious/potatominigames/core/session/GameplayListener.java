@@ -34,11 +34,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 
 import me.petr1furious.potatominigames.core.game.GameSession;
 
-/**
- * The only Bukkit listener for game logic. An event reaches the sessions of the
- * players it involves and the session whose world it happens in — never a game
- * that has nothing to do with it — and nothing at all while no game is running.
- */
+/** Routes events to the sessions of the involved players and of the world. */
 public final class GameplayListener implements Listener {
     private final SessionManager sessions;
 
@@ -46,11 +42,7 @@ public final class GameplayListener implements Listener {
         this.sessions = sessions;
     }
 
-    /**
-     * Forwards to every distinct session that the given players belong to or that
-     * owns the world. Events keep flowing during ENDING so post-round UI (e.g.
-     * viewing the final bingo board during the grace period) keeps working.
-     */
+    /** Also forwards during ENDING so post-round UI (e.g. the bingo board) works. */
     private void dispatch(World world, Consumer<GameSession> handler, Entity... involved) {
         if (sessions.activeSessions().isEmpty()) {
             return;
@@ -130,10 +122,7 @@ public final class GameplayListener implements Listener {
         dispatch(event.getTo().getWorld(), session -> session.onPlayerMove(event), event.getPlayer());
     }
 
-    /**
-     * The spectator menu can teleport to anyone on the server; somebody watching a game
-     * (or out of it) stays within that game's worlds.
-     */
+    /** Keeps spectator-menu teleports within the game's worlds. */
     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOW)
     public void onSpectatorTeleport(PlayerTeleportEvent event) {
         if (event.getCause() != PlayerTeleportEvent.TeleportCause.SPECTATE) {
@@ -148,7 +137,7 @@ public final class GameplayListener implements Listener {
 
     @EventHandler
     public void onPlayerTeleport(PlayerTeleportEvent event) {
-        // The player's own session sees every teleport of theirs; the destination's owner sees arrivals.
+        // Own session sees all their teleports; the destination's owner sees arrivals.
         dispatch(event.getTo().getWorld(), session -> session.onPlayerTeleport(event), event.getPlayer());
     }
 

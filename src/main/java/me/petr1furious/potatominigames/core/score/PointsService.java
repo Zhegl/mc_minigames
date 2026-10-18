@@ -11,10 +11,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/**
- * Persistent cross-round standings per game ({@code data/points.yml}).
- * Not shown in any HUD — viewed with the per-game {@code points} command.
- */
+/** Persistent standings per game in {@code data/points.yml}. */
 public final class PointsService {
     public record Entry(UUID playerId, String name, int points) {
     }

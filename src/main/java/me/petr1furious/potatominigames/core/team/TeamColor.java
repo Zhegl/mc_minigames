@@ -62,7 +62,7 @@ public enum TeamColor {
         return Component.text(displayName, textColor);
     }
 
-    /** Lenient parse: accepts "light_blue", "light-blue", "Light Blue". Returns null if unknown. */
+    /** Accepts "light_blue", "light-blue", "Light Blue"; null if unknown. */
     public static TeamColor fromId(String value) {
         if (value == null) {
             return null;

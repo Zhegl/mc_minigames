@@ -6,10 +6,7 @@ import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
 
-/**
- * Subclass defaults are the values the gadgets were played with in production, not
- * round numbers -- port them verbatim and propose balance changes separately.
- */
+/** Subclass defaults are the production values; keep them verbatim. */
 public abstract class AbstractGadget implements Gadget {
     protected final GadgetContext context;
     private final String id;

@@ -38,10 +38,6 @@ import me.petr1furious.potatominigames.core.team.TeamColor;
 import me.petr1furious.potatominigames.core.world.Locations;
 import me.petr1furious.potatominigames.gadgets.FPVDroneGadget;
 
-/**
- * Team-beacon Warfare: each team defends a wool beacon with hit points; players
- * respawn at their beacon until it is destroyed; last team standing wins.
- */
 final class TeamBeaconWarfareSession extends WarfareSessionBase {
     private static final class PendingRespawn {
         final TeamColor team;
@@ -91,8 +87,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
         if (participatingTeams.size() < 2) {
             throw new CommandFailure("Team beacon mode needs players on at least two teams.");
         }
-        // The arena (and, with slime worlds, the freshly cloned game world) has to
-        // exist before beacon locations can resolve their world.
+        // Beacon locations need the arena world to exist first.
         setupArena();
 
         for (TeamColor team : participatingTeams) {
@@ -120,13 +115,13 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
 
     @Override
     public void onParticipantJoin(Player player) {
-        // Brought back while waiting out a respawn: spawn now, not twice.
+        // Already waiting out a respawn: spawn now, not twice.
         cancelPendingRespawn(player.getUniqueId());
         TeamColor team = teamOf(player);
         BeaconState beacon = team == null ? null : beacons.get(team);
         if (beacon == null || beacon.destroyed) {
             services.playerState().makeSpectator(player, 0);
-            player.sendMessage(Component.text("Your team's beacon is not available — spectating.",
+            player.sendMessage(Component.text("Your team's beacon is gone. Spectating.",
                     NamedTextColor.YELLOW));
         } else {
             services.sidebar().setNameColor(player, team);
@@ -138,7 +133,6 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
 
     @Override
     public void onTeamChange(Player player, TeamColor newTeam) {
-        // Team commands work at any time; only a live round needs re-spawning.
         if (!services.session().isRunning()) {
             return;
         }
@@ -338,7 +332,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
         beacon.location.getBlock().setType(Material.AIR, false);
         beacon.location.getWorld().playSound(beacon.location, Sound.BLOCK_BEACON_DEACTIVATE, 200.0f, 0.6f);
         services.messages().broadcast(Component.text(beacon.team.displayName(), beacon.team.textColor())
-                .append(Component.text(" beacon destroyed!", NamedTextColor.RED)));
+                .append(Component.text(" beacon destroyed", NamedTextColor.RED)));
         cancelPendingRespawnsForTeam(beacon.team);
         updateBossBar(beacon);
         updateHud();
@@ -581,9 +575,8 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
         if (activeTeams.size() == 1) {
             ended = true;
             TeamColor winner = activeTeams.getFirst();
-            services.messages().broadcast(Component.text("Game over! ", NamedTextColor.RED)
-                    .append(Component.text(winner.displayName(), winner.textColor()))
-                    .append(Component.text(" team wins!", NamedTextColor.RED)));
+            summary.add(Component.text().append(Component.text("Winner: ", NamedTextColor.GREEN))
+                    .append(Component.text(winner.displayName() + " team", winner.textColor())).build());
             for (Player player : services.participants().onlinePlayers()) {
                 if (teamOf(player) == winner) {
                     services.points().add("war", player.getUniqueId(), 1);
@@ -592,7 +585,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
             services.session().endGame(EndReason.FINISHED);
         } else if (activeTeams.isEmpty()) {
             ended = true;
-            services.messages().broadcast(Component.text("Game over! No teams left!", NamedTextColor.RED));
+            summary.add(Component.text("No teams left", NamedTextColor.YELLOW));
             services.session().endGame(EndReason.FINISHED);
         }
     }
@@ -618,7 +611,6 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
     @Override
     public void onSecondTick(long secondsElapsed) {
         super.onSecondTick(secondsElapsed);
-        // The team summary (with live respawn countdowns) refreshes every second.
         if (shouldHidePerPlayerDistances()) {
             updateHud();
         }

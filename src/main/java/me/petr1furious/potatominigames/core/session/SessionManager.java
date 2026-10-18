@@ -34,14 +34,7 @@ import me.petr1furious.potatominigames.core.world.SlimeWorldService;
 import me.petr1furious.potatominigames.core.world.SpawnFinder;
 import me.petr1furious.potatominigames.core.world.ThrowawayWorldService;
 
-/**
- * Every running game, at most one per game type, so different games can be
- * played side by side (bingo and warfare at once, but not two warfares).
- *
- * <p>Games still start immediately when an admin runs {@code start}; the queue in
- * {@code core.queue} is the other way in and ends up here too. The plugin stays
- * inert for anyone who is not in a session.
- */
+/** Running games, at most one per game type. Inert for players not in a session. */
 public final class SessionManager {
     private final JavaPlugin plugin;
     private final PlayerStateService playerState;
@@ -59,7 +52,7 @@ public final class SessionManager {
     private final List<Consumer<Player>> joinListeners = new ArrayList<>();
 
     private final Map<String, ActiveSession> sessions = new LinkedHashMap<>();
-    /** Participants and spectators, each in exactly one session. */
+    /** Each player is in at most one session. */
     private final Map<UUID, ActiveSession> byPlayer = new HashMap<>();
 
     private final PropertyBag coreConfig = new PropertyBag("core");
@@ -77,7 +70,7 @@ public final class SessionManager {
         this.points = points;
     }
 
-    /** Wired after construction: the lobby needs the manager to tell game worlds apart. */
+    /** Set after construction; the lobby depends on the manager. */
     public void setLobby(LobbyService lobby) {
         this.lobby = lobby;
     }
@@ -102,7 +95,6 @@ public final class SessionManager {
         return games.get(id);
     }
 
-    /** Runs on every session cleanup with that session's players (e.g. despawning gadget entities). */
     public void addCleanupHook(Consumer<Collection<UUID>> hook) {
         cleanupHooks.add(hook);
     }
@@ -115,7 +107,6 @@ public final class SessionManager {
         endListeners.add(listener);
     }
 
-    /** Runs whenever a player becomes part of a session, playing or spectating. */
     public void addJoinListener(Consumer<Player> listener) {
         joinListeners.add(listener);
     }
@@ -128,13 +119,10 @@ public final class SessionManager {
         return points;
     }
 
-    // --- lookups ---
-
     public Optional<ActiveSession> sessionOf(Minigame game) {
         return Optional.ofNullable(sessions.get(game.id()));
     }
 
-    /** The session a player plays or spectates in, if any. */
     public Optional<ActiveSession> sessionOf(Player player) {
         return Optional.ofNullable(byPlayer.get(player.getUniqueId()));
     }
@@ -156,7 +144,7 @@ public final class SessionManager {
         return List.copyOf(sessions.values());
     }
 
-    /** Whether the player is playing (not merely spectating) in a running game. */
+    /** Playing, not spectating. */
     public boolean isPlaying(Player player) {
         ActiveSession session = byPlayer.get(player.getUniqueId());
         return session != null && session.isParticipant(player) && session.phase() != GamePhase.IDLE;
@@ -178,14 +166,10 @@ public final class SessionManager {
         byPlayer.remove(playerId, session);
     }
 
-    // --- lifecycle ---
-
     /**
-     * Starts a game immediately with the given players.
-     *
-     * @param mode one of the game's modes ({@code ""} for single-mode games)
-     * @param teamPicks colours chosen in the queue; empty for admin starts
-     * @param queued whether the roster came from the queue, which decides whether saved colours apply
+     * @param mode {@code ""} for single-mode games
+     * @param teamPicks queue colour picks; empty for admin starts
+     * @param queued saved colours apply only when false
      */
     public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
             boolean queued) throws CommandFailure {
@@ -207,7 +191,7 @@ public final class SessionManager {
                         + other.game().id() + ".");
             }
         }
-        // Spectating something else is no reason to miss a game: they just stop watching.
+        // Spectators of another game stop watching.
         for (Player player : roster) {
             ActiveSession other = byPlayer.get(player.getUniqueId());
             if (other != null) {
@@ -230,7 +214,6 @@ public final class SessionManager {
         return session;
     }
 
-    /** Called by a session once it is fully torn down. */
     void onSessionEnded(ActiveSession session, Collection<UUID> involved) {
         sessions.remove(session.game().id(), session);
         for (UUID id : involved) {
@@ -253,8 +236,6 @@ public final class SessionManager {
         }
     }
 
-    // --- connection changes, from the core listener ---
-
     public void handleQuit(Player player) {
         ActiveSession session = byPlayer.get(player.getUniqueId());
         if (session != null) {
@@ -262,7 +243,7 @@ public final class SessionManager {
         }
     }
 
-    /** @return whether the player is back in a running game (so nothing else should move them). */
+    /** @return whether the player is back in a running game, so nothing else should move them */
     public boolean handleJoin(Player player) {
         ActiveSession session = byPlayer.get(player.getUniqueId());
         if (session != null && session.isParticipant(player) && session.phase() != GamePhase.IDLE) {
@@ -271,8 +252,6 @@ public final class SessionManager {
         }
         return false;
     }
-
-    // --- naming shared by sessions, queues and commands ---
 
     /** "Bingo", or "Bingo (butfast)" for a game with several modes. */
     public static Component displayName(Minigame game, String mode) {
@@ -283,7 +262,6 @@ public final class SessionManager {
                 .append(Component.text(" (" + mode + ")", NamedTextColor.GRAY)).build();
     }
 
-    /** The command that queues for this game and mode. */
     public String playCommand(Minigame game, String mode) {
         return game.modes().size() <= 1 || mode == null || mode.isEmpty()
                 ? "/play " + game.id()

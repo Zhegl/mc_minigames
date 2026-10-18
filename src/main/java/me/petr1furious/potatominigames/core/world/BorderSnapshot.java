@@ -4,7 +4,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
 
-/** Captures a world border so it can be restored after a game. */
 public record BorderSnapshot(
         String worldName,
         double centerX,
@@ -28,7 +27,7 @@ public record BorderSnapshot(
                 border.getWarningTimeTicks());
     }
 
-    /** Restores the border; no-op if the world is no longer loaded. */
+    /** No-op if the world is unloaded. */
     public void restore() {
         World world = Bukkit.getWorld(worldName);
         if (world == null) {

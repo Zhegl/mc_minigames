@@ -18,10 +18,7 @@ import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
 import me.petr1furious.potatominigames.core.team.TeamColor;
 
-/**
- * Warfare settings: the main "war" bag, the "war.teambeacon" bag, plus the
- * non-bag extras stored in the same file (game kit inventory, beacon locations).
- */
+/** The "war" and "war.teambeacon" bags, plus the kit and beacon locations stored in the same file. */
 public final class WarfareConfig {
     public static final String FILE = "games/warfare.yml";
 
@@ -75,10 +72,9 @@ public final class WarfareConfig {
         configs.register(teamBeaconBag, FILE, "teamBeacon");
     }
 
-    // The world is resolved through SlimeWorldService (see WarfareSessionBase#gameWorld),
-    // so an enabled slime-world arena always wins over this setting.
+    // An enabled slime-world arena overrides this (see WarfareSessionBase#gameWorld).
 
-    // --- game kit inventory (stored as an ItemStack list in the same file) ---
+    // Game kit, stored as an ItemStack list.
 
     public ItemStack[] gameInventory() {
         List<?> stored = configs.file(FILE).getList("gameInventory");
@@ -93,8 +89,6 @@ public final class WarfareConfig {
         configs.file(FILE).set("gameInventory", Arrays.asList(contents));
         configs.saveFile(FILE);
     }
-
-    // --- team beacon locations ---
 
     public Location getBeacon(TeamColor team) {
         ConfigurationSection section = configs.file(FILE).getConfigurationSection("beacons." + team.id());

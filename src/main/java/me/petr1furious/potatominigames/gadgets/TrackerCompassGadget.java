@@ -11,21 +11,12 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 
 /**
- * A compass whose needle follows the nearest player the holder is allowed to
- * track, naming them in the action bar.
- *
- * <p>Deliberately says nothing about distance: knowing only the direction and who
- * you are chasing is the interesting part, and a live distance readout makes
- * hiding pointless. The needle is kept pointing for anyone carrying the compass,
- * so it is already aimed the moment it is drawn: until the first update the client
- * still points it at a spawn in another world, and it spins. The action bar is
- * written only while the compass is actually in hand, so it never fights with
- * other gadgets for that line.
+ * Points at the nearest trackable player. No distance shown, by design. The needle is
+ * updated whenever carried (else it spins when drawn); the action bar only while held.
  */
 public class TrackerCompassGadget extends AbstractGadget {
     public static final String ID = "tracker-compass";
     private static final String TAG = "tracker_compass";
-    /** Fast enough that the needle stays useful while running, cheap enough to ignore. */
     private static final long UPDATE_PERIOD_TICKS = 5L;
 
     public TrackerCompassGadget(GadgetContext context) {
@@ -63,7 +54,7 @@ public class TrackerCompassGadget extends AbstractGadget {
         return isTracker(inventory.getItemInMainHand()) || isTracker(inventory.getItemInOffHand());
     }
 
-    /** Anywhere in the inventory, offhand included: the needle shows in the hotbar too. */
+    /** Anywhere in the inventory, offhand included. */
     private boolean isCarrying(Player player) {
         for (ItemStack item : player.getInventory().getContents()) {
             if (isTracker(item)) {
@@ -73,12 +64,12 @@ public class TrackerCompassGadget extends AbstractGadget {
         return false;
     }
 
-    /** The type check first spares a meta copy for every other slot, several times a second. */
+    /** Type check first avoids a meta copy per slot. */
     private static boolean isTracker(ItemStack item) {
         return item != null && item.getType() == Material.COMPASS && GadgetItems.checkForItem(item, TAG);
     }
 
-    /** Nearest trackable player in the same world; other worlds cannot be pointed at. */
+    /** Same world only. */
     private Player nearestTarget(Player user) {
         Player nearest = null;
         double best = Double.MAX_VALUE;

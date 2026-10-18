@@ -11,10 +11,7 @@ import org.bukkit.World;
 public final class SpawnFinder {
     private final Random random = new Random();
 
-    /**
-     * A standable spot within {@code radius} of the center (uniform over the disc),
-     * or the center column as fallback, or null if nothing is standable.
-     */
+    /** Uniform over the disc; falls back to the center column, then null. */
     public Location findSpawnAround(Location center, int radius) {
         World world = center.getWorld();
         if (world == null) {
@@ -37,10 +34,7 @@ public final class SpawnFinder {
         return fallback == null ? null : fallback.add(0.5, 0, 0.5);
     }
 
-    /**
-     * Up to {@code count} standable spawns within the radius, keeping at least
-     * {@code minSeparation} blocks between them where possible.
-     */
+    /** Keeps {@code minSeparation} between spawns where possible. */
     public List<Location> spreadAround(Location center, int radius, int count, double minSeparation) {
         List<Location> result = new ArrayList<>();
         int attempts = Math.max(64, count * 24);
@@ -70,10 +64,7 @@ public final class SpawnFinder {
         return result;
     }
 
-    /**
-     * A random surface location within ±range of the world origin whose column
-     * passes the filter (e.g. a biome check). Null after {@code attempts} misses.
-     */
+    /** Random surface location within ±range of the origin; null after {@code attempts} misses. */
     public Location randomSurfaceLocation(World world, int range, Predicate<Location> filter, int attempts) {
         for (int i = 0; i < attempts; i++) {
             int x = random.nextInt(range * 2 + 1) - range;

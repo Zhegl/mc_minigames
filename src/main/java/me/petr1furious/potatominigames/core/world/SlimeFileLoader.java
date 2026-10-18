@@ -10,14 +10,7 @@ import java.util.List;
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
 import com.infernalsuite.asp.api.loaders.SlimeLoader;
 
-/**
- * Reads and writes {@code <name>.slime} files in one folder — the same layout the
- * ASP plugin's own file source uses, so both can share {@code slime_worlds/}.
- *
- * <p>Having our own loader means arena templates can be read straight from disk
- * whenever a game needs one, instead of every template being kept loaded as a
- * world all the time.
- */
+/** {@code <name>.slime} files in ASP's layout, so templates are read on demand instead of kept loaded. */
 public final class SlimeFileLoader implements SlimeLoader {
     private static final String EXTENSION = ".slime";
 
@@ -60,8 +53,7 @@ public final class SlimeFileLoader implements SlimeLoader {
     @Override
     public void saveWorld(String worldName, byte[] bytes) throws IOException {
         folder.mkdirs();
-        // Written next to the target and moved over it, so a crash mid-write never
-        // leaves a half-written template behind.
+        // Atomic replace, so a crash never leaves a half-written template.
         File temporary = new File(folder, "." + worldName + EXTENSION + ".tmp");
         Files.write(temporary.toPath(), bytes);
         Files.move(temporary.toPath(), fileFor(worldName).toPath(), StandardCopyOption.REPLACE_EXISTING,

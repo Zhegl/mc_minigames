@@ -23,12 +23,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import net.kyori.adventure.util.TriState;
 
 /**
- * Freshly generated worlds that exist only for the duration of one game and are
- * deleted afterwards, so a minigame never leaves a mark on a persistent map.
- *
- * <p>Every managed world is named {@code potato_tmp_<id>} (plus {@code _nether} /
- * {@code _the_end}); nothing outside that prefix is ever unloaded or deleted.
- * Leftovers from a crash are swept on startup.
+ * Per-game generated worlds, deleted afterwards. Only worlds prefixed {@code potato_tmp_}
+ * are ever unloaded or deleted; crash leftovers are swept on startup.
  */
 public final class ThrowawayWorldService {
     public static final String PREFIX = "potato_tmp_";
@@ -51,10 +47,7 @@ public final class ThrowawayWorldService {
         return PREFIX + id;
     }
 
-    /**
-     * Creates a fresh overworld (and eagerly the extra dimensions requested) with a
-     * new random seed, replacing anything left over under the same name.
-     */
+    /** New random seed; replaces any leftover world of the same name. */
     public World create(String id, World.Environment... eagerDimensions) {
         destroy(id);
         String base = baseName(id);
@@ -77,8 +70,7 @@ public final class ThrowawayWorldService {
                 .type(WorldType.NORMAL)
                 .generateStructures(true)
                 .seed(seed)
-                // Spawn chunks are pointless for a world we throw away, and keeping
-                // them loaded makes creation noticeably slower.
+                // Keeping spawn chunks loaded slows creation.
                 .keepSpawnLoaded(TriState.FALSE);
 
         long startedAt = System.currentTimeMillis();
@@ -86,11 +78,8 @@ public final class ThrowawayWorldService {
         if (world == null) {
             throw new IllegalStateException("Failed to create throwaway world " + name);
         }
-        // Saving stays ON deliberately. A game can roam far past render distance, and
-        // a chunk that is never written cannot be evicted either: it would either be
-        // regenerated (losing the players' changes) or pinned in memory for the whole
-        // game. Normal saving gives vanilla semantics; the folder delete at teardown
-        // is what keeps the server clean.
+        // Saving stays on: unsaved chunks cannot be evicted, so they would be pinned
+        // in memory or regenerated without the players' changes.
         world.setDifficulty(Bukkit.getWorlds().getFirst().getDifficulty());
         sets.computeIfAbsent(base, key -> new HashMap<>()).put(environment, world);
         worldToBase.put(name, base);
@@ -107,7 +96,7 @@ public final class ThrowawayWorldService {
         };
     }
 
-    /** The base name of a managed world, or null if this world is not ours. */
+    /** Null if the world is not managed. */
     public String baseOf(World world) {
         return world == null ? null : worldToBase.get(world.getName());
     }
@@ -117,10 +106,7 @@ public final class ThrowawayWorldService {
         return set == null ? null : set.get(environment);
     }
 
-    /**
-     * The requested dimension of a managed world set, generated on first use so a
-     * game only pays for the dimensions its players actually visit.
-     */
+    /** Generated on first use. */
     public World getOrCreateDimension(String base, World.Environment environment) {
         World existing = dimension(base, environment);
         if (existing != null) {
@@ -165,7 +151,6 @@ public final class ThrowawayWorldService {
         deleteRecursively(folder.toPath());
     }
 
-    /** Moves anyone still inside to the main world spawn so the world can unload. */
     private void evacuate(World world) {
         var fallback = Bukkit.getWorlds().getFirst().getSpawnLocation();
         for (Player player : world.getPlayers()) {
@@ -173,13 +158,7 @@ public final class ThrowawayWorldService {
         }
     }
 
-    /**
-     * Finds throwaway world folders wherever the server actually keeps them.
-     * The layout differs by version — Paper 1.21.9+ nests non-primary worlds at
-     * {@code world/dimensions/<namespace>/<name>} while older builds put them
-     * straight in the world container — so this searches by name rather than
-     * assuming a path.
-     */
+    /** Searches by name: Paper 1.21.9+ nests worlds under {@code world/dimensions/<ns>/}. */
     private List<Path> findThrowawayFolders() {
         Path container = Bukkit.getWorldContainer().toPath();
         try (var stream = Files.walk(container, 4)) {
@@ -193,10 +172,7 @@ public final class ThrowawayWorldService {
         }
     }
 
-    /**
-     * Deletes leftover throwaway worlds on startup. Only folders carrying our
-     * prefix are touched.
-     */
+    /** Deletes leftover throwaway worlds on startup. */
     public int cleanupStale() {
         int removed = 0;
         for (Path folder : findThrowawayFolders()) {

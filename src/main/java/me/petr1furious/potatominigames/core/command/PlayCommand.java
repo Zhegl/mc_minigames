@@ -20,6 +20,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.lobby.LobbyService;
+import me.petr1furious.potatominigames.core.queue.QueueMenu;
 import me.petr1furious.potatominigames.core.queue.QueueService;
 import me.petr1furious.potatominigames.core.session.ActiveSession;
 import me.petr1furious.potatominigames.core.session.SessionManager;
@@ -28,24 +29,32 @@ import me.petr1furious.potatominigames.core.team.TeamColor;
 import static me.petr1furious.potatominigames.core.command.GameCommands.requirePlayer;
 import static me.petr1furious.potatominigames.core.command.GameCommands.run;
 
-/**
- * The commands every player has: {@code /play} to see and join queues (and leave,
- * vote, pick a team), and {@code /lobby} to get back to the lobby from anywhere.
- */
+/** Player commands: {@code /play} and {@code /lobby}. */
 public final class PlayCommand {
     private final SessionManager sessions;
     private final QueueService queues;
     private final LobbyService lobby;
+    private final QueueMenu menu;
 
-    public PlayCommand(SessionManager sessions, QueueService queues, LobbyService lobby) {
+    public PlayCommand(SessionManager sessions, QueueService queues, LobbyService lobby, QueueMenu menu) {
         this.sessions = sessions;
         this.queues = queues;
         this.lobby = lobby;
+        this.menu = menu;
     }
 
     public LiteralCommandNode<CommandSourceStack> buildPlay() {
         var root = Commands.literal("play")
-                .executes(ctx -> run(ctx, this::sendOverview));
+                .executes(ctx -> run(ctx, c -> {
+                    if (c.getSource().getSender() instanceof Player player) {
+                        menu.open(player);
+                    } else {
+                        sendOverview(c);
+                    }
+                }));
+
+        root.then(Commands.literal("list")
+                .executes(ctx -> run(ctx, this::sendOverview)));
 
         root.then(Commands.literal("leave")
                 .executes(ctx -> run(ctx, c -> queues.leave(requirePlayer(c)))));
@@ -82,7 +91,7 @@ public final class PlayCommand {
                     }
                     Optional<ActiveSession> session = sessions.sessionOf(player);
                     if (session.isPresent()) {
-                        // Leaving a game or spectating already takes them back where they belong.
+                        // Leaving already sends them back.
                         session.get().leave(player);
                         if (lobby.isLobby(player.getWorld())) {
                             return;
@@ -127,8 +136,7 @@ public final class PlayCommand {
         QueueService.Queue queue;
         if (mode == null) {
             if (available.size() > 1 && sessions.sessionOf(game).isEmpty()) {
-                // Several modes and nothing to spectate: let them pick.
-                sendModes(player, game, available);
+                menu.open(player, game);
                 return;
             }
             queue = available.getFirst();
@@ -139,17 +147,9 @@ public final class PlayCommand {
         queues.join(player, queue);
     }
 
-    private void sendModes(Player player, Minigame game, List<QueueService.Queue> available) {
-        player.sendMessage(Component.text().append(game.displayName())
-                .append(Component.text(" — pick a mode:", NamedTextColor.GRAY)).build());
-        for (QueueService.Queue queue : available) {
-            player.sendMessage(line(queue));
-        }
-    }
-
     private void sendOverview(CommandContext<CommandSourceStack> ctx) {
         var sender = ctx.getSource().getSender();
-        sender.sendMessage(Component.text("Games — click one to join:", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("Games:", NamedTextColor.GOLD));
         for (QueueService.Queue queue : queues.visibleQueues()) {
             sender.sendMessage(line(queue));
         }
@@ -163,12 +163,11 @@ public final class PlayCommand {
         }
     }
 
-    /** One clickable line per queue: its name, what it is about and how full it is. */
     private Component line(QueueService.Queue queue) {
         Optional<ActiveSession> running = sessions.sessionOf(queue.game());
         String status;
         if (running.isPresent()) {
-            status = "in progress, click to spectate";
+            status = "running, click to spectate";
         } else if (queue.countdown() != null) {
             status = queue.countText() + " queued, starts in " + queue.countdown() + "s";
         } else {

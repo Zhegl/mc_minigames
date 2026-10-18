@@ -14,13 +14,9 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import me.petr1furious.potatominigames.core.command.CommandFailure;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.core.text.Summary;
 import me.petr1furious.potatominigames.gadgets.FPVDroneGadget;
 
-/**
- * Classic Warfare: everyone spawns invisible at a random point in the arena
- * disc, hunts the others using the bucketed-distance sidebar and gadgets;
- * last player standing wins.
- */
 final class ClassicWarfareSession extends WarfareSessionBase {
     private boolean checkingGameEnd = false;
     private boolean ended = false;
@@ -60,7 +56,6 @@ final class ClassicWarfareSession extends WarfareSessionBase {
     @Override
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getPlayer();
-        // A death anywhere else (the lobby, say) is not this game's business.
         if (!isPlayerAlive(player)) {
             return;
         }
@@ -111,12 +106,10 @@ final class ClassicWarfareSession extends WarfareSessionBase {
         }
         ended = true;
         if (alive.isEmpty()) {
-            services.messages().broadcast(Component.text("Game over! No players left!", NamedTextColor.RED));
+            summary.add(Component.text("Nobody survived", NamedTextColor.YELLOW));
         } else {
             Player winner = alive.getFirst();
-            services.messages().broadcast(Component.text("Game over! ", NamedTextColor.RED)
-                    .append(Component.text(winner.getName(), NamedTextColor.BLUE))
-                    .append(Component.text(" wins!", NamedTextColor.RED)));
+            summary.add(Summary.winners(List.of(Component.text(winner.getName(), NamedTextColor.WHITE))));
             services.points().add("war", winner.getUniqueId(), 1);
         }
         services.session().endGame(EndReason.FINISHED);

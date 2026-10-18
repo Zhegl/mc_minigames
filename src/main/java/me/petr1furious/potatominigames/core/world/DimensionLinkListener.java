@@ -18,14 +18,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 
 /**
- * Makes a throwaway world set behave like a normal vanilla world across
- * dimensions, without depending on Multiverse.
- *
- * <p>Bukkit resolves portals to the <em>primary</em> world's nether/end, so a
- * custom overworld would otherwise dump players into the survival nether. Runs at
- * HIGHEST so it also wins over Multiverse-NetherPortals when that is installed,
- * and re-applies carried player state a tick later so an inventory-splitting
- * plugin cannot swallow items on a dimension hop.
+ * Links throwaway worlds' dimensions; Bukkit would send portals to the primary world's.
+ * HIGHEST to beat Multiverse-NetherPortals; carried state is re-applied a tick later so
+ * inventory-splitting plugins cannot swallow items.
  */
 public final class DimensionLinkListener implements Listener {
     private final JavaPlugin plugin;
@@ -36,7 +31,6 @@ public final class DimensionLinkListener implements Listener {
         this.worlds = worlds;
     }
 
-    /** The subset of player state that vanilla carries through a portal. */
     private record CarriedState(ItemStack[] contents, ItemStack[] armor, ItemStack offHand,
             int level, float exp, double health, int food, float saturation,
             Collection<PotionEffect> effects) {
@@ -109,7 +103,7 @@ public final class DimensionLinkListener implements Listener {
         event.setSearchRadius(128);
     }
 
-    /** Deaths and end-portal exits inside our worlds must not spit players into the survival world. */
+    /** Keeps deaths and end exits out of the survival world. */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onRespawn(PlayerRespawnEvent event) {
         String base = worlds.baseOf(event.getPlayer().getWorld());
@@ -138,10 +132,7 @@ public final class DimensionLinkListener implements Listener {
         };
     }
 
-    /**
-     * Keeps the coordinates vanilla already computed (including nether scaling) and
-     * only swaps in our dimension; end travel uses the fixed vanilla anchors.
-     */
+    /** Keeps vanilla's computed coordinates and swaps the world; end travel uses vanilla anchors. */
     private Location destinationIn(World target, Location from, Location computed,
             PlayerTeleportEvent.TeleportCause cause) {
         if (cause == PlayerTeleportEvent.TeleportCause.END_PORTAL) {

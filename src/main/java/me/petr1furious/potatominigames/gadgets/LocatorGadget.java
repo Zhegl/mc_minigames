@@ -43,7 +43,7 @@ public class LocatorGadget extends AbstractGadget {
         int remaining = getRemainingCooldownSeconds(player);
         if (remaining > 0) {
             player.sendActionBar(Component.text("Locator: " + remaining + "s").color(NamedTextColor.RED));
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 0.2f, 0.5f); // cooldown/fail sound
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BIT, 0.2f, 0.5f); // fail
             return;
         }
 

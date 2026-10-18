@@ -27,79 +27,64 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import me.petr1furious.potatominigames.core.team.TeamColor;
 
 /**
- * One play-through of a minigame, discarded after cleanup. Bukkit events are
- * forwarded here by the core listener only while the session is active, and only
- * those that involve its players or happen in its worlds.
+ * One play-through of a minigame. Only events involving its players or worlds are
+ * forwarded, and only while active.
  */
 public interface GameSession {
 
-    /**
-     * Called when a player late-joins a running game (see {@link #allowLateJoin()}),
-     * including a participant who is back after being knocked out (see
-     * {@link #isInGame(Player)}).
-     */
+    /** Also called for a knocked-out participant who is put back in. */
     default void onParticipantJoin(Player player) {
     }
 
-    /**
-     * Whether a participant is still playing. `join` refuses only players who are;
-     * one who isn't (dead in warfare, say) is put back into the running game.
-     * By default every participant plays until the game ends.
-     */
+    /** False lets {@code join} put a knocked-out participant back in. */
     default boolean isInGame(Player player) {
         return true;
     }
 
-    /** Called when a participant leaves for good via the leave command. */
     default void onParticipantLeave(Player player) {
     }
 
-    /** Called when a participant disconnects mid-game. The participant record is kept. */
+    /** The participant record is kept. */
     default void onParticipantQuit(Player player) {
     }
 
-    /** Called when a participant reconnects mid-game. */
     default void onParticipantRejoin(Player player) {
     }
 
     /**
-     * Countdown finished; participants have been snapshotted. Teleport and prepare them here.
-     * Throw {@link me.petr1furious.potatominigames.core.command.CommandFailure} to abort the start.
+     * Participants are already snapshotted. Throw
+     * {@link me.petr1furious.potatominigames.core.command.CommandFailure} to abort.
      */
     void onStart() throws me.petr1furious.potatominigames.core.command.CommandFailure;
 
-    /** Driven by the core 1-second clock while RUNNING. */
+    /** Every second while RUNNING. */
     default void onSecondTick(long secondsElapsed) {
     }
 
-    /** Announce results here. Player state restore and HUD cleanup happen afterwards in core. */
+    /** Announce results; core restores players and HUDs afterwards. */
     default void onEnd(EndReason reason) {
     }
 
-    /**
-     * Where a new spectator should appear. By default (null) the core picks a random
-     * player who is still playing.
-     */
+    /** Null: core picks a random active player. */
     default org.bukkit.Location spectatorLocation(Player viewer) {
         return null;
     }
 
-    /**
-     * One line for the whole server once the game is over, e.g. "Alice won Pillars".
-     * By default (null) the core says the game has ended.
-     */
+    /** Server-wide result line, e.g. "Alice won Pillars"; null for a generic one. */
     default net.kyori.adventure.text.Component globalResult() {
         return null;
+    }
+
+    /** Result lines for the end-of-game summary, read once {@link #onEnd} has run. */
+    default java.util.List<net.kyori.adventure.text.Component> summary() {
+        return java.util.List.of();
     }
 
     default boolean allowLateJoin() {
         return false;
     }
 
-    /**
-     * Whether a participant may drop out mid-game. Games whose structure is fixed
-     * when they start (chase schedules every round's hunters up front) say no.
-     */
+    /** False for games fixed at start, e.g. chase schedules every round's hunters. */
     default boolean allowLeave() {
         return true;
     }
@@ -108,7 +93,7 @@ public interface GameSession {
         return false;
     }
 
-    /** Players the viewer is hunting/tracking; used by gadgets and HUDs. */
+    /** Used by gadgets and HUDs. */
     default Collection<Player> getTrackedPlayers(Player viewer) {
         return List.of();
     }
@@ -117,11 +102,10 @@ public interface GameSession {
         return false;
     }
 
-    /** A participant's team changed while the session is active. */
     default void onTeamChange(Player player, TeamColor team) {
     }
 
-    // --- Bukkit event hooks (forwarded only while RUNNING) ---
+    // Event hooks, forwarded only while RUNNING.
 
     default void onPlayerDeath(PlayerDeathEvent event) {
     }

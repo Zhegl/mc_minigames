@@ -17,17 +17,13 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.SessionServices;
-import me.petr1furious.potatominigames.core.world.ArenaService;
 import me.petr1furious.potatominigames.gadgets.FPVDroneGadget;
 
-/**
- * Shared Warfare behavior: arena/border/world setup, alive-player preparation
- * (invisibility + kit), the bucketed-distance HUD lines, and lift handling.
- */
 abstract class WarfareSessionBase implements GameSession {
     protected final SessionServices services;
     protected final WarfareConfig config;
     protected final LiftHandler liftHandler = new LiftHandler();
+    protected final List<Component> summary = new ArrayList<>();
     private final FPVDroneGadget fpvDrone;
 
     protected int secondsUntilHudRefresh;
@@ -38,16 +34,12 @@ abstract class WarfareSessionBase implements GameSession {
         this.fpvDrone = fpvDrone;
     }
 
-    /**
-     * The world this match plays in. With slime-world arenas enabled this is the
-     * cloned ASP game world, so the played world can never drift away from the
-     * one being reset.
-     */
+    /** With slime-world arenas this is the cloned game world, so it always matches the one being reset. */
     protected org.bukkit.World gameWorld() {
         return services.worlds().resolveWorld(config.gameWorld.get());
     }
 
-    /** World reset, gamerules and border; call first from onStart. */
+    /** Call first from onStart. */
     protected void setupArena() {
         services.worlds().setupWorld(false);
         var world = gameWorld();
@@ -78,7 +70,7 @@ abstract class WarfareSessionBase implements GameSession {
         return new Location(world, gameCenter.getX() + offsetX, gameCenter.getY(), gameCenter.getZ() + offsetZ);
     }
 
-    /** The live center/radius: follows the shrinking border when one is active. */
+    /** Follows the shrinking border when one is active. */
     protected Location currentGameCenter() {
         var world = gameWorld();
         if (config.arenaBorderEnabled.get()) {
@@ -95,7 +87,6 @@ abstract class WarfareSessionBase implements GameSession {
         return Math.max(1, config.gameRadius.get());
     }
 
-    /** Teleport + full reset + optional permanent invisibility + game kit. */
     protected void prepareAlivePlayer(Player player, Location location, boolean keepInvisibility) {
         Location target = location.clone();
         target.setYaw(player.getLocation().getYaw());
@@ -114,12 +105,7 @@ abstract class WarfareSessionBase implements GameSession {
         }
     }
 
-    /**
-     * In the game means in survival or adventure in the game world, and nothing else:
-     * there is deliberately no alive/eliminated bookkeeping to drift out of step. A
-     * death makes you a spectator, which is what takes you out, and `join` (or a
-     * plain gamemode change) is what brings you back.
-     */
+    /** Survival or adventure in the game world; deliberately no separate alive/eliminated state. */
     protected boolean isPlayerAlive(Player player) {
         GameMode mode = player.getGameMode();
         return player.isOnline()
@@ -141,8 +127,6 @@ abstract class WarfareSessionBase implements GameSession {
         }
         return result;
     }
-
-    // --- distance HUD helpers ---
 
     protected static String distanceRange(int distance, int granularity) {
         int lowerBound = (distance / granularity) * granularity;
@@ -185,9 +169,8 @@ abstract class WarfareSessionBase implements GameSession {
                 .build();
     }
 
-    // The distance content deliberately refreshes only every interval (stale
-    // positions are part of the gameplay); the "Refresh: Ns" line updates every
-    // second from the cached content thanks to sidebar line-diffing.
+    // Distances refresh only every interval (stale positions are intended); the
+    // "Refresh" line ticks every second from the cached content.
     private final java.util.Map<java.util.UUID, List<Component>> cachedHudLines = new java.util.HashMap<>();
 
     @Override
@@ -206,7 +189,6 @@ abstract class WarfareSessionBase implements GameSession {
         updateHud();
     }
 
-    /** Recomputes HUD content for every viewer and renders it. */
     protected void updateHud() {
         renderAll(true);
     }
@@ -249,5 +231,9 @@ abstract class WarfareSessionBase implements GameSession {
         liftHandler.clear();
     }
 
-    /** Used by {@link ArenaService} border restore via core cleanup; nothing extra here. */
+    @Override
+    public List<Component> summary() {
+        return List.copyOf(summary);
+    }
+
 }

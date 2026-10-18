@@ -13,7 +13,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 
-/** Everything needed to put a player back the way they were before a game. */
 public record PlayerSnapshot(
         Location location,
         GameMode gameMode,
@@ -44,7 +43,6 @@ public record PlayerSnapshot(
                 List.copyOf(player.getActivePotionEffects()));
     }
 
-    /** The same snapshot, but remembering a different place to return to. */
     public PlayerSnapshot withLocation(Location newLocation) {
         return new PlayerSnapshot(newLocation.clone(), gameMode, inventoryContents, health, foodLevel, saturation,
                 fireTicks, expLevel, expProgress, allowFlight, flying, effects);
@@ -55,10 +53,7 @@ public record PlayerSnapshot(
         applyState(player);
     }
 
-    /**
-     * Everything except the location, for a player who is leaving on their own and
-     * already knows where they are going.
-     */
+    /** Everything except the location. */
     public void applyState(Player player) {
         player.setGameMode(gameMode);
         player.getInventory().setContents(cloneContents(inventoryContents));
@@ -77,12 +72,10 @@ public record PlayerSnapshot(
         player.updateInventory();
     }
 
-    // --- persistence: a snapshot can outlive a restart while its player waits in the lobby ---
-
     public void save(ConfigurationSection section) {
         section.set("location", location);
         section.set("gameMode", gameMode.name());
-        // Item bytes carry their data version, so a newer server can still read them.
+        // Item bytes carry their data version.
         section.set("inventory", Base64.getEncoder().encodeToString(ItemStack.serializeItemsAsBytes(
                 replaceNulls(inventoryContents))));
         section.set("inventorySize", inventoryContents.length);
@@ -97,7 +90,7 @@ public record PlayerSnapshot(
         section.set("effects", new ArrayList<>(effects));
     }
 
-    /** Reads a snapshot written by {@link #save}, or null if the section is unusable. */
+    /** Null if the section is unusable. */
     public static PlayerSnapshot load(ConfigurationSection section) {
         Location location = section.getLocation("location");
         if (location == null || location.getWorld() == null) {

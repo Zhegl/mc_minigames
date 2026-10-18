@@ -18,10 +18,7 @@ import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
 
-/**
- * Advanced Slime Paper integration: clones a template slime world over the game
- * world so every game starts on pristine terrain.
- */
+/** Advanced Slime Paper integration: per-game clones of template worlds. */
 public final class SlimeWorldService {
     private final JavaPlugin plugin;
     private final PropertyBag config = new PropertyBag("arena.asp");
@@ -37,7 +34,7 @@ public final class SlimeWorldService {
         this.plugin = plugin;
     }
 
-    /** Templates and imports live where the ASP plugin keeps its file worlds. */
+    /** ASP's file world directory. */
     public SlimeFileLoader fileLoader() {
         if (fileLoader == null) {
             fileLoader = new SlimeFileLoader(new File(Bukkit.getWorldContainer(), "slime_worlds"));
@@ -49,11 +46,7 @@ public final class SlimeWorldService {
         return fileLoader().worldExists(templateName);
     }
 
-    /**
-     * Loads a fresh in-memory copy of a slime file under a new name. The template file
-     * is only read; the copy is never saved anywhere and goes away with
-     * {@link #discardClone}.
-     */
+    /** In-memory copy, never saved; see {@link #discardClone}. */
     public World cloneTemplate(String templateName, String worldName) {
         init();
         if (Bukkit.getWorld(worldName) != null) {
@@ -70,10 +63,12 @@ public final class SlimeWorldService {
         if (world == null) {
             throw new IllegalStateException("Slime clone " + worldName + " did not load");
         }
+        // Slime worlds default to peaceful.
+        world.setDifficulty(Bukkit.getWorlds().getFirst().getDifficulty());
         return world;
     }
 
-    /** Unloads a clone made by {@link #cloneTemplate} without saving it, moving anyone left inside out first. */
+    /** Unloads without saving, evacuating players first. */
     public void discardClone(String worldName) {
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
@@ -88,15 +83,11 @@ public final class SlimeWorldService {
         }
     }
 
-    /**
-     * Converts a vanilla world folder (which must not be loaded) into a slime file
-     * called {@code templateName}, replacing any older one, with its spawn point at
-     * the given block.
-     */
+    /** The vanilla world folder must not be loaded; replaces any older template. */
     public void importVanilla(File worldFolder, String templateName, int spawnX, int spawnY, int spawnZ)
             throws Exception {
         init();
-        // ASP refuses to import over an existing world, so the old one goes first; it comes back if this fails.
+        // ASP refuses to import over an existing world; the old one is restored on failure.
         byte[] previous = fileLoader().worldExists(templateName) ? fileLoader().readWorld(templateName) : null;
         if (previous != null) {
             fileLoader().deleteWorld(templateName);
@@ -113,7 +104,7 @@ public final class SlimeWorldService {
         }
     }
 
-    /** Saves an empty slime template (a world of nothing but void), replacing any older one. */
+    /** Void world; replaces any older template. */
     public void createEmptyTemplate(String templateName, int spawnX, int spawnY, int spawnZ) throws Exception {
         init();
         if (fileLoader().worldExists(templateName)) {
@@ -142,11 +133,7 @@ public final class SlimeWorldService {
         return gameWorld.get();
     }
 
-    /**
-     * The world a game should actually play in: when slime-world arenas are
-     * enabled the cloned game world wins, so it cannot drift out of sync with a
-     * game's own world setting.
-     */
+    /** With slime arenas enabled the cloned world wins over the game's own world setting. */
     public World resolveWorld(String configuredWorldName) {
         String name = enable.get() ? gameWorld.get() : configuredWorldName;
         World world = Bukkit.getWorld(name);
@@ -177,7 +164,7 @@ public final class SlimeWorldService {
         }
     }
 
-    /** Clones the template over the game world. No-op unless enabled (and resetOnStart, unless forced). */
+    /** No-op unless enabled (and resetOnStart, unless forced). */
     public void setupWorld(boolean force) {
         if (!enable.get()) {
             return;

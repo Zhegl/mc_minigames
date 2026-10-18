@@ -33,7 +33,7 @@ public class OreshnikGadget extends AbstractGadget {
     private final Random random = new Random();
 
     public OreshnikGadget(GadgetContext context) {
-        // The one gadget too destructive for casual out-of-game use.
+        // Too destructive for out-of-game use.
         super("oreshnik", context, false);
         wavesCount = config().define("wavesCount", PropertyCodec.INT, 6);
         arrowsCount = config().define("arrowsCount", PropertyCodec.INT, 100);

@@ -8,14 +8,11 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
 
-/**
- * World-level game setup shared by all minigames: border snapshot/restore and
- * the standard "no interference" game rules.
- */
+/** Shared world setup: border snapshot/restore and standard game rules. */
 public final class ArenaService {
     private final Map<String, BorderSnapshot> borderSnapshots = new HashMap<>();
 
-    /** Snapshots the border (once per world until restored) and applies center + size. */
+    /** Snapshots the border once per world until restored. */
     public void applyBorder(World world, Location center, double initialSize, double finalSize,
             long secondsToFinal) {
         borderSnapshots.computeIfAbsent(world.getName(), name -> BorderSnapshot.of(world));

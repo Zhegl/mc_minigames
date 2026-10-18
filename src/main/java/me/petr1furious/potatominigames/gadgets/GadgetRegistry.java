@@ -22,12 +22,7 @@ import org.bukkit.util.Vector;
 
 import me.petr1furious.potatominigames.core.world.Locations;
 
-/**
- * Owns all gadgets and the single listener that dispatches interact/shoot/impact
- * events to them. A gadget whose {@code usableBy(player)} is false is skipped, which
- * keeps gadget items inert outside games (unless allowOutsideGame is set) and
- * always inert in the lobby.
- */
+/** Dispatches gadget events; skips gadgets whose {@code usableBy(player)} is false. */
 public final class GadgetRegistry implements Listener {
     private final Map<String, Gadget> gadgets = new LinkedHashMap<>();
 

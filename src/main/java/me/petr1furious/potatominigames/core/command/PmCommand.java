@@ -31,10 +31,7 @@ import me.petr1furious.potatominigames.core.text.Messages;
 import static me.petr1furious.potatominigames.core.command.GameCommands.run;
 import static me.petr1furious.potatominigames.core.command.GameCommands.requirePlayer;
 
-/**
- * The cross-game admin root: /pm status|games|stop|reload plus the game-agnostic
- * named-kit inventory helpers (save/load/copy).
- */
+/** Cross-game admin commands and kit helpers. */
 public final class PmCommand {
     private final JavaPlugin plugin;
     private final SessionManager sessions;
@@ -130,7 +127,7 @@ public final class PmCommand {
         }
     }
 
-    /** /pm forcestart <game> [mode]: skip the queue's minimum and timers and start now. */
+    /** Skips the queue's minimum and timers. */
     private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildForceStart() {
         return Commands.literal("forcestart")
                 .requires(source -> source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
@@ -150,7 +147,7 @@ public final class PmCommand {
             throws CommandFailure {
         Minigame game = requireGame(ctx.getArgument("game", String.class));
         if (mode == null) {
-            // Without a mode, the fullest queue of that game is the one people are waiting in.
+            // No mode given: the fullest queue.
             var fullest = queues.queuesOf(game).stream()
                     .max(java.util.Comparator.comparingInt(QueueService.Queue::size));
             if (fullest.isEmpty()) {
@@ -220,7 +217,7 @@ public final class PmCommand {
                                         })))));
     }
 
-    /** /pm config covers every registered section, including "core" and "arena.asp". */
+    /** Covers every section, including "core" and "arena.asp". */
     private com.mojang.brigadier.builder.LiteralArgumentBuilder<CommandSourceStack> buildConfigSubtree() {
         return Commands.literal("config")
                 .executes(ctx -> run(ctx, c -> {

@@ -8,18 +8,11 @@ package me.petr1furious.potatominigames.games.pillars;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * A place for pillars games: a slime template (cut from the old arena world, so it
- * keeps that world's coordinates), the arena's center within it, and optionally the
- * time of day and game rules it plays with.
- *
- * <p>Every game plays in its own in-memory copy of the template, which is thrown
- * away afterwards, so nothing a game does to an arena ever sticks.
- */
+/** Slime template keeps the original world's coordinates; each game uses a throwaway copy. */
 public record PillarsArena(String name, String template, double x, double z, Long time,
         Map<String, Object> gameRules) {
 
-    /** The times of day {@code /time set} accepts by name, so arenas are configured the same way. */
+    /** Names accepted by {@code /time set}. */
     private static final Map<String, Long> NAMED_TIMES = Map.of(
             "day", 1000L,
             "noon", 6000L,
@@ -28,12 +21,12 @@ public record PillarsArena(String name, String template, double x, double z, Lon
             "midnight", 18000L,
             "sunrise", 23000L);
 
-    /** Where an arena's template lives unless it says otherwise: {@code slime_worlds/pillars_<name>.slime}. */
+    /** Default template: {@code slime_worlds/pillars_<name>.slime}. */
     public static String templateFor(String arenaName) {
         return "pillars_" + arenaName.toLowerCase(Locale.ROOT);
     }
 
-    /** A tick within the day or one of the names {@code /time set} knows; null if neither. */
+    /** Tick or {@code /time set} name; null if neither. */
     public static Long parseTimeOfDay(String raw) {
         if (raw == null) {
             return null;

@@ -42,25 +42,16 @@ import me.petr1furious.potatominigames.core.player.PlayerStateService;
 import me.petr1furious.potatominigames.core.session.SessionManager;
 
 /**
- * The lobby world players queue in, and the rules for getting in and out of it
- * and of games without losing anything.
+ * Lobby world and player state around queues and games.
  *
- * <p>Every player has at most one snapshot: their state from before the lobby or
- * a game, saved to disk. Entering the lobby takes one (if there is none) and puts
- * them in the lobby state — adventure mode, empty inventory, the menu item;
- * leaving it on their own gives everything back where they arrive. Joining a queue
- * or a game also takes one, and remembers where they came from: players who
- * queued in the lobby come back to the lobby, everyone else is restored.
- *
- * <p>Admins are never put into the lobby state (someone has to build it), but the
- * lobby still keeps them from taking damage or going hungry.
+ * <p>Each player has at most one on-disk snapshot, taken on entering the lobby, a
+ * queue or a game. Players who queued in the lobby return to it; others are restored.
+ * Admins are not put into the lobby state but are still protected from damage and hunger.
  */
 public final class LobbyService implements Listener {
-    /** Where a player goes once their game or queue is over. */
     private enum Target {
-        /** Back to the lobby, still holding the snapshot from before it. */
+        /** Back to the lobby, keeping the pre-lobby snapshot. */
         LOBBY,
-        /** Restore the snapshot, wherever it was taken. */
         RESTORE
     }
 
@@ -97,9 +88,7 @@ public final class LobbyService implements Listener {
         this.menuOpener = menuOpener;
     }
 
-    // --- the world ---
-
-    /** The lobby world, or null when the lobby is disabled or its world is not loaded. */
+    /** Null when the lobby is disabled or not loaded. */
     public World world() {
         return enabled.get() ? Bukkit.getWorld(worldName.get()) : null;
     }
@@ -109,7 +98,7 @@ public final class LobbyService implements Listener {
         return lobby != null && lobby.equals(world);
     }
 
-    /** The lobby world's spawn, moved up onto the ground if the stored spawn is inside a block. */
+    /** Moved up if the stored spawn is inside a block. */
     public Location spawn() {
         World lobby = world();
         if (lobby == null) {
@@ -126,39 +115,32 @@ public final class LobbyService implements Listener {
         return player.hasPermission(GameCommands.ADMIN_PERMISSION);
     }
 
-    /** Teleports a player to the lobby; false when there is no lobby to go to. */
     public boolean sendToLobby(Player player) {
         Location spawn = spawn();
         if (spawn == null) {
             return false;
         }
         player.teleport(spawn);
-        // Already in the lobby world, the world-change listener does not fire.
+        // No world change, so the listener will not fire.
         applyLobbyState(player);
         return true;
     }
 
-    // --- queue and game flow ---
-
-    /**
-     * A player joins a queue: remember where they came from and bring them to the
-     * lobby. Players already in the lobby will come back to it.
-     */
     public void enterQueue(Player player) {
         if (world() == null) {
-            // No lobby to wait in: they carry on as they are, and the game snapshots them when it starts.
+            // No lobby: the game snapshots them when it starts.
             return;
         }
         UUID id = player.getUniqueId();
         if (isLobby(player.getWorld())) {
             if (isExempt(player)) {
-                // Admins have no lobby snapshot; take one so their own things come back.
+                // Admins have no lobby snapshot.
                 playerState.snapshotIfAbsent(player);
             }
             targets.putIfAbsent(id, Target.LOBBY);
             return;
         }
-        // A spectator moving on to a queue keeps the return they already had.
+        // A spectator joining a queue keeps their existing return.
         if (playerState.snapshotIfAbsent(player)) {
             targets.put(id, Target.RESTORE);
         } else {
@@ -167,21 +149,18 @@ public final class LobbyService implements Listener {
         sendToLobby(player);
     }
 
-    /**
-     * A player leaves their queue before it started: players who came from outside
-     * go back there; players who queued in the lobby simply stay.
-     */
+    /** Players who came from outside the lobby are restored; the rest stay. */
     public void leaveQueue(Player player) {
         UUID id = player.getUniqueId();
         Target target = targets.get(id);
         if (target == null) {
-            // Queueing never moved them (no lobby), so there is nothing to undo.
+            // No lobby, so queueing never moved them.
             return;
         }
         if (target == Target.LOBBY) {
             targets.remove(id);
             if (isExempt(player)) {
-                // The snapshot taken for the queue is just what they still have on them.
+                // The queue snapshot is what they still carry.
                 playerState.forget(id);
             }
             return;
@@ -189,26 +168,18 @@ public final class LobbyService implements Listener {
         returnPlayer(player);
     }
 
-    /**
-     * A player is about to be put into a game (as a player or a spectator). Makes
-     * sure there is a snapshot to give back, and decides where they return to unless
-     * their queue already did.
-     */
+    /** Ensures a snapshot exists and sets the return unless the queue already did. */
     public void prepareForGame(Player player) {
         UUID id = player.getUniqueId();
         boolean inLobby = isLobby(player.getWorld());
         if (playerState.snapshotIfAbsent(player)) {
-            // A fresh snapshot is of where they are now, which is where they go back to.
             targets.put(id, inLobby ? Target.LOBBY : Target.RESTORE);
             return;
         }
         targets.putIfAbsent(id, inLobby ? Target.LOBBY : Target.RESTORE);
     }
 
-    /**
-     * A queued game failed to start: the player stays queued, so they go back to the
-     * lobby (or stay there) still holding their snapshot and their way back.
-     */
+    /** The player stays queued and keeps their snapshot and return. */
     public void backToQueue(Player player) {
         if (isLobby(player.getWorld())) {
             applyLobbyState(player);
@@ -217,7 +188,6 @@ public final class LobbyService implements Listener {
         }
     }
 
-    /** The queue or game is over for this player: send them where they belong. */
     public void returnPlayer(Player player) {
         Target target = targets.remove(player.getUniqueId());
         if (target == Target.LOBBY && !isExempt(player) && sendToLobby(player)) {
@@ -226,12 +196,10 @@ public final class LobbyService implements Listener {
         if (playerState.restore(player)) {
             return;
         }
-        // Nothing to give back (e.g. the snapshot was already used): the lobby is the
-        // safe place to put somebody who just left a game world.
+        // No snapshot left: fall back to the lobby.
         sendToLobby(player);
     }
 
-    /** Whether leaving the queue should send this player back out of the lobby. */
     public boolean returnsToLobby(Player player) {
         return targets.get(player.getUniqueId()) == Target.LOBBY;
     }
@@ -240,11 +208,19 @@ public final class LobbyService implements Listener {
         targets.remove(playerId);
     }
 
-    // --- the lobby state ---
-
-    /** Adventure mode, a clean inventory and the menu item; admins are left alone. */
+    /** Admins keep their inventory and mode, and only get the menu item if they have none. */
     public void applyLobbyState(Player player) {
-        if (isExempt(player) || !isLobby(player.getWorld())) {
+        if (!isLobby(player.getWorld())) {
+            return;
+        }
+        if (isExempt(player)) {
+            if (java.util.Arrays.stream(player.getInventory().getContents()).noneMatch(this::isMenuItem)) {
+                if (player.getInventory().getItem(menuSlot.get()) == null) {
+                    player.getInventory().setItem(menuSlot.get(), menuItem());
+                } else {
+                    player.getInventory().addItem(menuItem());
+                }
+            }
             return;
         }
         playerState.resetForRound(player, GameMode.ADVENTURE);
@@ -270,8 +246,6 @@ public final class LobbyService implements Listener {
                 && item.getItemMeta().getPersistentDataContainer().has(menuKey, PersistentDataType.BYTE);
     }
 
-    // --- getting in and out ---
-
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         if (event.getFrom().getWorld() != event.getTo().getWorld()) {
@@ -290,30 +264,30 @@ public final class LobbyService implements Listener {
         boolean nowInLobby = isLobby(player.getWorld());
         if (nowInLobby && !wasInLobby) {
             if (!isExempt(player) && !playerState.hasSnapshot(player.getUniqueId())) {
-                // Snapshotted after arriving, but remembering where they came from.
+                // Snapshot taken after arriving, with the origin remembered.
                 playerState.put(player.getUniqueId(), PlayerSnapshot.of(player).withLocation(from));
             }
             applyLobbyState(player);
         } else if (wasInLobby && !nowInLobby) {
             if (sessions.isBusy(player)) {
-                // Into their game (or wherever it sent them), which takes it from here.
+                // The game handles it.
                 return;
             }
-            // Walking out on their own: their things come back, but they stay where they went.
+            // Left on their own: restore items, keep location.
             if (!isExempt(player) && playerState.restoreInPlace(player)) {
                 targets.remove(player.getUniqueId());
             }
         }
     }
 
-    /** Handles a login once the session manager has had its turn. */
+    /** Runs after the session manager's join handling. */
     @EventHandler(priority = EventPriority.LOW)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         if (sessions.handleJoin(player)) {
             return;
         }
-        // Teleporting inside the join event is unreliable, hence the tick of delay.
+        // Teleports in the join event are unreliable.
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || sessions.isBusy(player)) {
                 return;
@@ -325,7 +299,6 @@ public final class LobbyService implements Listener {
     private void settleAfterLogin(Player player) {
         UUID id = player.getUniqueId();
         if (targets.containsKey(id)) {
-            // Their game or queue ended while they were away.
             returnPlayer(player);
             return;
         }
@@ -337,7 +310,7 @@ public final class LobbyService implements Listener {
             return;
         }
         if (playerState.hasSnapshot(id)) {
-            // A game ended without them after a restart: give their things back.
+            // Game ended while offline across a restart.
             playerState.restore(player);
             return;
         }
@@ -350,8 +323,6 @@ public final class LobbyService implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         departedFrom.remove(event.getPlayer().getUniqueId());
     }
-
-    // --- protections ---
 
     @EventHandler(ignoreCancelled = true)
     public void onDamage(EntityDamageEvent event) {

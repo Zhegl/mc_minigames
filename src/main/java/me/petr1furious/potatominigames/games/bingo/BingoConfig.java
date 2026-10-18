@@ -26,7 +26,7 @@ public final class BingoConfig {
     public final Property<String> difficulty = bag.define("difficulty", PropertyCodec.STRING, "medium");
     public final Property<Integer> punishmentSeconds = bag.define("punishmentSeconds", PropertyCodec.INT, 10);
     public final Property<Integer> afterGameSeconds = bag.define("afterGameSeconds", PropertyCodec.INT, 10);
-    /** Seconds spent caged above the arena before the floor opens and players drop. */
+    /** Seconds caged above the arena before the drop. */
     public final Property<Integer> countdownSeconds = bag.define("countdownSeconds", PropertyCodec.INT, 10);
 
     private final Map<String, GameDifficulty> difficultiesByKey = new LinkedHashMap<>();

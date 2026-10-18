@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** Concrete-lined shaft "elevators": standing inside one grants flight. */
+/** Standing inside a concrete-lined shaft grants flight. */
 public class LiftHandler {
 
     private final int liftCheckHeight = 6;
@@ -126,7 +126,7 @@ public class LiftHandler {
         return false;
     }
 
-    /** Call only while a game is running; caller filters drone mode and lift enablement. */
+    /** Call only while a game is running; the caller checks drone mode and lift enablement. */
     public void handleLift(Player player, Material liftMaterial) {
         if (player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE) {
             return;

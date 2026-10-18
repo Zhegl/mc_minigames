@@ -13,13 +13,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Cuts one arena out of a vanilla world: copies the chunks within a radius of the
- * arena's center, at their original coordinates, into a world folder of their own,
- * which ASP can then turn into that arena's slime template.
- *
- * <p>Works on the region files directly (block, entity and POI regions alike), so
- * it neither depends on the world being loaded nor on anything version-specific
- * inside the chunks.
+ * Copies the chunks around an arena's center into a separate world folder for ASP
+ * to import. Works on region files directly, so the world need not be loaded.
  */
 final class ArenaImporter {
     private static final int SECTOR = 4096;
@@ -28,9 +23,7 @@ final class ArenaImporter {
     private ArenaImporter() {
     }
 
-    /**
-     * @return how many block chunks were copied; 0 means the arena has nothing in it
-     */
+    /** @return block chunks copied; 0 means the arena is empty */
     static int cut(File sourceWorld, File target, double centerX, double centerZ, int radius) throws IOException {
         int copied = 0;
         for (String kind : new String[] {"region", "entities", "poi"}) {
@@ -76,7 +69,7 @@ final class ArenaImporter {
             }
             int chunkX = regionX * 32 + (index % 32);
             int chunkZ = regionZ * 32 + (index / 32);
-            // The chunk's nearest point to the center decides, so a radius never cuts an arena in half.
+            // Nearest point to the center, so a radius never cuts an arena in half.
             double nearestX = Math.max(chunkX * 16, Math.min(centerX, chunkX * 16 + 15));
             double nearestZ = Math.max(chunkZ * 16, Math.min(centerZ, chunkZ * 16 + 15));
             if (Math.hypot(nearestX - centerX, nearestZ - centerZ) > radius) {
@@ -95,7 +88,7 @@ final class ArenaImporter {
             payloads[index] = payload;
             timestamps[index] = header.getInt(SECTOR + index * 4);
             kept++;
-            // An oversized chunk keeps its data in a file next to the region.
+            // Oversized chunks live in an external .mcc file.
             if ((payload[4] & 0x80) != 0) {
                 File external = new File(region.getParentFile(), "c." + chunkX + "." + chunkZ + ".mcc");
                 if (external.isFile()) {

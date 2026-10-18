@@ -17,10 +17,7 @@ import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.core.text.TimeFormat;
 
-/**
- * Throwaway lifecycle-exercise game for development: joins, countdown, a 30s
- * round with a sidebar + boss bar, then a clean end with state restore.
- */
+/** Development game for exercising the session lifecycle. */
 public final class DummyGame implements Minigame {
     private static final int ROUND_SECONDS = 30;
 
@@ -79,7 +76,7 @@ public final class DummyGame implements Minigame {
             updateHud(secondsElapsed);
             if (secondsElapsed >= ROUND_SECONDS) {
                 services.messages().broadcast(
-                        Component.text("Dummy round complete!", NamedTextColor.GREEN));
+                        Component.text("Dummy round complete", NamedTextColor.GREEN));
                 services.session().endGame(EndReason.FINISHED);
             }
         }

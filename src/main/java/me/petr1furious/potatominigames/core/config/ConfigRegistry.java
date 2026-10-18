@@ -10,11 +10,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/**
- * Binds {@link PropertyBag}s to YAML files in the plugin data folder. Ships jar
- * defaults on first run, loads bags on startup/reload, and saves a bag's file
- * whenever a property is changed through the generic config command.
- */
+/** Binds {@link PropertyBag}s to YAML files; saves when a property is set by command. */
 public final class ConfigRegistry {
     private record Binding(PropertyBag bag, String fileName, String sectionPath) {
     }
@@ -27,7 +23,7 @@ public final class ConfigRegistry {
         this.plugin = plugin;
     }
 
-    /** Registers and immediately loads the bag from its file section. */
+    /** Also loads the bag immediately. */
     public void register(PropertyBag bag, String fileName, String sectionPath) {
         bindings.put(bag.id(), new Binding(bag, fileName, sectionPath));
         loadBag(bindings.get(bag.id()));
@@ -70,7 +66,7 @@ public final class ConfigRegistry {
         }
     }
 
-    /** The backing YamlConfiguration, for custom (non-PropertyBag) values in the same file. */
+    /** For non-PropertyBag values in the same file. */
     public YamlConfiguration file(String fileName) {
         return files.computeIfAbsent(fileName, this::loadFile);
     }

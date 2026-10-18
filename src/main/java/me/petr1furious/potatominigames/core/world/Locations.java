@@ -9,16 +9,13 @@ public final class Locations {
     private Locations() {
     }
 
-    /** True if a player can stand inside the two blocks at/above the location. Does not mutate the argument. */
+    /** Two passable blocks at/above the location. Does not mutate the argument. */
     public static boolean playerPassable(Location location) {
         return location.getBlock().isPassable()
                 && location.clone().add(0, 1, 0).getBlock().isPassable();
     }
 
-    /**
-     * The lowest standable spot at this column, scanning down from the given Y
-     * (falling back to a scan from world top). Null if the column is all air.
-     */
+    /** Scans down from the given Y, then from the world top. Null if the column is all air. */
     public static Location getFirstSolidBlock(Location location) {
         var world = location.getWorld();
         var y = location.getBlockY();

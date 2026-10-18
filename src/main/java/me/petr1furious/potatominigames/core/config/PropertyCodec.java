@@ -6,7 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.util.Vector;
 
-/** Converts a property between its typed value, YAML storage, and command-line strings. */
+/** Converts between typed values, YAML and command strings. */
 public interface PropertyCodec<T> {
 
     /** @throws IllegalArgumentException on bad input */

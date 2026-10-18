@@ -39,6 +39,7 @@ import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.Style;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.JoinConfiguration;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.title.Title;
@@ -48,27 +49,24 @@ import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.core.player.Participant;
+import me.petr1furious.potatominigames.core.text.Messages;
+import me.petr1furious.potatominigames.core.text.Summary;
 import me.petr1furious.potatominigames.core.text.TimeFormat;
 
-/**
- * One pillars game: everybody spawns on a bedrock pillar high above the arena, is
- * handed a random item every few seconds, and the last one standing wins.
- */
 final class PillarsSession implements GameSession {
     private enum Ending {
         FORCE, TIME_OVER, LAST_STANDING, DRAW
     }
 
-    /** What the game tracks about one player, kept across a reconnect. */
+    /** Survives reconnects. */
     private static final class PillarPlayer {
         final UUID id;
         final String name;
         final ItemPool.GroupState groups;
         int kills;
         Integer deathTick;
-        /** The spawn location on top of this player's own pillar. */
         Location pillar;
-        /** Where they died, or stood when they disconnected: where respawn puts them back. */
+        /** Death or disconnect location; used by respawn. */
         Location lastLocation;
         Integer disconnectedAt;
 
@@ -85,10 +83,10 @@ final class PillarsSession implements GameSession {
 
     private static final List<TextColor> ITEM_NOW_COLORS = List.of(TextColor.color(0x00AA22), TextColor.color(0x11FF77));
     private static final List<TextColor> ITEM_TIME_COLORS = List.of(TextColor.color(0x0022FF), TextColor.color(0x3399FF));
-    // Kept short, so that every countdown title fully replaces the previous one.
+    // Short, so each countdown title replaces the previous one.
     private static final Title.Times COUNTDOWN_TIMES =
             Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(200));
-    /** A death's draw window, and the delay before the dead are moved: 0.95 s. */
+    /** Draw window and delay before moving the dead. */
     private static final int DEATH_DELAY_TICKS = 19;
 
     private final SessionServices services;
@@ -125,15 +123,13 @@ final class PillarsSession implements GameSession {
         this.mode = config.mode(modeId);
     }
 
-    // --- start ---
-
     @Override
     public void onStart() throws CommandFailure {
         List<PillarsArena> usable = config.arenas().stream()
                 .filter(candidate -> game.slimeWorlds().templateExists(candidate.template()))
                 .toList();
         if (usable.isEmpty()) {
-            throw new CommandFailure("No pillars arena is set up yet. An admin can import them with "
+            throw new CommandFailure("No pillars arenas imported. Use "
                     + "/pillars arena import all.");
         }
         arena = usable.get(ThreadLocalRandom.current().nextInt(usable.size()));
@@ -147,7 +143,7 @@ final class PillarsSession implements GameSession {
         groups = itemConfig.groups();
         items = ItemPool.build(world, itemConfig);
         if (items.isEmpty()) {
-            throw new CommandFailure("The pillars item pool is empty; check games/pillars.yml.");
+            throw new CommandFailure("Item pool is empty; check games/pillars.yml.");
         }
 
         for (Participant participant : services.participants().all()) {
@@ -155,7 +151,7 @@ final class PillarsSession implements GameSession {
             if (player == null) {
                 continue;
             }
-            // Somebody still on the death screen cannot be teleported onto a pillar.
+            // Dead players cannot be teleported.
             if (player.isDead()) {
                 player.spigot().respawn();
             }
@@ -173,7 +169,7 @@ final class PillarsSession implements GameSession {
         for (int i = 0; i < alive.size(); i++) {
             Location spot = spots.get(i);
             placePillar(spot.getBlockX(), spot.getBlockZ());
-            // Only X and Z get centered, so players stand on their pillar instead of dropping onto it.
+            // Center X/Z only, so players stand on the pillar rather than drop onto it.
             Location location = spot.toCenterLocation();
             location.setY(spot.getY() + 1.0);
             location.setYaw((float) Math.toDegrees(Math.atan2(-(centered.getX() - location.getX()),
@@ -205,18 +201,17 @@ final class PillarsSession implements GameSession {
                 pillarPlayer.player().setInvulnerable(true);
             }
         }
-        // Only now that nothing can fail any more do the game's listeners start answering for it.
+        // Set only once nothing else can fail.
         game.setActiveSession(this);
         services.plugin().getLogger().info("Pillars (" + mode.id + ") started in arena " + arena.name() + " with "
                 + alive.size() + " players and " + items.size() + " items in the pool");
         updateHud();
-        // Without a start countdown the game is running already, so release never gets to do this.
+        // No countdown means release() never runs.
         if (started) {
             cycleItems();
         }
     }
 
-    /** Applies the arena's time of day and game rules to this game's own copy of it. */
     private void applyArenaSettings() {
         world.setGameRule(GameRules.IMMEDIATE_RESPAWN, true);
         for (Map.Entry<String, Object> entry : arena.gameRules().entrySet()) {
@@ -231,7 +226,7 @@ final class PillarsSession implements GameSession {
         }
     }
 
-    /** Looks a game rule up by name, accepting the old camel-case spelling as well as the new one. */
+    /** Accepts both old camel-case and new names. */
     private static GameRule<?> resolveGameRule(String name) {
         String wanted = normalizedRuleName(name);
         for (GameRule<?> rule : Registry.GAME_RULE) {
@@ -295,7 +290,6 @@ final class PillarsSession implements GameSession {
             }
         }
         if (candidates.size() < alive.size()) {
-            // A single player has nobody to share an arena with; the middle will do.
             return circularLayout();
         }
         java.util.Collections.shuffle(candidates);
@@ -306,7 +300,6 @@ final class PillarsSession implements GameSession {
         return new Location(world, x, config.platformHeight.get(), z);
     }
 
-    /** Builds one pillar, from the bottom of the world up to the height the players stand at. */
     private void placePillar(int x, int z) {
         Material material = config.platformMaterial.get();
         int top = (int) Math.floor(config.platformHeight.get());
@@ -314,8 +307,6 @@ final class PillarsSession implements GameSession {
             world.getBlockAt(x, y, z).setType(material, false);
         }
     }
-
-    // --- the clock ---
 
     @Override
     public void onSecondTick(long secondsElapsed) {
@@ -350,7 +341,7 @@ final class PillarsSession implements GameSession {
     }
 
     private void tickStartCountdown() {
-        // The last number needs its own second on screen, so releasing waits for the tick after it.
+        // Release on the tick after the last number so it stays on screen.
         if (startCountdown <= 0) {
             release();
             return;
@@ -358,13 +349,12 @@ final class PillarsSession implements GameSession {
         Component number = Component.text(String.valueOf(startCountdown),
                 startCountdown <= 3 ? NamedTextColor.RED : NamedTextColor.YELLOW).decorate(TextDecoration.BOLD);
         for (Player player : services.participants().onlinePlayers()) {
-            player.showTitle(Title.title(number, Component.text("Get ready!", NamedTextColor.GRAY), COUNTDOWN_TIMES));
+            player.showTitle(Title.title(number, Component.empty(), COUNTDOWN_TIMES));
         }
         playToAlive(Sound.BLOCK_NOTE_BLOCK_HAT, 0.5f, 1.0f);
         startCountdown--;
     }
 
-    /** Ends the grace period: everyone is let loose and gets their first item. */
     private void release() {
         started = true;
         for (Player player : services.participants().onlinePlayers()) {
@@ -373,16 +363,12 @@ final class PillarsSession implements GameSession {
             player.setFallDistance(0);
             player.showTitle(Title.title(
                     Component.text("GO!", NamedTextColor.GREEN).decorate(TextDecoration.BOLD),
-                    Component.text("Grab your items and start building!", NamedTextColor.GRAY), COUNTDOWN_TIMES));
+                    Component.empty(), COUNTDOWN_TIMES));
         }
         playToAlive(Sound.ENTITY_PLAYER_LEVELUP, 0.75f, 1.2f);
         cycleItems();
     }
 
-    /**
-     * Hands everyone their items and restarts the countdown. Also runs the moment the
-     * game begins, so the first items are there when players are let loose.
-     */
     private void cycleItems() {
         if (mode.id.equals("item-shuffle")) {
             for (PillarPlayer pillarPlayer : alive) {
@@ -413,8 +399,6 @@ final class PillarsSession implements GameSession {
             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 0.75f, 1.0f);
         }
     }
-
-    // --- what players see ---
 
     private Style keyStyle() {
         return Style.style(mode.accentColor(), TextDecoration.BOLD);
@@ -465,7 +449,6 @@ final class PillarsSession implements GameSession {
         return BossBar.Color.PINK;
     }
 
-    /** The animated "until next item" line, for modes that show it. */
     private void tickActionBar() {
         if (ending || !started) {
             return;
@@ -476,7 +459,7 @@ final class PillarsSession implements GameSession {
         }
         boolean now = itemCountdown <= 0;
         List<TextColor> colors = now ? ITEM_NOW_COLORS : ITEM_TIME_COLORS;
-        String text = now ? "New item(s)!" : itemCountdown + "s until next item(s)...";
+        String text = now ? "New item(s)" : "Next item in " + itemCountdown + "s";
         Component bar = MiniMessage.miniMessage().deserialize("<gradient:" + colors.get(0).asHexString() + ":"
                 + colors.get(1).asHexString() + ":" + String.format(java.util.Locale.ROOT, "%.2f", actionBarPhase)
                 + ">" + text + "</gradient>");
@@ -512,12 +495,9 @@ final class PillarsSession implements GameSession {
         services.messages().broadcast(message);
     }
 
-    // --- eliminations ---
-
     @Override
     public void onPlayerDeath(PlayerDeathEvent event) {
         PillarPlayer victim = players.get(event.getPlayer().getUniqueId());
-        // No longer count kills once the game has started ending.
         if (victim == null || ending || !alive.contains(victim)) {
             return;
         }
@@ -538,8 +518,7 @@ final class PillarsSession implements GameSession {
             return;
         }
         if (!started) {
-            // Frozen on their pillar until the countdown ends. Only horizontal movement is
-            // held, so a player slightly above their pillar settles onto it.
+            // Hold horizontal movement only, so players above the pillar settle onto it.
             if (event.getFrom().getX() != event.getTo().getX() || event.getFrom().getZ() != event.getTo().getZ()) {
                 Location held = event.getFrom().clone();
                 held.setY(event.getTo().getY());
@@ -559,7 +538,7 @@ final class PillarsSession implements GameSession {
             return;
         }
         Player player = pillarPlayer.player();
-        // An offline player has nothing to read here, but disconnecting already noted where they were.
+        // Offline players had lastLocation set on quit.
         if (player != null) {
             pillarPlayer.lastLocation = player.getLocation().clone();
         }
@@ -581,18 +560,16 @@ final class PillarsSession implements GameSession {
                     end(Ending.LAST_STANDING, survivors);
                 }
             }
-            // Ending the game already sent everyone back, and an admin respawning them
-            // within this very second has put them back on a pillar.
+            // Skip if the game ended or an admin respawned them meanwhile.
             if (!ending && !alive.contains(pillarPlayer)) {
                 placeEliminated(pillarPlayer);
             }
         }, DEATH_DELAY_TICKS);
     }
 
-    /** Eliminated players watch from above the arena until it is over. */
     private void placeEliminated(PillarPlayer pillarPlayer) {
         Player player = pillarPlayer.player();
-        // Somebody who left the game in the meantime is no longer ours to move.
+        // Left the game meanwhile.
         if (player == null || services.participants().find(pillarPlayer.id).isEmpty()) {
             return;
         }
@@ -601,15 +578,16 @@ final class PillarsSession implements GameSession {
         }
         player.setGameMode(GameMode.SPECTATOR);
         player.teleport(center);
-        player.sendMessage(Component.text()
-                .append(Component.text("You are out! Watching until the game ends. ", NamedTextColor.GRAY))
+        services.messages().send(player, Component.text()
+                .append(Component.text("You are out! ", NamedTextColor.RED))
+                .append(Component.text("Spectating until the end. ", NamedTextColor.GRAY))
                 .append(Component.text("[Leave]", NamedTextColor.AQUA)
                         .clickEvent(ClickEvent.runCommand("/play leave"))
-                        .hoverEvent(HoverEvent.showText(Component.text("Go back now", NamedTextColor.GRAY))))
+                        .hoverEvent(HoverEvent.showText(Component.text("/play leave", NamedTextColor.GRAY))))
                 .build());
     }
 
-    /** Where the dead respawn (immediate respawn is on): above the arena, never the template's spawn. */
+    /** Never the template's spawn. */
     Location respawnPoint() {
         return center;
     }
@@ -622,14 +600,10 @@ final class PillarsSession implements GameSession {
         return world != null && world.equals(candidate);
     }
 
-    // --- admin: respawn and time ---
-
     /**
-     * Puts a player who is out, or stuck, back into the game: for when the game itself
-     * got somebody killed, like a death on the very tick it started. They come back
-     * where they were, so whatever they built is still theirs to stand on.
+     * Admin fix for unfair deaths; puts the player back where they were.
      *
-     * @return false if they were never part of this game, are offline, or it is over
+     * @return false if not in this game, offline, or the game is ending
      */
     boolean respawn(Player player) {
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
@@ -656,18 +630,14 @@ final class PillarsSession implements GameSession {
         player.teleport(destination);
         player.setVelocity(new Vector());
         player.setFallDistance(0);
-        // Everybody else is frozen and protected until the grace period ends, so a late arrival is too.
+        // Match everyone else during the start countdown.
         player.setInvulnerable(!started);
-        announce(Component.text(player.getName() + " is back in the game!", NamedTextColor.GREEN));
+        announce(Component.text(player.getName() + " is back in the game", NamedTextColor.GREEN));
         updateHud();
         return true;
     }
 
-    /**
-     * Where a respawning player belongs: where they died, if they can actually stand
-     * there; otherwise back on their own pillar. Somebody killed while falling, or who
-     * fell into the void, would only die again where they were.
-     */
+    /** Last location if safe to stand on, else their pillar. */
     private Location respawnLocation(PillarPlayer pillarPlayer) {
         Location last = pillarPlayer.lastLocation;
         if (last != null && last.getWorld() == world && last.getY() >= config.deathHeight() && canStandAt(last)) {
@@ -691,20 +661,20 @@ final class PillarsSession implements GameSession {
 
     void addTime(long seconds) {
         timeLeft += seconds;
-        announceTimeChange("The game time was extended by " + TimeFormat.words(seconds) + " - "
-                + TimeFormat.words(timeLeft) + " left!");
+        announceTimeChange("Time extended by " + TimeFormat.words(seconds) + ", "
+                + TimeFormat.words(timeLeft) + " left");
     }
 
     void removeTime(long seconds) {
-        // Clamped at zero, which ends the game on the next tick.
+        // Zero ends the game on the next tick.
         timeLeft = Math.max(0, timeLeft - seconds);
-        announceTimeChange("The game time was reduced by " + TimeFormat.words(seconds) + " - "
-                + TimeFormat.words(timeLeft) + " left!");
+        announceTimeChange("Time reduced by " + TimeFormat.words(seconds) + ", "
+                + TimeFormat.words(timeLeft) + " left");
     }
 
     void setTime(long seconds) {
         timeLeft = Math.max(0, seconds);
-        announceTimeChange("The game time was set to " + TimeFormat.words(timeLeft) + "!");
+        announceTimeChange("Time set to " + TimeFormat.words(timeLeft));
     }
 
     private void announceTimeChange(String message) {
@@ -738,8 +708,6 @@ final class PillarsSession implements GameSession {
         return lines;
     }
 
-    // --- connections ---
-
     @Override
     public void onParticipantQuit(Player player) {
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
@@ -751,11 +719,10 @@ final class PillarsSession implements GameSession {
             eliminate(pillarPlayer);
             return;
         }
-        // They keep their spot until the grace period runs out.
         pillarPlayer.disconnectedAt = Bukkit.getCurrentTick();
         pillarPlayer.lastLocation = player.getLocation().clone();
-        announce(Component.text(player.getName() + " disconnected and has " + TimeFormat.words(grace)
-                + " to reconnect.", NamedTextColor.YELLOW));
+        announce(Component.text(player.getName() + " disconnected, " + TimeFormat.words(grace)
+                + " to reconnect", NamedTextColor.YELLOW));
     }
 
     @Override
@@ -764,13 +731,13 @@ final class PillarsSession implements GameSession {
         if (pillarPlayer == null || ending) {
             return;
         }
-        // Teleports right inside the join event are unreliable.
+        // Teleports in the join event are unreliable.
         Bukkit.getScheduler().runTask(services.plugin(), () -> {
             if (!player.isOnline() || ending) {
                 return;
             }
             if (!alive.contains(pillarPlayer)) {
-                // They ran out of time while away, so they only watch now.
+                // Grace expired while away.
                 placeEliminated(pillarPlayer);
                 return;
             }
@@ -778,14 +745,14 @@ final class PillarsSession implements GameSession {
             if (bossBar != null) {
                 player.showBossBar(bossBar);
             }
-            // Logging back in below the death height would kill them at once.
+            // Below death height would kill them instantly.
             if (pillarPlayer.pillar != null && player.getLocation().getY() < config.deathHeight()) {
                 player.teleport(pillarPlayer.pillar);
                 player.setVelocity(new Vector());
                 player.setFallDistance(0);
             }
             pillarPlayer.disconnectedAt = null;
-            announce(Component.text(player.getName() + " is back in the game!", NamedTextColor.YELLOW));
+            announce(Component.text(player.getName() + " reconnected", NamedTextColor.YELLOW));
             updateHud();
         });
     }
@@ -802,7 +769,6 @@ final class PillarsSession implements GameSession {
         }
     }
 
-    /** Eliminates everyone whose reconnect grace period has run out. */
     private void tickDisconnects() {
         int grace = config.reconnectGraceSeconds.get();
         if (grace <= 0) {
@@ -811,7 +777,7 @@ final class PillarsSession implements GameSession {
         int now = Bukkit.getCurrentTick();
         for (PillarPlayer pillarPlayer : List.copyOf(alive)) {
             if (pillarPlayer.disconnectedAt != null && (now - pillarPlayer.disconnectedAt) / 20 >= grace) {
-                announce(Component.text(pillarPlayer.name + " did not reconnect in time and is out.",
+                announce(Component.text(pillarPlayer.name + " did not reconnect and is out",
                         NamedTextColor.YELLOW));
                 eliminate(pillarPlayer);
             }
@@ -829,8 +795,6 @@ final class PillarsSession implements GameSession {
         return center;
     }
 
-    // --- the end ---
-
     private void end(Ending cause, List<PillarPlayer> winnerList) {
         if (ending) {
             return;
@@ -841,24 +805,15 @@ final class PillarsSession implements GameSession {
         String winnerNames = String.join(" & ", winners.stream().map(p -> p.name).toList());
         int winnerKills = winners.stream().mapToInt(p -> p.kills).sum();
         Title title = switch (cause) {
-            case FORCE -> Title.title(Component.text("Game forcefully ended!", NamedTextColor.YELLOW),
-                    Component.text("It's forced, so there are no winners!", NamedTextColor.RED));
-            case TIME_OVER -> Title.title(Component.text("Time's over!", NamedTextColor.GREEN),
-                    Component.text("The game ends, because the time is over!", NamedTextColor.YELLOW));
+            case FORCE -> Title.title(Component.text("Game stopped", NamedTextColor.YELLOW), Component.empty());
+            case TIME_OVER -> Title.title(Component.text("Time's up!", NamedTextColor.GREEN), Component.empty());
             case LAST_STANDING -> Title.title(Component.text(winnerNames + " wins!", NamedTextColor.GREEN),
-                    Component.text("With " + winnerKills + " kill(s)!", NamedTextColor.YELLOW));
+                    Component.text(Messages.count(winnerKills, "kill"), NamedTextColor.YELLOW));
             case DRAW -> Title.title(Component.text("Draw!", NamedTextColor.GREEN),
-                    Component.text(winnerNames + " died at the same time!", NamedTextColor.YELLOW));
+                    Component.text(winnerNames, NamedTextColor.YELLOW));
         };
-        List<PillarPlayer> ranked = new ArrayList<>(players.values());
-        ranked.sort(Comparator.comparingInt((PillarPlayer p) -> p.kills).reversed());
         for (Player player : services.participants().onlinePlayers()) {
             player.showTitle(title);
-        }
-        announce(Component.text("=== Top Players ===", NamedTextColor.GREEN).decorate(TextDecoration.BOLD));
-        for (int i = 0; i < ranked.size(); i++) {
-            announce(MiniMessage.miniMessage().deserialize("<dark_gray>" + (i + 1) + ". <gray>" + ranked.get(i).name
-                    + " <dark_gray>(<gold>" + ranked.get(i).kills + "<red>⚔<dark_gray>)"));
         }
         if (cause == Ending.LAST_STANDING || cause == Ending.DRAW) {
             for (PillarPlayer winner : winners) {
@@ -873,7 +828,7 @@ final class PillarsSession implements GameSession {
     @Override
     public void onEnd(EndReason reason) {
         if (!ending) {
-            // An admin stopped it, or everybody left.
+            // Stopped by an admin, or everyone left.
             end(Ending.FORCE, List.of());
         }
         if (actionBarTask != null) {
@@ -890,6 +845,37 @@ final class PillarsSession implements GameSession {
     }
 
     @Override
+    public List<Component> summary() {
+        List<Component> lines = new ArrayList<>();
+        if (endingCause != null) {
+            List<Component> names = new ArrayList<>();
+            for (PillarPlayer winner : winners) {
+                names.add(Component.text(winner.name, NamedTextColor.WHITE));
+            }
+            lines.add(switch (endingCause) {
+                case LAST_STANDING -> Summary.winners(names);
+                case DRAW -> Component.text().append(Component.text("Draw: ", NamedTextColor.YELLOW))
+                        .append(Component.join(JoinConfiguration.separator(Component.text(" & ", NamedTextColor.GRAY)),
+                                names))
+                        .build();
+                case TIME_OVER -> Component.text("Time's up, nobody won", NamedTextColor.YELLOW);
+                case FORCE -> Component.text("Stopped, nobody won", NamedTextColor.YELLOW);
+            });
+            lines.add(Component.empty());
+        }
+        lines.add(Component.text("Kills", NamedTextColor.GRAY));
+        List<PillarPlayer> ranked = new ArrayList<>(players.values());
+        ranked.sort(Comparator.comparingInt((PillarPlayer p) -> p.kills).reversed()
+                .thenComparing(p -> !winners.contains(p)));
+        for (int i = 0; i < ranked.size(); i++) {
+            lines.add(Summary.rank(i + 1, Component.text(ranked.get(i).name, NamedTextColor.GRAY),
+                    Component.text().append(Component.text(ranked.get(i).kills, NamedTextColor.GOLD))
+                            .append(Component.text("⚔", NamedTextColor.RED)).build()));
+        }
+        return lines;
+    }
+
+    @Override
     public Component globalResult() {
         Component name = Component.text("Pillars", NamedTextColor.LIGHT_PURPLE);
         String winnerNames = String.join(" & ", winners.stream().map(p -> p.name).toList());
@@ -903,7 +889,7 @@ final class PillarsSession implements GameSession {
         }
         if (endingCause == Ending.TIME_OVER) {
             return Component.text().append(name)
-                    .append(Component.text(" ended: time is over", NamedTextColor.GREEN)).build();
+                    .append(Component.text(" ended: time's up", NamedTextColor.GREEN)).build();
         }
         return null;
     }

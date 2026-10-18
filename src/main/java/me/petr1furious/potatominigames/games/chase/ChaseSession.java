@@ -41,39 +41,23 @@ import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.core.text.TimeFormat;
+import me.petr1furious.potatominigames.core.text.Summary;
 import me.petr1furious.potatominigames.core.world.ArenaBiomes;
 import me.petr1furious.potatominigames.gadgets.Gadget;
 import me.petr1furious.potatominigames.gadgets.GadgetRegistry;
 import me.petr1furious.potatominigames.gadgets.TrackerCompassGadget;
 
-/**
- * Chase (formerly Ultimate Tag). Every possible set of hunters gets exactly one
- * round: hunters start in one corner of a small border, runners in the opposite
- * one, and a runner is out when a hunter touches them or they die. Surviving
- * runners score, and so does every hunter for each runner caught.
- *
- * <p>The constants behind all this live in {@link ChaseConfig} and come from the
- * original plugin's play-tested values.
- */
+/** Formerly Ultimate Tag. One round per possible hunter set. */
 final class ChaseSession implements GameSession {
-    /** Guard against a combinatorial explosion of hunter sets, as the original did. */
     private static final int MAX_HUNTER_SETS = 100;
-    /** How far a round's arena may be placed from the world origin. */
     private static final int ARENA_SPREAD = 5000;
-    /** Corners sit this far inside the border, matching the original. */
     private static final int CORNER_INSET = 3;
-    /** Spacing of the arena ground-height samples; finer than the altitude band needs. */
     private static final int GROUND_SAMPLE_STEP = 4;
-    /**
-     * How many samples either side the altitude band looks at (2 = about 8 blocks),
-     * so the ground right next to a cliff or a ravine is judged by both levels.
-     */
+    /** Samples either side considered, so ground beside a cliff counts both levels. */
     private static final int GROUND_NEIGHBOURHOOD = 2;
-    /** Taller than any generated tree, so the trunk scan always reaches the ground. */
+    /** Taller than any generated tree. */
     private static final int MAX_TREE_HEIGHT = 40;
-    /** Arena locations tried before settling for one whose spawn is in water. */
     private static final int ARENA_ATTEMPTS = 20;
-    /** How far from its corner a spawn may move looking for dry land. */
     private static final int DRY_SEARCH_RADIUS = 12;
 
     private enum RoundPhase {
@@ -88,7 +72,6 @@ final class ChaseSession implements GameSession {
     private final Map<UUID, Integer> scores = new HashMap<>();
     private final Set<UUID> hunters = new HashSet<>();
     private final Set<UUID> caught = new HashSet<>();
-    /** Every combination of hunters, in a shuffled order; one round each. */
     private final List<List<UUID>> hunterSets = new ArrayList<>();
 
     private World world;
@@ -98,15 +81,14 @@ final class ChaseSession implements GameSession {
     private int roundLengthSeconds;
     private BossBar timerBar;
     private boolean ended = false;
+    private EndReason endReason;
     private boolean waitingMessageSent = false;
 
     private Location hunterSpawn;
     private Location runnerSpawn;
-    /** Ground heights across the arena, sampled every {@link #GROUND_SAMPLE_STEP} blocks. */
     private int[][] groundSamples;
     private int groundOriginX;
     private int groundOriginZ;
-    /** How long each player has been outside the altitude band, in seconds. */
     private final Map<UUID, Integer> outOfBounds = new HashMap<>();
 
     ChaseSession(SessionServices services, ChaseConfig config, GadgetRegistry gadgets) {
@@ -114,8 +96,6 @@ final class ChaseSession implements GameSession {
         this.config = config;
         this.gadgets = gadgets;
     }
-
-    // --- lifecycle ---
 
     @Override
     public void onStart() throws CommandFailure {
@@ -126,8 +106,7 @@ final class ChaseSession implements GameSession {
         buildHunterSets(roster);
 
         world = services.worlds().create("chase");
-        // Drops and mobs behave normally; only natural spawning is off so a timed
-        // round is never decided by a creeper, and the sky stays put.
+        // No natural mob spawns; time and weather frozen.
         world.setGameRule(GameRules.SPAWN_MOBS, false);
         world.setGameRule(GameRules.SHOW_ADVANCEMENT_MESSAGES, false);
         world.setGameRule(GameRules.ADVANCE_TIME, false);
@@ -147,7 +126,6 @@ final class ChaseSession implements GameSession {
         startNextRound();
     }
 
-    /** All C(players, hunterCount) subsets, shuffled, one per round. */
     private void buildHunterSets(List<Player> roster) throws CommandFailure {
         List<UUID> ids = new ArrayList<>();
         for (Player player : roster) {
@@ -157,8 +135,8 @@ final class ChaseSession implements GameSession {
         hunterSets.clear();
         collectSubsets(ids, size, 0, new ArrayList<>());
         if (hunterSets.size() > MAX_HUNTER_SETS) {
-            throw new CommandFailure("Too many combinations of hunters (" + hunterSets.size()
-                    + ") — raise hunterCount or play with fewer people.");
+            throw new CommandFailure("Too many hunter combinations (" + hunterSets.size()
+                    + "); raise hunterCount or use fewer players.");
         }
         Collections.shuffle(hunterSets, random);
     }
@@ -185,7 +163,7 @@ final class ChaseSession implements GameSession {
         switch (phase) {
             case FREEZE -> {
                 phaseSecondsLeft--;
-                updateTimerBar(Component.text("Get ready — " + phaseSecondsLeft + "s", NamedTextColor.YELLOW),
+                updateTimerBar(Component.text("Starting in " + phaseSecondsLeft + "s", NamedTextColor.YELLOW),
                         (float) phaseSecondsLeft / Math.max(1, config.freezeSeconds.get()));
                 if (phaseSecondsLeft <= 0) {
                     beginHunting();
@@ -215,7 +193,7 @@ final class ChaseSession implements GameSession {
                     startNextRound();
                 } else if (!waitingMessageSent) {
                     waitingMessageSent = true;
-                    broadcast(Component.text("Waiting for all Chase players to return.", NamedTextColor.GOLD));
+                    broadcast(Component.text("Waiting for players to return.", NamedTextColor.GOLD));
                     updateTimerBar(Component.text("Waiting for players…", NamedTextColor.GRAY), 1.0f);
                 }
             }
@@ -237,8 +215,8 @@ final class ChaseSession implements GameSession {
     @Override
     public void onEnd(EndReason reason) {
         ended = true;
+        endReason = reason;
         phase = RoundPhase.NONE;
-        announceStandings("Final standings:");
         if (reason == EndReason.FINISHED) {
             for (UUID winner : topScorers()) {
                 services.points().add("chase", winner, 1);
@@ -248,8 +226,6 @@ final class ChaseSession implements GameSession {
             services.arena().restoreBorder(world);
         }
     }
-
-    // --- rounds ---
 
     private void startNextRound() {
         roundIndex++;
@@ -277,21 +253,21 @@ final class ChaseSession implements GameSession {
                 giveHunterKit(player);
                 player.showTitle(Title.title(
                         Component.text("Round " + (roundIndex + 1), NamedTextColor.AQUA),
-                        Component.text("You are a HUNTER!", NamedTextColor.RED)));
+                        Component.text("Hunter", NamedTextColor.RED)));
             } else {
                 giveRunnerKit(player, runnerTools);
                 player.showTitle(Title.title(
                         Component.text("Round " + (roundIndex + 1), NamedTextColor.AQUA),
-                        Component.text("RUN!", NamedTextColor.GREEN)));
+                        Component.text("Runner", NamedTextColor.GREEN)));
             }
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, hunter ? 0.7f : 1.4f);
         }
 
         broadcast(Component.text("Round " + (roundIndex + 1) + "/" + hunterSets.size()
-                + " of Chase has started!", NamedTextColor.GOLD));
+                + " started", NamedTextColor.GOLD));
         broadcast(Component.text()
                 .append(hunterNames())
-                .append(Component.text(hunters.size() == 1 ? " is the hunter!" : " are the hunters!",
+                .append(Component.text(hunters.size() == 1 ? " is the hunter" : " are the hunters",
                         NamedTextColor.GOLD))
                 .build());
 
@@ -300,13 +276,8 @@ final class ChaseSession implements GameSession {
     }
 
     /**
-     * A fresh patch of terrain every round, as the original did: random coordinates
-     * whose two spawn corners are both on dry land.
-     *
-     * <p>Only the centre comes from the biome search, and the corners sit most of a
-     * border away from it — a beach or river centre can easily put a corner out at
-     * sea. So each candidate is checked at the corners themselves: first their
-     * biomes (free, no chunks generated), then the actual blocks.
+     * New terrain each round. Corners are checked separately from the centre (biome
+     * first, then blocks), since a coastal centre can put a corner at sea.
      */
     private void placeArena() {
         int border = Math.max(16, config.borderSize.get());
@@ -351,11 +322,7 @@ final class ChaseSession implements GameSession {
         return ArenaBiomes.isSuitable(world.getBiome(x, world.getSeaLevel(), z));
     }
 
-    /**
-     * The arena corner, nudged to the nearest dry column inside the border, or null
-     * if there is none nearby. A corner over a lake or the sea would otherwise start
-     * players swimming, and idle ones simply drown. Solid ground beats a treetop.
-     */
+    /** Nearest dry column inside the border, preferring ground over treetops; null if none. */
     private Location cornerSpawn(int x, int z, int centerX, int centerZ, int border) {
         int reach = border / 2 - 1;
         Block treetop = null;
@@ -363,10 +330,10 @@ final class ChaseSession implements GameSession {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
-                        continue; // only the new ring, not the filled square
+                        continue; // ring only
                     }
                     if (Math.abs(x + dx - centerX) > reach || Math.abs(z + dz - centerZ) > reach) {
-                        continue; // the border would hurt anyone standing here
+                        continue; // outside the border
                     }
                     Block top = world.getHighestBlockAt(x + dx, z + dz);
                     if (top.isLiquid()) {
@@ -384,12 +351,7 @@ final class ChaseSession implements GameSession {
         return treetop == null ? null : treetop.getLocation().add(0.5, 2, 0.5);
     }
 
-    /**
-     * A coarse height map of the arena, taken before anyone can build. Sampling the
-     * real terrain is what lets the altitude band follow hills and valleys instead
-     * of guessing from two corners, and taking it up front means a player's own
-     * tower can never raise the ceiling above them.
-     */
+    /** Taken before building starts, so player towers cannot raise the band. */
     private void sampleGround(int centerX, int centerZ, int border) {
         long startedAt = System.currentTimeMillis();
         groundOriginX = centerX - border / 2;
@@ -411,12 +373,7 @@ final class ChaseSession implements GameSession {
                 + (System.currentTimeMillis() - startedAt) + "ms");
     }
 
-    /**
-     * The land surface of a column: the top of whatever you could stand on or swim
-     * in, with trees taken off. The plain highest block counts a canopy as ground,
-     * which lifts the band clean off the forest floor, so a jungle made standing on
-     * the grass "too low" and allowed towers far above the trees.
-     */
+    /** Surface height ignoring trees; a canopy would otherwise lift the band off the forest floor. */
     private int terrainY(int x, int z) {
         int y = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING_NO_LEAVES);
         int stop = Math.max(world.getMinHeight(), y - MAX_TREE_HEIGHT);
@@ -426,7 +383,7 @@ final class ChaseSession implements GameSession {
         return y;
     }
 
-    /** What stands on the terrain rather than being it (leaves are already excluded). */
+    /** Leaves are already excluded by the height map. */
     private static boolean isTreePart(Material type) {
         return Tag.LOGS.isTagged(type)
                 || type == Material.MUSHROOM_STEM
@@ -438,12 +395,7 @@ final class ChaseSession implements GameSession {
                 || type == Material.MANGROVE_ROOTS;
     }
 
-    /**
-     * Lowest and highest ground around a position, from the pre-round sample. A
-     * single nearest sample made the band jump with whatever that one column hit:
-     * stand at the foot of a cliff next to a sample on top of it (or on a ledge over
-     * a ravine) and the band no longer contained the ground under your feet.
-     */
+    /** Min/max over neighbouring samples; a single sample misjudges cliffs and ravines. */
     private int[] groundRangeAt(int x, int z) {
         if (groundSamples == null) {
             return new int[] { world.getSeaLevel(), world.getSeaLevel() };
@@ -465,12 +417,11 @@ final class ChaseSession implements GameSession {
     private void beginHunting() {
         phase = RoundPhase.HUNTING;
         phaseSecondsLeft = roundLengthSeconds;
-        broadcast(Component.text("The hunt is on!", NamedTextColor.RED));
+        broadcast(Component.text("Hunt started", NamedTextColor.RED));
         services.messages().playSound(services.participants().onlinePlayers(),
                 Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 1.4f);
     }
 
-    /** Two of the four possible tools, drawn fresh each round. */
     private List<ItemStack> rollRunnerTools() {
         List<ItemStack> pool = new ArrayList<>(List.of(
                 unbreaking(new ItemStack(Material.WOODEN_PICKAXE)),
@@ -551,7 +502,6 @@ final class ChaseSession implements GameSession {
         return result;
     }
 
-    /** A round is over once one whole side is out. */
     private void checkRoundEnd() {
         if (phase != RoundPhase.HUNTING && phase != RoundPhase.FREEZE) {
             return;
@@ -562,7 +512,7 @@ final class ChaseSession implements GameSession {
     }
 
     private void endRound() {
-        // Surviving runners score once per hunter; every hunter scores for each catch.
+        // Survivors score once per hunter; hunters score per catch.
         int hunterCount = hunters.size();
         Map<UUID, Integer> earned = new HashMap<>();
         int caughtRunners = 0;
@@ -584,8 +534,8 @@ final class ChaseSession implements GameSession {
 
         int survivors = aliveRunners().size();
         broadcast(Component.text()
-                .append(Component.text("Round " + (roundIndex + 1) + " over — ", NamedTextColor.GOLD))
-                .append(Component.text(survivors + " runner(s) survived.", NamedTextColor.GREEN))
+                .append(Component.text("Round " + (roundIndex + 1) + " over: ", NamedTextColor.GOLD))
+                .append(Component.text(survivors + " runner(s) survived", NamedTextColor.GREEN))
                 .build());
         announceStandings("Current scores:");
 
@@ -595,15 +545,6 @@ final class ChaseSession implements GameSession {
 
     private void finishGame() {
         phase = RoundPhase.NONE;
-        List<UUID> winners = topScorers();
-        if (!winners.isEmpty()) {
-            List<Component> names = new ArrayList<>();
-            for (UUID id : winners) {
-                names.add(Component.text(nameOf(id), NamedTextColor.GOLD));
-            }
-            broadcast(Component.text("Game over! Winner: ", NamedTextColor.GOLD)
-                    .append(Component.join(JoinConfiguration.commas(true), names)));
-        }
         if (!ended) {
             services.session().endGame(EndReason.FINISHED);
         }
@@ -624,6 +565,33 @@ final class ChaseSession implements GameSession {
             }
         }
         return winners;
+    }
+
+    @Override
+    public List<Component> summary() {
+        List<Component> lines = new ArrayList<>();
+        List<UUID> winners = endReason == EndReason.FINISHED ? topScorers() : List.of();
+        if (!winners.isEmpty()) {
+            List<Component> names = new ArrayList<>();
+            for (UUID id : winners) {
+                names.add(Component.text(nameOf(id), NamedTextColor.WHITE));
+            }
+            lines.add(Summary.winners(names));
+            lines.add(Component.empty());
+        }
+        lines.add(Component.text("Scores", NamedTextColor.GRAY));
+        int place = 1;
+        for (Map.Entry<UUID, Integer> entry : sortedScores()) {
+            lines.add(Summary.rank(place++, Component.text(nameOf(entry.getKey()), NamedTextColor.GRAY),
+                    Component.text(entry.getValue(), NamedTextColor.GOLD)));
+        }
+        return lines;
+    }
+
+    private List<Map.Entry<UUID, Integer>> sortedScores() {
+        List<Map.Entry<UUID, Integer>> sorted = new ArrayList<>(scores.entrySet());
+        sorted.sort(Map.Entry.<UUID, Integer>comparingByValue().reversed());
+        return sorted;
     }
 
     private void announceStandings(String header) {
@@ -652,14 +620,10 @@ final class ChaseSession implements GameSession {
         return Component.join(JoinConfiguration.commas(true), names);
     }
 
-    // --- tracking ---
-
     @Override
     public Collection<Player> getTrackedPlayers(Player viewer) {
         return hunters.contains(viewer.getUniqueId()) ? aliveRunners() : List.of();
     }
-
-    // --- event hooks ---
 
     @Override
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
@@ -679,19 +643,18 @@ final class ChaseSession implements GameSession {
             event.setCancelled(true);
             return;
         }
-        // Runners can fight back: an ordinary hit, it just doesn't tag anyone.
+        // Runner hits deal damage but do not tag.
         if (!attackerHunter) {
             return;
         }
         catchPlayer(victim, Component.text()
                 .append(Component.text(attacker.getName(), NamedTextColor.RED))
-                .append(Component.text(" has tagged ", NamedTextColor.GOLD))
+                .append(Component.text(" tagged ", NamedTextColor.GOLD))
                 .append(Component.text(victim.getName(), NamedTextColor.AQUA))
-                .append(Component.text("!", NamedTextColor.GOLD))
                 .build());
     }
 
-    /** Dying counts as being caught, for hunters and runners alike. */
+    /** Death counts as caught, for both sides. */
     @Override
     public void onPlayerDeath(PlayerDeathEvent event) {
         Player player = event.getPlayer();
@@ -706,11 +669,10 @@ final class ChaseSession implements GameSession {
         catchPlayer(player, Component.text()
                 .append(Component.text(player.getName(),
                         hunters.contains(player.getUniqueId()) ? NamedTextColor.RED : NamedTextColor.AQUA))
-                .append(Component.text(" has died!", NamedTextColor.GOLD))
+                .append(Component.text(" died", NamedTextColor.GOLD))
                 .build());
     }
 
-    /** Nobody moves during the short pre-round pause. */
     @Override
     public void onPlayerMove(PlayerMoveEvent event) {
         if (phase != RoundPhase.FREEZE || !services.participants().isParticipant(event.getPlayer())) {
@@ -723,13 +685,7 @@ final class ChaseSession implements GameSession {
         }
     }
 
-    /**
-     * Keeps players near the surface without ever refusing a block, so tunnelling to
-     * bedrock or towering into the sky stops being useful rather than being
-     * forbidden — and nobody can be sealed in by a cancelled edit. Stray outside the
-     * band and you are warned, then lit up for the hunters, then hurt until you come
-     * back.
-     */
+    /** Out of band: warn, then glow, then damage. Blocks are never refused, so nobody gets sealed in. */
     private void enforceAltitude() {
         int glowAfter = Math.max(1, config.glowAfterSeconds.get());
         int damageAfter = Math.max(glowAfter, config.damageAfterSeconds.get());
@@ -750,21 +706,18 @@ final class ChaseSession implements GameSession {
             }
 
             int seconds = outOfBounds.merge(id, 1, Integer::sum);
-            String heading = tooLow ? "Too low!" : "Too high!";
+            String heading = tooLow ? "Too low." : "Too high.";
             if (seconds >= glowAfter) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 60, 0, false, false));
             }
-            // Deliberately vague about *where* to go: the band is a range around the
-            // local ground, so staying underground or up a pillar is fine, just not
-            // this far out.
             if (seconds >= damageAfter) {
                 player.damage(2.0);
-                player.sendActionBar(Component.text(heading + " Get back to the arena!", NamedTextColor.RED));
+                player.sendActionBar(Component.text(heading + " Return to the arena.", NamedTextColor.RED));
             } else if (seconds >= glowAfter) {
-                player.sendActionBar(Component.text(heading + " You are glowing — everyone can see you!",
+                player.sendActionBar(Component.text(heading + " You are glowing.",
                         NamedTextColor.RED));
             } else {
-                player.sendActionBar(Component.text(heading + " Get back to the arena within "
+                player.sendActionBar(Component.text(heading + " Return to the arena within "
                         + (glowAfter - seconds) + "s", NamedTextColor.YELLOW));
             }
         }
@@ -776,11 +729,7 @@ final class ChaseSession implements GameSession {
         }
     }
 
-    // --- roster changes ---
-
-    // The whole round schedule is fixed when the game starts, so the roster is too:
-    // a latecomer could never take a turn as hunter, and a leaver would blank out
-    // the rounds they were drawn for.
+    // The round schedule is fixed at start, so the roster is too.
 
     @Override
     public void onParticipantQuit(Player player) {
@@ -800,14 +749,12 @@ final class ChaseSession implements GameSession {
             player.showBossBar(timerBar);
         }
         if (phase == RoundPhase.HUNTING || phase == RoundPhase.FREEZE) {
-            // They were marked out when they dropped; they are back in next round.
+            // Marked caught on quit; back in next round.
             services.playerState().makeSpectator(player, 0);
             player.teleport(runnerSpawn != null ? runnerSpawn : world.getSpawnLocation());
         }
         updateSidebar();
     }
-
-    // --- HUD ---
 
     private void updateTimerBar(Component name, float progress) {
         if (timerBar != null) {

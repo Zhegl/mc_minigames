@@ -26,18 +26,14 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
 /**
- * Snapshots players before a game (or before the lobby) and restores them after,
- * plus the shared "make this player a clean participant" reset used at round start.
- *
- * <p>Snapshots are written to {@code data/snapshots/<uuid>.yml} as soon as they are
- * taken: a player can wait in the lobby for hours with their real inventory held
- * here, so a restart must not lose it.
+ * Player snapshots and the round-start reset. Snapshots are written to
+ * {@code data/snapshots/<uuid>.yml} immediately so a restart cannot lose them.
  */
 public final class PlayerStateService {
     private final JavaPlugin plugin;
     private final File folder;
     private final Map<UUID, PlayerSnapshot> snapshots = new HashMap<>();
-    /** Players whose saved snapshot could not be read; their file must never be overwritten. */
+    /** Unreadable snapshots; their files must never be overwritten. */
     private final java.util.Set<UUID> unreadable = new java.util.HashSet<>();
 
     public PlayerStateService(JavaPlugin plugin) {
@@ -49,7 +45,6 @@ public final class PlayerStateService {
         put(player.getUniqueId(), PlayerSnapshot.of(player));
     }
 
-    /** Takes a snapshot unless one already exists; returns whether one was taken. */
     public boolean snapshotIfAbsent(Player player) {
         if (hasSnapshot(player.getUniqueId())) {
             return false;
@@ -63,7 +58,7 @@ public final class PlayerStateService {
         write(id, snapshot);
     }
 
-    /** The gamemode a player had when their snapshot was taken, or null without one. */
+    /** Null without a snapshot. */
     public GameMode snapshotGameMode(UUID id) {
         PlayerSnapshot snapshot = snapshots.get(id);
         return snapshot == null ? null : snapshot.gameMode();
@@ -73,7 +68,6 @@ public final class PlayerStateService {
         return snapshots.containsKey(id);
     }
 
-    /** Restores and forgets the snapshot. Returns false if none was taken. */
     public boolean restore(Player player) {
         PlayerSnapshot snapshot = take(player.getUniqueId());
         if (snapshot == null) {
@@ -83,7 +77,6 @@ public final class PlayerStateService {
         return true;
     }
 
-    /** Restores everything but the location, and forgets the snapshot. */
     public boolean restoreInPlace(Player player) {
         PlayerSnapshot snapshot = take(player.getUniqueId());
         if (snapshot == null) {
@@ -111,7 +104,7 @@ public final class PlayerStateService {
 
     private void write(UUID id, PlayerSnapshot snapshot) {
         if (unreadable.remove(id)) {
-            // Kept aside instead: it may only be its world that is missing, and it holds their things.
+            // Kept: perhaps only its world is missing.
             File old = fileFor(id);
             File aside = new File(folder, id + ".yml.unreadable-" + System.currentTimeMillis());
             if (old.renameTo(aside)) {
@@ -128,10 +121,7 @@ public final class PlayerStateService {
         }
     }
 
-    /**
-     * Reads the snapshots saved by an earlier run. Called once the server has finished
-     * starting, because a snapshot can point into a world another plugin loads.
-     */
+    /** Called after startup: a snapshot can point into a world another plugin loads. */
     public void loadSaved() {
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files == null) {
@@ -151,11 +141,11 @@ public final class PlayerStateService {
                     snapshots.put(id, snapshot);
                 } else {
                     unreadable.add(id);
-                    // Kept on disk rather than deleted: it may only be its world that is missing.
+                    // Kept: perhaps only its world is missing.
                     plugin.getLogger().warning("Snapshot " + name + " is unreadable (world gone?), skipping it");
                 }
             } catch (RuntimeException exception) {
-                // An unknown world in the location lands here; the file stays, untouched.
+                // e.g. an unknown world; the file is left untouched.
                 unreadable.add(id);
                 plugin.getLogger().log(Level.WARNING, "Could not read snapshot " + name, exception);
             }
@@ -165,10 +155,7 @@ public final class PlayerStateService {
         }
     }
 
-    /**
-     * Full clean slate for a game round: gamemode, health, food, effects, inventory,
-     * flight, velocity, air, fall distance. Does not teleport.
-     */
+    /** Resets all player state except location. */
     public void resetForRound(Player player, GameMode gameMode) {
         player.setGameMode(gameMode);
         player.setFlying(false);

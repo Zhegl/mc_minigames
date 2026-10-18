@@ -44,26 +44,26 @@ import me.petr1furious.potatominigames.core.lobby.LobbyService;
 import me.petr1furious.potatominigames.core.session.ActiveSession;
 import me.petr1furious.potatominigames.core.session.SessionManager;
 import me.petr1furious.potatominigames.core.team.TeamColor;
+import me.petr1furious.potatominigames.core.text.Messages;
 
 /**
- * One queue per game and mode, which starts its game by itself once enough players
- * are in it. A player is in at most one queue at a time.
+ * One auto-starting queue per game and mode; a player is in at most one.
  *
- * <p>Once a queue has its minimum, it counts down from {@code countdownSeconds}.
- * The countdown only ever gets shorter: to {@code everyoneQueuedSeconds} once every
- * free player online is in this queue, and to {@code voteSeconds} once the queue
- * votes to start (all but one of three or more, both of two, the only one of one).
- * It is cancelled if the queue drops below its minimum.
+ * <p>At its minimum a queue counts down from {@code countdownSeconds}, shortened (never
+ * lengthened) to {@code everyoneQueuedSeconds} when every free player is in it and to
+ * {@code voteSeconds} on a start vote (all but one of 3+, both of 2, the only one of 1).
+ * Dropping below the minimum cancels it.
  *
- * <p>A game type plays one session at a time, so a queue whose game is running is
- * spectated instead of joined, and when a game starts, everyone left in any of its
- * queues — the overflow past its maximum, the other modes — becomes a spectator.
+ * <p>A game type runs one session at a time: joining a running game spectates, and on
+ * start everyone left in any of its queues becomes a spectator.
  */
 public final class QueueService implements Listener {
+    private static final Messages QUEUE =
+            new Messages(Bukkit::getServer, Messages.tag(Component.text("Queue", NamedTextColor.YELLOW)));
+
     private static final Title.Times COUNTDOWN_TITLE_TIMES =
             Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(200));
 
-    /** One game + mode. */
     public final class Queue {
         private final Minigame game;
         private final String mode;
@@ -171,7 +171,6 @@ public final class QueueService implements Listener {
         return config;
     }
 
-    /** Creates a queue for every mode of every registered game, each with its own config section. */
     public void createQueues(ConfigRegistry configs) {
         configs.register(config, "config.yml", "queue");
         for (Minigame game : sessions.games()) {
@@ -183,7 +182,7 @@ public final class QueueService implements Listener {
             }
         }
         sessions.addStartListener(this::onGameStarted);
-        // However somebody ends up in a game (an admin's join, spectating), they are not queued any more.
+        // Any way into a game (admin join, spectating) removes them from queues.
         sessions.addJoinListener(player -> {
             Queue queue = byPlayer.get(player.getUniqueId());
             if (queue != null) {
@@ -193,13 +192,11 @@ public final class QueueService implements Listener {
         plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
     }
 
-    // --- lookups ---
-
     public List<Queue> visibleQueues() {
         return queues.values().stream().filter(Queue::enabled).toList();
     }
 
-    /** The visible queues of one game, in mode order. */
+    /** Visible queues, in mode order. */
     public List<Queue> queuesOf(Minigame game) {
         return visibleQueues().stream().filter(queue -> queue.game == game).toList();
     }
@@ -212,9 +209,7 @@ public final class QueueService implements Listener {
         return Optional.ofNullable(byPlayer.get(player.getUniqueId()));
     }
 
-    // --- player actions ---
-
-    /** Joins a queue, or spectates its game if that game is already running. */
+    /** Spectates instead if the game is already running. */
     public void join(Player player, Queue queue) throws CommandFailure {
         if (!queue.enabled()) {
             throw new CommandFailure("That queue is closed.");
@@ -256,24 +251,24 @@ public final class QueueService implements Listener {
         queue.members.add(player.getUniqueId());
         byPlayer.put(player.getUniqueId(), queue);
 
-        player.sendMessage(Component.text()
+        QUEUE.send(player, Component.text()
                 .append(Component.text("You joined ", NamedTextColor.GREEN))
                 .append(queue.displayName())
                 .append(Component.text(" (" + queue.countText() + "). ", NamedTextColor.GREEN))
-                .append(button("Vote start", "/play vote", "Vote to start without waiting"))
+                .append(button("Vote start", "/play vote", "Vote to start early"))
                 .append(Component.space())
                 .append(button("Leave", "/play leave", "Leave the queue"))
                 .build());
         announce(queue, player, true);
     }
 
-    /** Leaves the queue (going back if they came from outside the lobby), or stops spectating. */
+    /** Leaves the queue or stops spectating. */
     public void leave(Player player) throws CommandFailure {
         Queue queue = byPlayer.get(player.getUniqueId());
         if (queue != null) {
             remove(player, queue);
             lobby.leaveQueue(player);
-            player.sendMessage(Component.text("You left the queue.", NamedTextColor.YELLOW));
+            QUEUE.send(player, Component.text("You left the queue.", NamedTextColor.YELLOW));
             return;
         }
         Optional<ActiveSession> session = sessions.sessionOf(player);
@@ -299,14 +294,14 @@ public final class QueueService implements Listener {
                         NamedTextColor.GRAY))
                 .build();
         for (Player member : online(queue)) {
-            member.sendMessage(line);
+            QUEUE.send(member, line);
         }
     }
 
     public void pickTeam(Player player, TeamColor color) throws CommandFailure {
         Queue queue = byPlayer.get(player.getUniqueId());
         if (queue == null) {
-            throw new CommandFailure("Join a queue first, then pick a team.");
+            throw new CommandFailure("Join a queue first.");
         }
         if (!queue.game.usesTeams()) {
             throw new CommandFailure("This game has no teams.");
@@ -318,11 +313,11 @@ public final class QueueService implements Listener {
                 .append(color.displayNameComponent())
                 .build();
         for (Player member : online(queue)) {
-            member.sendMessage(line);
+            QUEUE.send(member, line);
         }
     }
 
-    /** Admin: starts the queue's game now with whoever is in it, ignoring minimum and timers. */
+    /** Ignores the minimum and timers. */
     public void forceStart(Queue queue) throws CommandFailure {
         if (sessions.sessionOf(queue.game).isPresent()) {
             throw new CommandFailure(Component.text()
@@ -336,8 +331,6 @@ public final class QueueService implements Listener {
         startGame(queue);
     }
 
-    // --- the clock ---
-
     private void tick() {
         long now = System.currentTimeMillis();
         long afkMillis = afkSeconds.get() * 1000L;
@@ -347,7 +340,7 @@ public final class QueueService implements Listener {
                 continue;
             }
             if (sessions.sessionOf(queue.game).isPresent()) {
-                // Normally handled when the game starts; this catches anyone who slipped in.
+                // Normally handled on game start; catches stragglers.
                 moveToSpectators(queue, sessions.sessionOf(queue.game).get());
                 continue;
             }
@@ -356,7 +349,7 @@ public final class QueueService implements Listener {
                     if (now - lastActivity.getOrDefault(member.getUniqueId(), now) > afkMillis) {
                         remove(member, queue);
                         lobby.leaveQueue(member);
-                        member.sendMessage(Component.text("You were removed from the queue for being AFK.",
+                        QUEUE.send(member, Component.text("Removed from the queue: AFK.",
                                 NamedTextColor.YELLOW));
                     }
                 }
@@ -388,7 +381,6 @@ public final class QueueService implements Listener {
         }
     }
 
-    /** Whether nobody who could be playing is missing from this queue. */
     private boolean everyoneFreeIsIn(Queue queue) {
         long now = System.currentTimeMillis();
         long afkMillis = afkSeconds.get() * 1000L;
@@ -396,7 +388,6 @@ public final class QueueService implements Listener {
             if (queue.members.contains(player.getUniqueId()) || sessions.isBusy(player)) {
                 continue;
             }
-            // Builders and staff watching are not waiting for a game.
             if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR) {
                 continue;
             }
@@ -429,7 +420,7 @@ public final class QueueService implements Listener {
             plugin.getLogger().warning("Queued " + queue.game.id() + " could not start: "
                     + net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
                             .serialize(failure.text()));
-            // Back at the front of the queue, and a full countdown before the next try.
+            // Requeue at the front with a full countdown.
             List<UUID> rest = new ArrayList<>(queue.members);
             queue.members.clear();
             for (Player player : roster) {
@@ -443,11 +434,7 @@ public final class QueueService implements Listener {
         }
     }
 
-    /**
-     * When a game starts, whoever is still queued for it in any mode watches instead,
-     * and its players leave whatever queue they were in (an admin can start a game with
-     * anybody, queued or not).
-     */
+    /** Leftover queuers spectate; the game's players leave any queue (admins can start with anyone). */
     private void onGameStarted(ActiveSession session) {
         for (Player player : session.participants().onlinePlayers()) {
             Queue queue = byPlayer.get(player.getUniqueId());
@@ -473,8 +460,6 @@ public final class QueueService implements Listener {
         }
         queue.countdown = null;
     }
-
-    // --- membership bookkeeping ---
 
     private void remove(Player player, Queue queue) {
         removeQuietly(player);
@@ -506,7 +491,7 @@ public final class QueueService implements Listener {
         return players;
     }
 
-    /** Free players: not in a game and not in a queue. Only they get join/leave chatter. */
+    /** Not in a game or queue. Only they get join/leave messages. */
     private List<Player> freePlayers() {
         List<Player> result = new ArrayList<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -516,8 +501,6 @@ public final class QueueService implements Listener {
         }
         return result;
     }
-
-    // --- what players see ---
 
     private void announce(Queue queue, Player who, boolean joined) {
         Component line = Component.text()
@@ -529,7 +512,17 @@ public final class QueueService implements Listener {
                 .build();
         for (Player player : freePlayers()) {
             if (player != who) {
-                player.sendMessage(line);
+                QUEUE.send(player, line);
+            }
+        }
+        Component memberLine = Component.text()
+                .append(Component.text(who.getName(), NamedTextColor.AQUA))
+                .append(Component.text(joined ? " joined your queue " : " left your queue ", NamedTextColor.GRAY))
+                .append(Component.text("(" + queue.countText() + ")", NamedTextColor.GRAY))
+                .build();
+        for (Player member : online(queue)) {
+            if (member != who) {
+                QUEUE.send(member, memberLine);
             }
         }
     }
@@ -538,12 +531,12 @@ public final class QueueService implements Listener {
         Component members = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s. ", NamedTextColor.GREEN))
-                .append(button("Vote start", "/play vote", "Vote to start without waiting"))
+                .append(button("Vote start", "/play vote", "Vote to start early"))
                 .append(Component.space())
                 .append(button("Leave", "/play leave", "Leave the queue"))
                 .build();
         for (Player member : online(queue)) {
-            member.sendMessage(members);
+            QUEUE.send(member, members);
         }
         Component others = Component.text()
                 .append(queue.displayName())
@@ -552,7 +545,7 @@ public final class QueueService implements Listener {
                 .append(button("Join", queue.command(), "Join this queue"))
                 .build();
         for (Player player : freePlayers()) {
-            player.sendMessage(others);
+            QUEUE.send(player, others);
         }
     }
 
@@ -592,15 +585,13 @@ public final class QueueService implements Listener {
                 .hoverEvent(HoverEvent.showText(Component.text(hover, NamedTextColor.GRAY)));
     }
 
-    // --- activity, for AFK and connection changes ---
-
     private void touch(Player player) {
         lastActivity.put(player.getUniqueId(), System.currentTimeMillis());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        // Looking around counts, falling does not.
+        // Looking around counts as activity; falling does not.
         if (event.hasChangedOrientation() || event.getFrom().getX() != event.getTo().getX()
                 || event.getFrom().getZ() != event.getTo().getZ()) {
             touch(event.getPlayer());
@@ -632,7 +623,7 @@ public final class QueueService implements Listener {
         Player player = event.getPlayer();
         Queue queue = byPlayer.get(player.getUniqueId());
         if (queue != null) {
-            // Where they go back to is settled when they log in again.
+            // Return is resolved on next login.
             remove(player, queue);
         }
         lastActivity.remove(player.getUniqueId());

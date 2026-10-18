@@ -6,10 +6,7 @@ import java.util.Map;
 
 import org.bukkit.configuration.ConfigurationSection;
 
-/**
- * A named group of typed, runtime-settable config properties. Powers the generic
- * {@code config <section> set <property> <value>} command and YAML round-tripping.
- */
+/** Typed config properties, settable with {@code config <section> set <property> <value>}. */
 public final class PropertyBag {
     public enum SetResult {
         SUCCESS, UNKNOWN_PROPERTY, PARSE_ERROR

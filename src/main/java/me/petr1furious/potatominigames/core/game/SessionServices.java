@@ -14,11 +14,7 @@ import me.petr1furious.potatominigames.core.world.ArenaService;
 import me.petr1furious.potatominigames.core.world.SessionWorlds;
 import me.petr1furious.potatominigames.core.world.SpawnFinder;
 
-/**
- * Everything a {@link GameSession} needs from the core, handed over on creation.
- * Apart from the plugin, player state, spawn finder and points, every service here
- * belongs to this one session.
- */
+/** Per-session services, except the plugin, player state, spawn finder and points, which are shared. */
 public record SessionServices(
         JavaPlugin plugin,
         ActiveSession session,

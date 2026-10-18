@@ -24,12 +24,7 @@ import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
 
-/**
- * games/pillars.yml. The flat values and each mode's settings are ordinary
- * properties ({@code /pillars config ... set}); the item pool and the arenas are
- * nested sections read from the file whenever a game starts, so editing them and
- * running {@code /pillars reload} applies to the next game.
- */
+/** Items and arenas are read from the file at each game start; other values are properties. */
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
     static final List<String> MODES = List.of("original", "chaos", "item-shuffle");
@@ -52,7 +47,7 @@ public final class PillarsConfig {
 
     private final Map<String, Mode> modes = new LinkedHashMap<>();
 
-    /** One mode's settings, the values PillarPeril's prod configuration played with. */
+    /** Defaults match PillarPeril's production config. */
     public static final class Mode {
         public final String id;
         public final Property<Integer> cooldownSeconds;
@@ -87,7 +82,6 @@ public final class PillarsConfig {
         }
     }
 
-    /** The item pool's settings, read fresh from the file for every game. */
     public record Items(List<String> blacklist, List<String> blacklistPatterns, List<String> blacklistExceptions,
             Map<String, Integer> weights, Map<String, String> customItems, List<ItemPool.ItemGroup> groups) {
     }
@@ -107,7 +101,6 @@ public final class PillarsConfig {
         configs.register(modeBag, FILE, "modes." + id);
     }
 
-    /** Sets what a plain /pillars start plays, saved to the file. */
     public void setDefaultMode(String id) {
         configs.set("pillars", "mode", id);
     }
@@ -125,12 +118,9 @@ public final class PillarsConfig {
         return configs.file(FILE);
     }
 
-    /** Reads the file again, for /pillars reload. */
     public void reload() {
         configs.reloadFile(FILE);
     }
-
-    // --- items ---
 
     public Items items(Logger log) {
         ConfigurationSection section = file().getConfigurationSection("items");
@@ -184,7 +174,7 @@ public final class PillarsConfig {
                 boolean repeating = group.getString("mode", "").trim().equalsIgnoreCase("repeating");
                 groups.add(new ItemPool.ItemGroup(name, weight != null ? weight : 250,
                         repeating ? ItemPool.GroupMode.REPEATING : ItemPool.GroupMode.ONCE,
-                        // Without triggers of its own, every item in the group sets off the others.
+                        // No triggers: every item in the group triggers it.
                         (triggers.isEmpty() ? items : triggers).stream().map(ItemPool::wildcard).toList(),
                         items.stream().map(ItemPool::wildcard).toList()));
             }
@@ -194,7 +184,7 @@ public final class PillarsConfig {
                 section.getStringList("blacklist-exceptions"), weights, custom, groups);
     }
 
-    /** A configured weight: a whole number that is not negative. */
+    /** Non-negative integer, else null. */
     private static Integer weightOf(Object value) {
         Integer weight = null;
         if (value instanceof Number number) {
@@ -208,8 +198,6 @@ public final class PillarsConfig {
         }
         return weight != null && weight >= 0 ? weight : null;
     }
-
-    // --- arenas ---
 
     public List<PillarsArena> arenas() {
         List<PillarsArena> arenas = new ArrayList<>();
@@ -236,7 +224,7 @@ public final class PillarsConfig {
         return arenas;
     }
 
-    /** "30s", "5min", "1h30min", "90" (seconds): the time strings PillarPeril accepted. */
+    /** "30s", "5min", "1h30min", "90" (seconds). */
     public static Long parseDuration(String raw) {
         if (raw == null) {
             return null;

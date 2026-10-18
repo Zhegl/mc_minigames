@@ -12,11 +12,7 @@ import org.bukkit.entity.Player;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 
-/**
- * Tracks one session's Adventure boss bars so they are reliably hidden when it ends.
- * "Show to all" means the session's audience — its players and spectators — and
- * {@link #sync} shows a newly arrived spectator everything the session has up.
- */
+/** One session's boss bars, shown to its audience and hidden when it ends. */
 public final class BossBarService {
     private final Set<BossBar> bars = new HashSet<>();
     private final Supplier<Collection<Player>> audience;
@@ -38,14 +34,13 @@ public final class BossBarService {
         }
     }
 
-    /** Shows every bar of this session to a spectator, who watches the whole game rather than one side of it. */
+    /** Spectators see every bar. */
     public void sync(Player player) {
         for (BossBar bar : bars) {
             player.showBossBar(bar);
         }
     }
 
-    /** Hides this session's bars from one player who is leaving it. */
     public void hideFrom(Player player) {
         for (BossBar bar : List.copyOf(bars)) {
             player.hideBossBar(bar);

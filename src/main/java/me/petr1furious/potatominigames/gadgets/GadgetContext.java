@@ -5,24 +5,20 @@ import java.util.Collection;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-/**
- * Decouples gadgets from any specific game: friendliness, targeting and name
- * masking come from the session the player is playing in, with sensible
- * defaults outside games.
- */
+/** Friendliness, targeting and name masking from the player's session, with defaults outside games. */
 public interface GadgetContext {
 
     Plugin plugin();
 
-    /** Whether the player is playing (not spectating) in a running game. */
+    /** Playing, not spectating. */
     boolean inGame(Player player);
 
-    /** Whether the player is in the lobby, where gadgets never work. */
+    /** Gadgets never work in the lobby. */
     boolean inLobby(Player player);
 
     boolean friendly(Player first, Player second);
 
-    /** Players the user's gadgets may target (tracked enemies in-game; other players otherwise). */
+    /** Tracked enemies in-game; other players otherwise. */
     Collection<Player> targetsFor(Player user);
 
     boolean hideTargetNames(Player viewer);

@@ -23,13 +23,8 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import me.petr1furious.potatominigames.core.team.TeamColor;
 
 /**
- * Per-viewer sidebar with stable objectives and line diffing: each line is a
- * scoreboard team prefix on an invisible entry, and updates only touch lines
- * whose content changed — no flicker, no per-tick scoreboard rebuilds.
- *
- * <p>One instance per game session. Spectators have no lines of their own: they
- * mirror the sidebar of the player they are spectating, or of the first player
- * with a sidebar when they are not attached to anyone.
+ * Per-viewer sidebar; each line is a team prefix on an invisible entry and only changed
+ * lines are updated. Spectators mirror their target's sidebar, or the first one shown.
  */
 public final class SidebarService {
     private static final int MAX_LINES = 15;
@@ -88,7 +83,6 @@ public final class SidebarService {
         }
     }
 
-    /** Shows (creating if needed) the sidebar for the viewer and sets its lines. */
     public void update(Player viewer, Component title, List<Component> lines) {
         render(viewer, title, lines);
         for (Player spectator : spectators.get()) {
@@ -98,7 +92,6 @@ public final class SidebarService {
         }
     }
 
-    /** Whose sidebar a spectator sees: the player they are attached to, else the first player shown one. */
     private Player mirrorTarget(Player spectator) {
         if (spectator.getSpectatorTarget() instanceof Player target && views.containsKey(target.getUniqueId())) {
             return target;
@@ -123,8 +116,7 @@ public final class SidebarService {
         } else {
             view.setTitle(title);
         }
-        // A reconnecting player comes back on the main scoreboard while their view
-        // lives on, so re-attach it or the sidebar stays hidden for the whole game.
+        // Reconnecting players return on the main scoreboard; re-attach the view.
         if (viewer.getScoreboard() != view.scoreboard) {
             viewer.setScoreboard(view.scoreboard);
         }
@@ -148,7 +140,6 @@ public final class SidebarService {
         nameColors.clear();
     }
 
-    /** Colors player names (tab list and overhead) on every active sidebar's scoreboard. */
     public void setNameColor(Player player, TeamColor color) {
         if (color == null) {
             nameColors.remove(player.getUniqueId());

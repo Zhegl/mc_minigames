@@ -33,7 +33,7 @@ public class HimarsGadget extends AbstractGadget {
     private final Property<Double> fireworkSpeedBlocksPerTick;
     private final Property<Double> aimDirectionBlend;
 
-    /** Where each rocket in flight was fired from (its power grows with distance), and by whom. */
+    /** Launch point (power grows with distance) and shooter per rocket. */
     private final Map<UUID, Shot> projectileStart = new HashMap<>();
 
     private record Shot(Location start, UUID shooter) {

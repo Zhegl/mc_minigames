@@ -51,11 +51,6 @@ import me.petr1furious.potatominigames.core.world.SlimeWorldService;
 import static me.petr1furious.potatominigames.core.command.GameCommands.requirePlayer;
 import static me.petr1furious.potatominigames.core.command.GameCommands.run;
 
-/**
- * Pillars ("Pillars of Fortune"): everyone on a bedrock pillar in the sky, a random
- * item every few seconds, last one standing wins. Modes: original, chaos (random
- * layout, fast items) and item-shuffle (the inventory is replaced every cycle).
- */
 public final class PillarsGame implements Minigame, Listener {
     private static final List<String> TIME_SUGGESTIONS = List.of("30s", "1min", "2min", "5min", "10min", "30min");
 
@@ -115,7 +110,7 @@ public final class PillarsGame implements Minigame, Listener {
         return Component.text(switch (mode) {
             case "chaos" -> "Randomized pillar layout, fast item cooldown";
             case "item-shuffle" -> "Items replaced every 10s (9 new items)";
-            default -> "Spawn on a pillar, get random items, be the last one standing";
+            default -> "Random items on pillars, last one standing wins";
         });
     }
 
@@ -134,13 +129,11 @@ public final class PillarsGame implements Minigame, Listener {
         return new PillarsSession(services, this, config, mode);
     }
 
-    // --- keeping a game's players inside it ---
-
     private boolean inGame(Player player) {
         return activeSession != null && activeSession.isParticipant(player);
     }
 
-    /** Beds and respawn anchors are items like any other here; they must not move anybody's spawn. */
+    /** Beds and anchors are random items here; they must not move spawns. */
     @EventHandler(ignoreCancelled = true)
     public void onSetSpawn(PlayerSetSpawnEvent event) {
         if ((event.getCause() == PlayerSetSpawnEvent.Cause.BED
@@ -185,8 +178,6 @@ public final class PillarsGame implements Minigame, Listener {
             event.setCancelled(true);
         }
     }
-
-    // --- commands ---
 
     private PillarsSession requireSession() throws CommandFailure {
         if (activeSession == null) {
@@ -264,11 +255,11 @@ public final class PillarsGame implements Minigame, Listener {
 
     private void respawn(CommandContext<CommandSourceStack> ctx, Player target) throws CommandFailure {
         if (!requireSession().respawn(target)) {
-            throw new CommandFailure("Could not respawn " + target.getName()
-                    + ": not in this game, offline, or the game is ending.");
+            throw new CommandFailure("Cannot respawn " + target.getName()
+                    + ": not in this game, offline, or game ending.");
         }
         ctx.getSource().getSender().sendMessage(
-                Component.text(target.getName() + " was put back into the game.", NamedTextColor.GREEN));
+                Component.text("Respawned " + target.getName(), NamedTextColor.GREEN));
     }
 
     private void changeTime(CommandContext<CommandSourceStack> ctx, String operation) throws CommandFailure {
@@ -291,10 +282,10 @@ public final class PillarsGame implements Minigame, Listener {
         CommandSender sender = ctx.getSource().getSender();
         List<PillarsArena> arenas = config.arenas();
         if (arenas.isEmpty()) {
-            sender.sendMessage(Component.text("No arenas are configured in games/pillars.yml.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("No arenas in games/pillars.yml.", NamedTextColor.RED));
             return;
         }
-        sender.sendMessage(Component.text("Configured arenas (green = template imported):", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Arenas (green = imported):", NamedTextColor.GRAY));
         for (PillarsArena arena : arenas) {
             boolean ready = slimeWorlds.templateExists(arena.template());
             sender.sendMessage(Component.text()
@@ -308,10 +299,6 @@ public final class PillarsGame implements Minigame, Listener {
         }
     }
 
-    /**
-     * Turns arenas built in a vanilla world into their slime templates. A one-time job
-     * for the old arena world, and the way to add or rebuild an arena later.
-     */
     private void importArenas(CommandContext<CommandSourceStack> ctx, String worldName, int radius)
             throws CommandFailure {
         CommandSender sender = ctx.getSource().getSender();
@@ -337,7 +324,7 @@ public final class PillarsGame implements Minigame, Listener {
                     try {
                         slimeWorlds.importVanilla(work, arena.template(), (int) arena.x(), spawnY, (int) arena.z());
                     } catch (com.infernalsuite.asp.api.exceptions.InvalidWorldException nothingThere) {
-                        // Chunks that were generated but hold nothing are no world to ASP.
+                        // ASP rejects worlds whose chunks are all empty.
                         chunks = 0;
                     }
                 }
@@ -355,21 +342,20 @@ public final class PillarsGame implements Minigame, Listener {
                 try {
                     ArenaImporter.deleteRecursively(work);
                 } catch (Exception ignored) {
-                    // A leftover work folder is harmless and replaced by the next import.
+                    // Replaced by the next import.
                 }
             }
         }
     }
 
-    /** The folder of a world, loaded or not, saving it first when it is loaded. */
+    /** Saves the world first if loaded. */
     private File worldFolder(String worldName) {
         World loaded = Bukkit.getWorld(worldName);
         if (loaded != null) {
             loaded.save();
             return loaded.getWorldFolder();
         }
-        // Since 1.21.9 every world sits next to the primary one in <level>/dimensions/minecraft/;
-        // before that, worlds were folders of their own in the world container.
+        // 1.21.9+: <level>/dimensions/minecraft/<name>; older: the world container.
         File primary = Bukkit.getWorlds().getFirst().getWorldFolder();
         for (File candidate : List.of(
                 new File(primary.getParentFile(), worldName),
@@ -381,11 +367,7 @@ public final class PillarsGame implements Minigame, Listener {
         return null;
     }
 
-    /**
-     * ASP reads a world's level.dat, which a dimension folder of a 1.21.9+ world
-     * (world/dimensions/minecraft/<name>) does not have; the one of the world it is part
-     * of, a few folders up, is a fine stand-in, as only its version matters.
-     */
+    /** ASP needs a level.dat, which 1.21.9+ dimension folders lack; any parent one will do. */
     private static void copyLevelData(File source, File work) throws java.io.IOException {
         File levelData = null;
         for (File folder = source.getAbsoluteFile(); folder != null && levelData == null;

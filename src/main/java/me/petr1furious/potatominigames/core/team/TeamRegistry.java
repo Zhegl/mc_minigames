@@ -11,7 +11,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * Standing team colours, per game and per player, kept in {@code data/teams.yml}:
+ * Saved team colours per game, in {@code data/teams.yml}:
  *
  * <pre>
  * bingo:
@@ -19,10 +19,6 @@ import org.bukkit.plugin.java.JavaPlugin;
  * war:
  *   &lt;uuid&gt;: blue
  * </pre>
- *
- * Assignments live outside any session, so colours can be arranged before a game
- * is started and survive restarts. The same player can hold a different colour in
- * each game.
  */
 public final class TeamRegistry {
     private final JavaPlugin plugin;
@@ -57,7 +53,7 @@ public final class TeamRegistry {
         save();
     }
 
-    /** Every standing assignment for a game, in insertion order. */
+    /** In insertion order. */
     public Map<UUID, TeamColor> all(String gameId) {
         Map<UUID, TeamColor> result = new LinkedHashMap<>();
         ConfigurationSection section = config.getConfigurationSection(gameId);

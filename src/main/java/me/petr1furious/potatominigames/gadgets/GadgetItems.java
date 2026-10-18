@@ -20,8 +20,7 @@ public final class GadgetItems {
         if (item == null) {
             return false;
         }
-        // An empty hand is a non-null AIR stack whose meta is null, so callers that
-        // scan an inventory slot rather than a clicked item land here.
+        // Empty slots are AIR stacks with null meta.
         var meta = item.getItemMeta();
         if (meta != null && meta.hasCustomModelDataComponent()) {
             List<String> cmd = meta.getCustomModelDataComponent().getStrings();

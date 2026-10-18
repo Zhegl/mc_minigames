@@ -46,6 +46,7 @@ import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.core.player.Participant;
 import me.petr1furious.potatominigames.core.player.PlayerStateService;
 import me.petr1furious.potatominigames.core.team.TeamColor;
+import me.petr1furious.potatominigames.core.text.Summary;
 import me.petr1furious.potatominigames.core.text.TimeFormat;
 import me.petr1furious.potatominigames.core.world.ArenaBiomes;
 import me.petr1furious.potatominigames.games.bingo.board.BoardService;
@@ -56,11 +57,6 @@ import me.petr1furious.potatominigames.games.bingo.model.GameDifficulty;
 import me.petr1furious.potatominigames.games.bingo.model.GameMode;
 import me.petr1furious.potatominigames.games.bingo.model.TeamState;
 
-/**
- * One round of bingo: a cage drop into a freshly generated throwaway world,
- * auto-claimed board progress, punishments instead of deaths, and
- * line/collectall/butfast scoring.
- */
 final class BingoSession implements GameSession {
 
     private record Punishment(BukkitTask releaseTask, long releaseAtMillis, Location deathLocation,
@@ -91,6 +87,7 @@ final class BingoSession implements GameSession {
     private int dropRemaining;
     private int endGraceRemaining = -1;
     private boolean ended = false;
+    private final List<Component> summary = new ArrayList<>();
 
     private World arenaWorld;
     private int arenaX;
@@ -115,13 +112,11 @@ final class BingoSession implements GameSession {
         return color == null ? null : teamStates.get(color);
     }
 
-    // --- lifecycle ---
-
     @Override
     public void onStart() throws CommandFailure {
         difficulty = config.gameDifficulty();
 
-        // Colours were resolved (queue picks, saved colours or balancing) when the session started.
+        // Colours were already resolved when the session started.
         teamStates.clear();
         for (Participant participant : services.participants().all()) {
             TeamColor color = participant.team();
@@ -214,7 +209,7 @@ final class BingoSession implements GameSession {
     private void openFloorNow() {
         preStartLocked = false;
         openCageFloor();
-        broadcastParticipantsActionbar(Component.text("GO!", NamedTextColor.GREEN));
+        broadcastParticipantsActionbar(Component.text("Go", NamedTextColor.GREEN));
         playParticipantsSound(Sound.ENTITY_PLAYER_LEVELUP, 0.9f, 1.1f);
     }
 
@@ -227,7 +222,6 @@ final class BingoSession implements GameSession {
     @Override
     public void onEnd(EndReason reason) {
         ended = true;
-        broadcast(Component.text("The game has ended.", NamedTextColor.GOLD));
 
         List<TeamState> ranking = new ArrayList<>(teamStates.values());
         ranking.sort(teamRankingComparator());
@@ -243,14 +237,12 @@ final class BingoSession implements GameSession {
             }
         }
 
+        summary.clear();
         if (!ranking.isEmpty()) {
-            broadcast(Component.text("Team ranking:", NamedTextColor.GOLD));
+            summary.add(Component.text("Ranking", NamedTextColor.GRAY));
             int place = 1;
             for (TeamState state : ranking) {
-                broadcast(Component.text(place + ". ", NamedTextColor.GOLD)
-                        .append(teamDisplayName(state))
-                        .append(Component.text(" - ", NamedTextColor.GOLD))
-                        .append(teamResultComponent(state)));
+                summary.add(Summary.rank(place, teamDisplayName(state), teamResultComponent(state)));
                 place++;
             }
         }
@@ -260,10 +252,13 @@ final class BingoSession implements GameSession {
         }
         punishments.clear();
         playParticipantsSound(Sound.BLOCK_BEACON_DEACTIVATE, 0.9f, 1.0f);
-        // No cage teardown needed: the whole arena world is deleted after cleanup.
+        // No cage teardown: the arena world is deleted after cleanup.
     }
 
-    // --- roster changes ---
+    @Override
+    public List<Component> summary() {
+        return List.copyOf(summary);
+    }
 
     @Override
     public boolean allowLateJoin() {
@@ -280,7 +275,7 @@ final class BingoSession implements GameSession {
         teamStates.computeIfAbsent(color, TeamState::new).addMember(player.getName());
         services.sidebar().setNameColor(player, color);
         preparePlayerForRound(player);
-        // The cage is long gone by now; drop them in at the arena surface instead.
+        // The cage is gone; spawn at the arena surface.
         player.teleport(new Location(arenaWorld, arenaX + 0.5,
                 arenaWorld.getHighestBlockYAt(arenaX, arenaZ) + 1.0, arenaZ + 0.5));
         butfastRewardTeamCount = Math.max(butfastRewardTeamCount, activeTeams().size());
@@ -341,7 +336,6 @@ final class BingoSession implements GameSession {
         checkRoundCompletion(active);
     }
 
-    /** Teams that still have online participants in the round. */
     private List<TeamState> activeTeams() {
         List<TeamState> result = new ArrayList<>();
         for (TeamState state : teamStates.values()) {
@@ -354,8 +348,6 @@ final class BingoSession implements GameSession {
         }
         return result;
     }
-
-    // --- claiming ---
 
     private void onItemProgress(Player player, ItemStack stack) {
         if (stack == null || stack.getType() == Material.AIR) {
@@ -517,8 +509,6 @@ final class BingoSession implements GameSession {
         }
     }
 
-    // --- punishments (death replacement) ---
-
     private boolean shouldCancelLethalDamage(Player player, double finalDamage) {
         if (ended || !services.participants().isParticipant(player)) {
             return false;
@@ -606,8 +596,6 @@ final class BingoSession implements GameSession {
     private boolean isPunished(Player player) {
         return punishments.containsKey(player.getUniqueId());
     }
-
-    // --- event hooks ---
 
     @Override
     public void onEntityDamage(EntityDamageEvent event) {
@@ -797,8 +785,6 @@ final class BingoSession implements GameSession {
         event.setCancelled(true);
     }
 
-    // --- board UI ---
-
     void openBoardFor(Player player) {
         if (board == null) {
             player.sendActionBar(Component.text("No active bingo board right now.", NamedTextColor.RED));
@@ -840,8 +826,6 @@ final class BingoSession implements GameSession {
             player.getInventory().setItem(8, boardUi.createCard());
         }
     }
-
-    // --- player prep + periodic checks ---
 
     private void preparePlayerForRound(Player player) {
         clearPunishment(player, false);
@@ -893,13 +877,7 @@ final class BingoSession implements GameSession {
         }
     }
 
-    // --- arena / cage ---
-
-    /**
-     * Every round gets a freshly generated world (plus its nether, since the board
-     * needs it), thrown away afterwards. Play starts at the origin so strongholds
-     * — and therefore the End — sit where vanilla would put them.
-     */
+    /** Play starts at the origin so strongholds, and so the End, are where vanilla puts them. */
     private void selectArena() {
         arenaWorld = services.worlds().create("bingo", World.Environment.NETHER);
         ArenaBiomes.ArenaSpot spot = ArenaBiomes.findArenaCenter(arenaWorld);
@@ -939,8 +917,6 @@ final class BingoSession implements GameSession {
     private Location spectatorLocation() {
         return new Location(arenaWorld, arenaX + 0.5, 255, arenaZ + 0.5);
     }
-
-    // --- HUD + messaging ---
 
     private void updateSidebar() {
         List<TeamState> teams = new ArrayList<>(teamStates.values());

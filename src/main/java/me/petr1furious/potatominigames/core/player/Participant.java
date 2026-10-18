@@ -42,7 +42,7 @@ public final class Participant {
         this.online = online;
     }
 
-    /** The live player, or null if offline. */
+    /** Null if offline. */
     public Player player() {
         return Bukkit.getPlayer(id);
     }

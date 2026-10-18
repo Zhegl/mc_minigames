@@ -12,24 +12,19 @@ import net.kyori.adventure.text.Component;
 import me.petr1furious.potatominigames.core.player.Participant;
 import me.petr1furious.potatominigames.core.player.ParticipantRegistry;
 
-/**
- * Two related jobs: the standing per-game colour assignments (which work with no
- * game running, backed by {@link TeamRegistry}), and grouping the current
- * session's participants by the colour they ended up with.
- */
+/** Saved per-game colours ({@link TeamRegistry}) and the current session's teams. */
 public final class TeamService {
     private final TeamRegistry registry;
     private ParticipantRegistry participants;
-    /** Colours picked in the queue this session came from; they win over everything. */
+    /** Queue picks; they override everything. */
     private Map<UUID, TeamColor> queuePicks = Map.of();
-    /** Whether saved colours apply: only for games an admin started directly. */
+    /** Saved colours apply only to admin-started games. */
     private boolean useStanding = true;
 
     public TeamService(TeamRegistry registry) {
         this.registry = registry;
     }
 
-    /** Re-reads data/teams.yml from disk, so `reload` picks up hand-edited team data. */
     public void reload() {
         registry.reload();
     }
@@ -42,16 +37,10 @@ public final class TeamService {
         this.participants = null;
     }
 
-    /**
-     * How this session picks colours: queue picks first, then (for admin-started games)
-     * the saved colours, then balancing.
-     */
     public void configureStart(Map<UUID, TeamColor> picks, boolean standingColours) {
         this.queuePicks = Map.copyOf(picks);
         this.useStanding = standingColours;
     }
-
-    // --- standing assignments: usable at any time ---
 
     public TeamColor standingTeam(String gameId, UUID playerId) {
         return registry.get(gameId, playerId);
@@ -61,7 +50,7 @@ public final class TeamService {
         return registry.all(gameId);
     }
 
-    /** Sets (and persists) a colour, and applies it to a live participant if there is one. */
+    /** Persists, and applies to a live participant if any. */
     public void assign(String gameId, UUID playerId, TeamColor color) {
         registry.set(gameId, playerId, color);
         if (participants != null) {
@@ -76,7 +65,7 @@ public final class TeamService {
         }
     }
 
-    /** The colour after this one in enum order, persisted like an explicit pick. */
+    /** Persisted like an explicit pick. */
     public TeamColor cycle(String gameId, UUID playerId) {
         TeamColor current = standingTeam(gameId, playerId);
         TeamColor next = current == null
@@ -101,13 +90,9 @@ public final class TeamService {
         }
     }
 
-    // --- session-time resolution ---
-
     /**
-     * The colour a participant plays with: their queue pick, else their standing
-     * assignment (admin-started games only), otherwise the least-populated colour
-     * among this game's participants.
-     * Auto-picked colours are deliberately not persisted — only explicit picks are.
+     * Queue pick, else saved colour (admin-started games only), else the least-populated
+     * colour. Auto-picked colours are not persisted.
      */
     public TeamColor resolveForStart(String gameId, Participant participant) {
         TeamColor picked = queuePicks.get(participant.id());
@@ -132,8 +117,7 @@ public final class TeamService {
                 }
             }
         }
-        // Empty colours count as size 0, so players spread onto fresh teams instead of
-        // piling onto whichever team happened to be created first.
+        // Empty colours count as 0 so players spread onto fresh teams.
         TeamColor chosen = TeamColor.values()[0];
         int fewest = Integer.MAX_VALUE;
         for (TeamColor color : TeamColor.values()) {
@@ -160,7 +144,7 @@ public final class TeamService {
         return result;
     }
 
-    /** Teams that currently have at least one member, in enum order. */
+    /** Non-empty teams, in enum order. */
     public List<TeamColor> activeTeams() {
         List<TeamColor> result = new ArrayList<>();
         for (TeamColor color : TeamColor.values()) {
@@ -179,7 +163,6 @@ public final class TeamService {
         return result;
     }
 
-    /** Standing assignments grouped by colour, for listing with no game running. */
     public Map<TeamColor, List<UUID>> standingByTeam(String gameId) {
         Map<TeamColor, List<UUID>> result = new EnumMap<>(TeamColor.class);
         for (Map.Entry<UUID, TeamColor> entry : standingTeams(gameId).entrySet()) {
@@ -188,7 +171,7 @@ public final class TeamService {
         return result;
     }
 
-    /** "Red" for multi-member teams, the player's name for solo teams (bingo convention). */
+    /** Colour name, or the player's name for a solo team. */
     public Component teamDisplayName(TeamColor color) {
         List<Participant> members = members(color);
         if (members.size() == 1) {
@@ -197,7 +180,7 @@ public final class TeamService {
         return color.displayNameComponent();
     }
 
-    /** Cached display names so listings can show offline players sensibly. */
+    /** Cached names for offline players. */
     public Map<UUID, String> nameLookup(Iterable<UUID> ids) {
         Map<UUID, String> names = new HashMap<>();
         for (UUID id : ids) {

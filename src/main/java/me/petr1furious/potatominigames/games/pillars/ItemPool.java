@@ -28,23 +28,14 @@ import com.mojang.brigadier.StringReader;
 
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
 
-/**
- * Everything about what pillars hands out: the pool of items, their weights, the
- * custom items and the item groups that make matching items arrive together.
- */
 public final class ItemPool {
     private ItemPool() {
     }
 
-    /** The item forms that need a potion type to be worth anything. */
     private static final Set<String> POTION_FORMS = Set.of("potion", "splash_potion", "lingering_potion",
             "tipped_arrow");
 
-    /**
-     * Every potion type that actually does something. Water, mundane, thick and awkward
-     * potions have no effects at all, which makes them the same kind of filler as the
-     * items dropped by the blacklist.
-     */
+    /** Potion types with effects; water/mundane/thick/awkward are filler. */
     private static List<PotionType> effectivePotionTypes;
 
     private static List<PotionType> effectivePotionTypes() {
@@ -56,7 +47,6 @@ public final class ItemPool {
                         types.add(type);
                     }
                 } catch (RuntimeException ignored) {
-                    // A type the API cannot describe is no use to hand out anyway.
                 }
             }
             effectivePotionTypes = List.copyOf(types);
@@ -64,13 +54,6 @@ public final class ItemPool {
         return effectivePotionTypes;
     }
 
-    // --- pool items ---
-
-    /**
-     * One thing a player can be given: a plain item out of the registry, one that rolls
-     * extra data as it is handed out (a potion with no type is just an empty bottle), or
-     * a custom item from the configuration under a name of its own.
-     */
     public record PoolItem(String id, int weight, Supplier<ItemStack> creator) {
         public ItemStack createItemStack() {
             return creator.get();
@@ -82,20 +65,13 @@ public final class ItemPool {
         }
     }
 
-    /**
-     * Picks an item, the heavier ones coming up proportionally more often. Weights are
-     * applied here rather than by repeating entries, so a weight of 500 costs nothing.
-     *
-     * @param weight what an item weighs for whoever is being given it, which is where
-     *               the item groups raise the items they are waiting for
-     */
+    /** @param weight per-player weight, including item group boosts */
     public static PoolItem randomByWeight(List<PoolItem> items, ToIntFunction<PoolItem> weight) {
         long total = 0;
         for (PoolItem item : items) {
             total += weight.applyAsInt(item);
         }
-        // Everything weighted down to nothing is somebody's mistake rather than a wish to
-        // hand out no items at all, so the weights are ignored instead.
+        // All-zero weights are a config mistake; fall back to uniform.
         if (total <= 0) {
             return items.get(ThreadLocalRandom.current().nextInt(items.size()));
         }
@@ -109,22 +85,15 @@ public final class ItemPool {
         return items.getLast();
     }
 
-    // --- item groups ---
-
-    /** How long an item group keeps raising the weight of an item it covers. */
+    /** How long a group keeps boosting an item. */
     public enum GroupMode {
-        /** Until the player has been given that item once, which is all a matching pair needs. */
+        /** Until the player has received it once. */
         ONCE,
-        /** For the rest of the game, which is what ammunition for a weapon wants. */
+        /** For the rest of the game (e.g. ammunition). */
         REPEATING
     }
 
-    /**
-     * A set of items that only make sense together, like a happy ghast and a harness.
-     * Being given one of the triggers makes every item the group covers far more likely
-     * for that player, so the pieces of a pair arrive within a few item cycles of each
-     * other. With no triggers of its own, every item in the group sets off the others.
-     */
+    /** Items that belong together (e.g. happy ghast + harness); receiving a trigger boosts the rest. */
     public record ItemGroup(String name, int weight, GroupMode mode, List<Pattern> triggers,
             List<Pattern> items) {
 
@@ -142,11 +111,7 @@ public final class ItemPool {
         }
     }
 
-    /**
-     * One player's progress through the item groups. A group only raises an item once
-     * the player holds one of its triggers, and a {@link GroupMode#ONCE} group stops
-     * for an item they have already been given.
-     */
+    /** Per-player group progress. */
     public static final class GroupState {
         private final List<ItemGroup> groups;
         private final Set<ItemGroup> triggered = new HashSet<>();
@@ -156,7 +121,6 @@ public final class ItemPool {
             this.groups = groups;
         }
 
-        /** Remembers an item the player was just given and sets off every group it triggers. */
         public void record(PoolItem item) {
             received.add(item.id());
             for (ItemGroup group : groups) {
@@ -166,7 +130,7 @@ public final class ItemPool {
             }
         }
 
-        /** A group never makes an item rarer than its configured weight. */
+        /** Never lowers an item below its configured weight. */
         public int weightOf(PoolItem item) {
             int weight = item.weight();
             for (ItemGroup group : triggered) {
@@ -180,18 +144,12 @@ public final class ItemPool {
         }
     }
 
-    // --- building the pool ---
-
-    /** The item's id without the {@code minecraft:} namespace, which is how the configuration names items. */
+    /** Without the {@code minecraft:} namespace. */
     public static String itemId(ItemType type) {
         return Registry.ITEM.getKeyOrThrow(type).asMinimalString();
     }
 
-    /**
-     * Compiles a configured pattern, in which {@code *} stands for any part of an id. A
-     * pattern without any {@code *} names one item, so one list can hold both whole
-     * families like {@code *_banner_pattern} and one-offs like {@code command_block}.
-     */
+    /** {@code *} matches any substring; no {@code *} means an exact id. */
     public static Pattern wildcard(String pattern) {
         String[] parts = pattern.trim().toLowerCase(java.util.Locale.ROOT).split("\\*", -1);
         StringBuilder regex = new StringBuilder();
@@ -204,11 +162,7 @@ public final class ItemPool {
         return Pattern.compile(regex.toString());
     }
 
-    /**
-     * Reads a custom item, written exactly the way {@code /give} takes it. The command
-     * parser does the work on purpose: it knows every component the running version has,
-     * and says precisely what is wrong with a definition.
-     */
+    /** Parses {@code /give} syntax using the command parser, for full component support and clear errors. */
     public static ItemStack parseCustomItem(String definition) throws Exception {
         StringReader reader = new StringReader(definition.trim());
         ItemStack stack = ArgumentTypes.itemStack().parse(reader);
@@ -218,11 +172,7 @@ public final class ItemPool {
         return stack;
     }
 
-    /**
-     * Builds the pool of items a game hands out.
-     *
-     * @param world the game's world, which decides whether experimental items exist at all
-     */
+    /** @param world decides whether experimental items are enabled */
     public static List<PoolItem> build(World world, PillarsConfig.Items config) {
         List<Pattern> patterns = config.blacklistPatterns().stream().map(ItemPool::wildcard).toList();
         Set<String> exceptions = new HashSet<>();
@@ -247,11 +197,10 @@ public final class ItemPool {
             pool.add(poolItem(type, id, weightOf(id, weights)));
         }
 
-        // The blacklist is not applied to these: defining a variant is saying you want it,
-        // whatever the patterns say about the item it is built from.
+        // Custom items bypass the blacklist.
         for (Map.Entry<String, String> custom : config.customItems().entrySet()) {
             String name = custom.getKey();
-            // A name that is already an item's would make two entries answer to it.
+            // Skip names that clash with a registry item.
             if (registryIds.contains(name)) {
                 continue;
             }
@@ -264,17 +213,12 @@ public final class ItemPool {
             pool.add(new PoolItem(name, weightOf(name, weights), template::clone));
         }
 
-        // A weight of zero means the same as a blacklisting, so such an item leaves the
-        // pool entirely; left in it, a group could still raise it back above zero.
+        // Weight 0 means blacklisted; removed so a group cannot boost it back.
         pool.removeIf(item -> item.weight() <= 0);
         return List.copyOf(pool);
     }
 
-    /**
-     * The configured weight of an item, or 1 when nothing mentions it. When several
-     * patterns match, the longest wins, so a {@code splash_potion: 1} keeps its weight
-     * next to a {@code *potion: 25} however the lines are ordered.
-     */
+    /** Defaults to 1; the longest matching pattern wins, regardless of order. */
     private static int weightOf(String id, Map<Pattern, Integer> weights) {
         int weight = 1;
         int longest = -1;
@@ -301,7 +245,7 @@ public final class ItemPool {
         });
     }
 
-    /** Whether any item (custom ones included) answers to a pattern, for config warnings. */
+    /** For config warnings. */
     public static boolean matchesAnything(String pattern, Collection<String> customNames) {
         Pattern regex = wildcard(pattern);
         for (ItemType type : Registry.ITEM) {

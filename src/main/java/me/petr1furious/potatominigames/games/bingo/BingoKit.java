@@ -13,7 +13,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 
-/** The bingo starter kit (PDC-marked so kit items never count for board claims). */
+/** Kit items are PDC-marked so they never count for board claims. */
 final class BingoKit {
     private final NamespacedKey starterItemKey;
 

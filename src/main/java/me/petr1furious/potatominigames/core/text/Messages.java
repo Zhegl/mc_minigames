@@ -10,22 +10,37 @@ import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
-/**
- * Message styling plus broadcasting. The server-wide instance broadcasts to
- * everyone; each game session gets its own instance whose broadcasts reach only
- * that game's players and spectators, so two games running side by side do not
- * talk over each other.
- */
+/** Message styling and broadcasting; session instances reach only that game's audience. */
 public final class Messages {
     private final Supplier<Audience> audience;
+    private final Component prefix;
 
-    /** Broadcasts to the whole server. */
     public Messages() {
-        this(Bukkit::getServer);
+        this(Bukkit::getServer, null);
     }
 
-    public Messages(Supplier<Audience> audience) {
+    /** @param prefix put before every broadcast, e.g. {@link #tag}; null for none */
+    public Messages(Supplier<Audience> audience, Component prefix) {
         this.audience = audience;
+        this.prefix = prefix;
+    }
+
+    /** "[Pillars] " with the name in its own colour. */
+    public static Component tag(Component name) {
+        return Component.text()
+                .append(Component.text("[", NamedTextColor.DARK_GRAY))
+                .append(name)
+                .append(Component.text("] ", NamedTextColor.DARK_GRAY))
+                .build();
+    }
+
+    public Component prefixed(Component message) {
+        return prefix == null ? message : Component.text().append(prefix).append(message).build();
+    }
+
+    /** Sends one message with this instance's prefix. */
+    public void send(Audience target, Component message) {
+        target.sendMessage(prefixed(message));
     }
 
     /** "1 player", "3 players". */
@@ -50,10 +65,10 @@ public final class Messages {
     }
 
     public void broadcast(Component message) {
-        audience.get().sendMessage(message);
+        audience.get().sendMessage(prefixed(message));
     }
 
-    /** Always server-wide, also from a session's instance: start and result one-liners. */
+    /** Always server-wide, even from a session's instance. */
     public void broadcastGlobal(Component message) {
         Bukkit.getServer().sendMessage(message);
     }
