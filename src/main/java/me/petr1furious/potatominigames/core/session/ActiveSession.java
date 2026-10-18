@@ -168,7 +168,7 @@ public final class ActiveSession {
         phase = GamePhase.RUNNING;
         elapsedSeconds = 0;
         try {
-            teams.configureStart(teamPicks, !queued);
+            teams.configureStart(teamPicks, !queued, game.teamColors(mode));
             teams.attach(participants);
             session = game.createSession(new SessionServices(plugin, this, participants, playerState, teams,
                     sidebar, bossBars, arena, worlds, manager.spawnFinder(), messages, manager.points()), mode);

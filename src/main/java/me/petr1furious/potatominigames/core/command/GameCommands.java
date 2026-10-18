@@ -309,6 +309,13 @@ public final class GameCommands {
                                         teamLeave(game, target);
                                     }
                                 }))))
+                .then(Commands.literal("reset")
+                        .requires(GameCommands::isAdmin)
+                        .executes(ctx -> run(ctx, c -> {
+                            teams.resetStanding(game.id());
+                            c.getSource().getSender().sendMessage(
+                                    messages.success("Saved " + game.id() + " team colours cleared."));
+                        })))
                 .then(Commands.literal("cycle")
                         .requires(GameCommands::isAdmin)
                         .executes(ctx -> run(ctx, c -> {

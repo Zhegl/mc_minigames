@@ -20,6 +20,8 @@ public final class TeamService {
     private Map<UUID, TeamColor> queuePicks = Map.of();
     /** Saved colours apply only to admin-started games. */
     private boolean useStanding = true;
+    /** Colours this game and mode can use; picks and saved colours outside it are ignored. */
+    private List<TeamColor> allowed = List.of(TeamColor.values());
 
     public TeamService(TeamRegistry registry) {
         this.registry = registry;
@@ -37,9 +39,10 @@ public final class TeamService {
         this.participants = null;
     }
 
-    public void configureStart(Map<UUID, TeamColor> picks, boolean standingColours) {
+    public void configureStart(Map<UUID, TeamColor> picks, boolean standingColours, List<TeamColor> colours) {
         this.queuePicks = Map.copyOf(picks);
         this.useStanding = standingColours;
+        this.allowed = colours.isEmpty() ? List.of(TeamColor.values()) : List.copyOf(colours);
     }
 
     public TeamColor standingTeam(String gameId, UUID playerId) {
@@ -63,6 +66,10 @@ public final class TeamService {
         if (participants != null) {
             participants.find(playerId).ifPresent(participant -> participant.setTeam(null));
         }
+    }
+
+    public void resetStanding(String gameId) {
+        registry.clearAll(gameId);
     }
 
     /** Persisted like an explicit pick. */
@@ -96,12 +103,12 @@ public final class TeamService {
      */
     public TeamColor resolveForStart(String gameId, Participant participant) {
         TeamColor picked = queuePicks.get(participant.id());
-        if (picked != null) {
+        if (picked != null && allowed.contains(picked)) {
             participant.setTeam(picked);
             return picked;
         }
         TeamColor standing = useStanding ? standingTeam(gameId, participant.id()) : null;
-        if (standing != null) {
+        if (standing != null && allowed.contains(standing)) {
             participant.setTeam(standing);
             return standing;
         }
@@ -118,9 +125,9 @@ public final class TeamService {
             }
         }
         // Empty colours count as 0 so players spread onto fresh teams.
-        TeamColor chosen = TeamColor.values()[0];
+        TeamColor chosen = allowed.getFirst();
         int fewest = Integer.MAX_VALUE;
-        for (TeamColor color : TeamColor.values()) {
+        for (TeamColor color : allowed) {
             int size = counts.get(color);
             if (size < fewest) {
                 fewest = size;

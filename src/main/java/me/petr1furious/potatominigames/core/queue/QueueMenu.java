@@ -27,6 +27,7 @@ import me.petr1furious.potatominigames.core.command.CommandFailure;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.session.ActiveSession;
 import me.petr1furious.potatominigames.core.session.SessionManager;
+import me.petr1furious.potatominigames.core.team.TeamColor;
 
 /**
  * Chest menus: one icon per game, and for games with several modes a second menu with
@@ -45,6 +46,8 @@ public final class QueueMenu implements Listener {
 
     private static final class Holder implements InventoryHolder {
         private final Map<Integer, Entry> entries = new LinkedHashMap<>();
+        /** Set for a team menu, which closes once they leave that queue. */
+        private QueueService.Queue teamQueue;
         private Inventory inventory;
 
         @Override
@@ -71,7 +74,7 @@ public final class QueueMenu implements Listener {
         for (Minigame game : games) {
             entries.add(new Entry(viewer -> gameIcon(game, viewer), clicker -> pickGame(clicker, game)));
         }
-        show(player, Component.text("Play a game"), entries, null);
+        show(player, Component.text("Play a game"), entries, null, null);
     }
 
     /** The mode menu of one game. */
@@ -79,16 +82,25 @@ public final class QueueMenu implements Listener {
         List<Entry> entries = new ArrayList<>();
         for (QueueService.Queue queue : queues.queuesOf(game)) {
             entries.add(new Entry(viewer -> queueIcon(queue, viewer), clicker -> {
+                if (picksTeam(clicker, queue)) {
+                    openTeams(clicker, queue);
+                    return;
+                }
                 clicker.closeInventory();
                 queues.join(clicker, queue);
             }));
         }
-        show(player, game.displayName(), entries, new Entry(viewer -> backIcon(), this::open));
+        show(player, game.displayName(), entries, new Entry(viewer -> backIcon(), this::open), null);
     }
 
     private void pickGame(Player player, Minigame game) throws CommandFailure {
         List<QueueService.Queue> available = queues.queuesOf(game);
         if (available.isEmpty()) {
+            return;
+        }
+        Optional<QueueService.Queue> mine = queues.queueOf(player);
+        if (mine.isPresent() && mine.get().game() == game && picksTeam(player, mine.get())) {
+            openTeams(player, mine.get());
             return;
         }
         if (available.size() > 1 && sessions.sessionOf(game).isEmpty()) {
@@ -99,8 +111,47 @@ public final class QueueMenu implements Listener {
         queues.join(player, available.getFirst());
     }
 
-    /** Lays the icons out centred on the middle row, with an optional back button below. */
-    private void show(Player player, Component title, List<Entry> entries, Entry back) {
+    /** The colour menu of the queue the player is in; picks last only while they stay queued. */
+    public void openTeams(Player player, QueueService.Queue queue) {
+        List<Entry> entries = new ArrayList<>();
+        for (TeamColor color : queue.teamColors()) {
+            entries.add(new Entry(viewer -> teamIcon(queue, color, viewer), clicker -> {
+                requireQueued(clicker, queue);
+                queues.pickTeam(clicker, color);
+            }));
+        }
+        Entry back = new Entry(viewer -> backIcon(), clicker -> {
+            if (queues.queuesOf(queue.game()).size() > 1) {
+                open(clicker, queue.game());
+            } else {
+                open(clicker);
+            }
+        });
+        Entry auto = new Entry(viewer -> autoTeamIcon(queue, viewer), clicker -> {
+            requireQueued(clicker, queue);
+            queues.clearTeamPick(clicker);
+        });
+        Holder holder = show(player, Component.text("Pick a team: ").append(plain(queue.displayName())),
+                entries, back, auto);
+        holder.teamQueue = queue;
+    }
+
+    private boolean picksTeam(Player player, QueueService.Queue queue) {
+        return queue.contains(player.getUniqueId()) && !queue.teamColors().isEmpty();
+    }
+
+    private static void requireQueued(Player player, QueueService.Queue queue) throws CommandFailure {
+        if (!queue.contains(player.getUniqueId())) {
+            player.closeInventory();
+            throw new CommandFailure("You are no longer in that queue.");
+        }
+    }
+
+    /**
+     * Lays the icons out centred on the middle rows, with optional back and extra buttons
+     * below.
+     */
+    private Holder show(Player player, Component title, List<Entry> entries, Entry back, Entry extra) {
         int perRow = 7;
         int contentRows = Math.max(1, (entries.size() + perRow - 1) / perRow);
         int rows = Math.min(6, contentRows + 2);
@@ -119,11 +170,16 @@ public final class QueueMenu implements Listener {
             }
             holder.entries.put(row * 9 + column, entries.get(i));
         }
+        int bottom = (rows - 1) * 9;
         if (back != null) {
-            holder.entries.put((rows - 1) * 9 + 4, back);
+            holder.entries.put(bottom + (extra != null ? 3 : 4), back);
+        }
+        if (extra != null) {
+            holder.entries.put(bottom + (back != null ? 5 : 4), extra);
         }
         render(holder, player);
         player.openInventory(holder.inventory);
+        return holder;
     }
 
     private void render(Holder holder, Player viewer) {
@@ -156,9 +212,15 @@ public final class QueueMenu implements Listener {
                     queueStatus(lore, gameQueues.getFirst());
                 }
                 lore.add(Component.empty());
-                lore.add(plain(mine ? Component.text("You are queued", NamedTextColor.GREEN)
-                        : Component.text(gameQueues.size() > 1 ? "» Click to pick a mode" : "» Click to join",
-                                NamedTextColor.AQUA)));
+                Optional<QueueService.Queue> queued = queues.queueOf(viewer);
+                if (mine && queued.isPresent() && picksTeam(viewer, queued.get())) {
+                    teamStatus(lore, queued.get(), viewer);
+                    lore.add(plain(Component.text("» Click to pick a team", NamedTextColor.AQUA)));
+                } else {
+                    lore.add(plain(mine ? Component.text("You are queued", NamedTextColor.GREEN)
+                            : Component.text(gameQueues.size() > 1 ? "» Click to pick a mode" : "» Click to join",
+                                    NamedTextColor.AQUA)));
+                }
             }
             meta.lore(lore);
             meta.setEnchantmentGlintOverride(mine);
@@ -184,9 +246,66 @@ public final class QueueMenu implements Listener {
             } else {
                 queueStatus(lore, queue);
                 lore.add(Component.empty());
-                lore.add(plain(mine ? Component.text("You are in this queue", NamedTextColor.GREEN)
-                        : Component.text("» Click to join", NamedTextColor.AQUA)));
+                if (picksTeam(viewer, queue)) {
+                    teamStatus(lore, queue, viewer);
+                    lore.add(plain(Component.text("» Click to pick a team", NamedTextColor.AQUA)));
+                } else {
+                    lore.add(plain(mine ? Component.text("You are in this queue", NamedTextColor.GREEN)
+                            : Component.text("» Click to join", NamedTextColor.AQUA)));
+                }
             }
+            meta.lore(lore);
+            meta.setEnchantmentGlintOverride(mine);
+        });
+        return item;
+    }
+
+    private static void teamStatus(List<Component> lore, QueueService.Queue queue, Player viewer) {
+        TeamColor pick = queue.teamPick(viewer.getUniqueId());
+        lore.add(plain(Component.text()
+                .append(Component.text("Your team: ", NamedTextColor.GRAY))
+                .append(pick != null ? pick.displayNameComponent()
+                        : Component.text("auto", NamedTextColor.WHITE))
+                .build()));
+    }
+
+    private ItemStack teamIcon(QueueService.Queue queue, TeamColor color, Player viewer) {
+        ItemStack item = new ItemStack(color.woolMaterial());
+        boolean mine = queue.teamPick(viewer.getUniqueId()) == color;
+        List<Player> pickers = queue.pickedBy(color);
+        item.editMeta(meta -> {
+            meta.displayName(plain(color.displayNameComponent()).decorate(TextDecoration.BOLD));
+            List<Component> lore = new ArrayList<>();
+            if (pickers.isEmpty()) {
+                lore.add(plain(Component.text("Nobody yet", NamedTextColor.DARK_GRAY)));
+            } else {
+                lore.add(plain(Component.text("Picked by:", NamedTextColor.GRAY)));
+                for (Player picker : pickers) {
+                    lore.add(plain(Component.text()
+                            .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
+                            .append(Component.text(picker.getName(), NamedTextColor.WHITE))
+                            .build()));
+                }
+            }
+            lore.add(Component.empty());
+            lore.add(plain(mine ? Component.text("Your team", NamedTextColor.GREEN)
+                    : Component.text("» Click to pick", NamedTextColor.AQUA)));
+            meta.lore(lore);
+            meta.setEnchantmentGlintOverride(mine);
+        });
+        return item;
+    }
+
+    private ItemStack autoTeamIcon(QueueService.Queue queue, Player viewer) {
+        ItemStack item = new ItemStack(Material.GLASS);
+        boolean mine = queue.teamPick(viewer.getUniqueId()) == null;
+        item.editMeta(meta -> {
+            meta.displayName(plain(Component.text("Auto", NamedTextColor.WHITE)).decorate(TextDecoration.BOLD));
+            List<Component> lore = new ArrayList<>();
+            lore.add(plain(Component.text("Put on a team when the game starts", NamedTextColor.GRAY)));
+            lore.add(Component.empty());
+            lore.add(plain(mine ? Component.text("Your choice", NamedTextColor.GREEN)
+                    : Component.text("» Click to clear your pick", NamedTextColor.AQUA)));
             meta.lore(lore);
             meta.setEnchantmentGlintOverride(mine);
         });
@@ -223,7 +342,11 @@ public final class QueueMenu implements Listener {
     private void refreshOpen() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof Holder holder) {
-                render(holder, player);
+                if (holder.teamQueue != null && !holder.teamQueue.contains(player.getUniqueId())) {
+                    player.closeInventory();
+                } else {
+                    render(holder, player);
+                }
             }
         }
     }
@@ -243,6 +366,10 @@ public final class QueueMenu implements Listener {
             entry.action().click(player);
         } catch (CommandFailure failure) {
             player.sendMessage(failure.text());
+        }
+        // Show a pick straight away, not on the next refresh.
+        if (player.getOpenInventory().getTopInventory().getHolder() == holder) {
+            render(holder, player);
         }
     }
 
