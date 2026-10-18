@@ -28,4 +28,14 @@ public record SessionServices(
         SpawnFinder spawnFinder,
         Messages messages,
         PointsService points) {
+
+    /** From the start command or queue, e.g. {@code arena} for pillars, {@code difficulty} for bingo. */
+    public java.util.Map<String, String> options() {
+        return session.options();
+    }
+
+    /** Null when not given. */
+    public String option(String key) {
+        return session.options().get(key);
+    }
 }
