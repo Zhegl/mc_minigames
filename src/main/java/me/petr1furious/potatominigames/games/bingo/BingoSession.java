@@ -114,7 +114,7 @@ final class BingoSession implements GameSession {
 
     @Override
     public void onStart() throws CommandFailure {
-        difficulty = config.gameDifficulty();
+        difficulty = config.difficultyOr(services.option("difficulty"));
 
         // Colours were already resolved when the session started.
         teamStates.clear();

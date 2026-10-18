@@ -106,6 +106,16 @@ public final class BingoGame implements Minigame {
     }
 
     @Override
+    public List<String> difficulties() {
+        return config.difficultyKeys();
+    }
+
+    @Override
+    public String defaultDifficulty() {
+        return config.gameDifficulty().key();
+    }
+
+    @Override
     public GameSession createSession(SessionServices services, String mode) {
         activeSession = new BingoSession(services, config, itemPool, boardService, boardUi, kit,
                 GameMode.fromKey(mode));

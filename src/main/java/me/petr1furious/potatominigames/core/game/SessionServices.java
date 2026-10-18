@@ -28,4 +28,8 @@ public record SessionServices(
         SpawnFinder spawnFinder,
         Messages messages,
         PointsService points) {
+    /** A per-start setting such as "difficulty", or null; fix2-queue carrier. */
+    public String option(String key) {
+        return session.option(key);
+    }
 }

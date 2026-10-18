@@ -2,10 +2,13 @@ package me.petr1furious.potatominigames.core.queue;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -61,6 +64,9 @@ public final class QueueService implements Listener {
     private static final Messages QUEUE =
             new Messages(Bukkit::getServer, Messages.tag(Component.text("Queue", NamedTextColor.YELLOW)));
 
+    /** {@code /play difficulty any} drops the vote. */
+    public static final String ANY_DIFFICULTY = "any";
+
     private static final Title.Times COUNTDOWN_TITLE_TIMES =
             Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(200));
 
@@ -73,6 +79,8 @@ public final class QueueService implements Listener {
         private final Set<UUID> members = new LinkedHashSet<>();
         private final Set<UUID> votes = new LinkedHashSet<>();
         private final Map<UUID, TeamColor> teamPicks = new LinkedHashMap<>();
+        /** Difficulty votes; no entry means any. */
+        private final Map<UUID, String> difficultyVotes = new LinkedHashMap<>();
         /** Seconds left, or null while not counting down. */
         private Integer countdown;
 
@@ -163,6 +171,55 @@ public final class QueueService implements Listener {
                 }
             });
             return result;
+        }
+
+        /** Levels open to votes; empty for a game without difficulties. */
+        public List<String> difficulties() {
+            return game.difficulties();
+        }
+
+        /** Null for any. */
+        public String difficultyVote(UUID playerId) {
+            return difficultyVotes.get(playerId);
+        }
+
+        /** Online members who voted for this level, in vote order. */
+        public List<Player> votedFor(String level) {
+            List<Player> result = new ArrayList<>();
+            difficultyVotes.forEach((id, vote) -> {
+                Player player = Bukkit.getPlayer(id);
+                if (vote.equals(level) && player != null) {
+                    result.add(player);
+                }
+            });
+            return result;
+        }
+
+        /**
+         * The most-voted level; ties go to the default, else the middle of the tied ones.
+         * Null for a game without difficulties.
+         */
+        public String leadingDifficulty() {
+            List<String> levels = difficulties();
+            if (levels.isEmpty()) {
+                return null;
+            }
+            String fallback = game.defaultDifficulty();
+            if (!levels.contains(fallback)) {
+                fallback = levels.get(levels.size() / 2);
+            }
+            Map<String, Integer> counts = new HashMap<>();
+            difficultyVotes.forEach((id, vote) -> {
+                if (members.contains(id) && levels.contains(vote)) {
+                    counts.merge(vote, 1, Integer::sum);
+                }
+            });
+            if (counts.isEmpty()) {
+                return fallback;
+            }
+            int best = counts.values().stream().max(Integer::compare).orElseThrow();
+            List<String> tied = levels.stream().filter(level -> counts.getOrDefault(level, 0) == best).toList();
+            return tied.contains(fallback) ? fallback : tied.get((tied.size() - 1) / 2);
         }
     }
 
@@ -365,6 +422,43 @@ public final class QueueService implements Listener {
                 .build());
     }
 
+    /** The queue of a game with difficulties the player is in. */
+    public Queue requireDifficultyQueue(Player player) throws CommandFailure {
+        Queue queue = byPlayer.get(player.getUniqueId());
+        if (queue == null) {
+            throw new CommandFailure("Join a queue first.");
+        }
+        if (queue.difficulties().isEmpty()) {
+            throw new CommandFailure("This game has no difficulty levels.");
+        }
+        return queue;
+    }
+
+    /** Null votes for any. Lasts only while they stay in this queue; never saved. */
+    public void pickDifficulty(Player player, String level) throws CommandFailure {
+        Queue queue = requireDifficultyQueue(player);
+        String key = level == null ? null : level.toLowerCase(Locale.ROOT);
+        if (key != null && !queue.difficulties().contains(key)) {
+            throw new CommandFailure("Unknown difficulty: " + level + " (options: "
+                    + String.join(", ", queue.difficulties()) + ", " + ANY_DIFFICULTY + ")");
+        }
+        if (Objects.equals(queue.difficultyVotes.get(player.getUniqueId()), key)) {
+            throw new CommandFailure(key == null ? "You already voted for any." : "You already voted for that.");
+        }
+        touch(player);
+        if (key == null) {
+            queue.difficultyVotes.remove(player.getUniqueId());
+        } else {
+            queue.difficultyVotes.put(player.getUniqueId(), key);
+        }
+        announcePick(queue, Component.text()
+                .append(Component.text(player.getName(), NamedTextColor.AQUA))
+                .append(Component.text(" voted for ", NamedTextColor.GRAY))
+                .append(Component.text(key == null ? ANY_DIFFICULTY : key, NamedTextColor.WHITE))
+                .append(Component.text(" (leading: " + queue.leadingDifficulty() + ")", NamedTextColor.GRAY))
+                .build());
+    }
+
     private void announcePick(Queue queue, Component line) {
         for (Player member : online(queue)) {
             QUEUE.send(member, line);
@@ -465,11 +559,17 @@ public final class QueueService implements Listener {
                 picks.put(player.getUniqueId(), pick);
             }
         }
+        Map<String, String> options = new LinkedHashMap<>();
+        String difficulty = queue.leadingDifficulty();
+        if (difficulty != null) {
+            options.put("difficulty", difficulty);
+        }
+        Map<UUID, String> difficultyVotes = new LinkedHashMap<>(queue.difficultyVotes);
         for (Player player : roster) {
             removeQuietly(player);
         }
         try {
-            sessions.start(queue.game, queue.mode, roster, picks, true);
+            sessions.start(queue.game, queue.mode, roster, picks, true, options);
         } catch (CommandFailure failure) {
             plugin.getLogger().warning("Queued " + queue.game.id() + " could not start: "
                     + net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
@@ -483,6 +583,7 @@ public final class QueueService implements Listener {
                 player.sendMessage(failure.text());
             }
             queue.teamPicks.putAll(picks);
+            difficultyVotes.forEach(queue.difficultyVotes::putIfAbsent);
             queue.members.addAll(rest);
             queue.countdown = countdownSeconds.get();
         }
@@ -528,6 +629,7 @@ public final class QueueService implements Listener {
         queue.members.remove(player.getUniqueId());
         queue.votes.remove(player.getUniqueId());
         queue.teamPicks.remove(player.getUniqueId());
+        queue.difficultyVotes.remove(player.getUniqueId());
         player.sendActionBar(Component.empty());
         if (queue.members.size() < queue.minPlayers()) {
             queue.countdown = null;
@@ -584,7 +686,8 @@ public final class QueueService implements Listener {
     private void announceCountdown(Queue queue) {
         Component members = Component.text()
                 .append(queue.displayName())
-                .append(Component.text(" starts in " + queue.countdown + "s. ", NamedTextColor.GREEN))
+                .append(Component.text(" starts in " + queue.countdown + "s"
+                        + difficultySuffix(queue, ", difficulty ") + ". ", NamedTextColor.GREEN))
                 .append(memberButtons(queue))
                 .build();
         for (Player member : online(queue)) {
@@ -593,7 +696,8 @@ public final class QueueService implements Listener {
         Component others = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s with " + queue.countText()
-                        + (queue.size() == 1 ? " player. " : " players. "), NamedTextColor.GRAY))
+                        + (queue.size() == 1 ? " player" : " players")
+                        + difficultySuffix(queue, ", difficulty ") + ". ", NamedTextColor.GRAY))
                 .append(button("Join", queue.command(), "Join this queue"))
                 .build();
         for (Player player : freePlayers()) {
@@ -604,7 +708,8 @@ public final class QueueService implements Listener {
     private void showWaiting(Queue queue) {
         Component bar = Component.text()
                 .append(queue.displayName())
-                .append(Component.text(" • waiting for players " + queue.members.size() + "/" + queue.minPlayers(),
+                .append(Component.text(" • waiting for players " + queue.members.size() + "/" + queue.minPlayers()
+                        + difficultySuffix(queue, " • "),
                         NamedTextColor.GRAY))
                 .build();
         for (Player member : online(queue)) {
@@ -617,7 +722,8 @@ public final class QueueService implements Listener {
         Component bar = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" • " + queue.countText() + " • starts in " + seconds + "s • votes "
-                        + queue.votesCast() + "/" + queue.votesNeeded(), NamedTextColor.GRAY))
+                        + queue.votesCast() + "/" + queue.votesNeeded() + difficultySuffix(queue, " • "),
+                        NamedTextColor.GRAY))
                 .build();
         for (Player member : online(queue)) {
             member.sendActionBar(bar);
@@ -631,11 +737,21 @@ public final class QueueService implements Listener {
         }
     }
 
-    /** [Vote start] [Pick team] [Leave]; the team button only for games with colours to pick. */
+    /** The leading difficulty after a separator, or "" without difficulties. */
+    private static String difficultySuffix(Queue queue, String separator) {
+        String level = queue.leadingDifficulty();
+        return level == null ? "" : separator + level;
+    }
+
+    /** [Vote start] [Difficulty] [Pick team] [Leave]; the pick buttons only where there is something to pick. */
     private static Component memberButtons(Queue queue) {
         var buttons = Component.text()
                 .append(button("Vote start", "/play vote", "Vote to start early"))
                 .append(Component.space());
+        if (!queue.difficulties().isEmpty()) {
+            buttons.append(button("Difficulty", "/play difficulty", "Vote for the difficulty"))
+                    .append(Component.space());
+        }
         if (!queue.teamColors().isEmpty()) {
             buttons.append(button("Pick team", "/play team", "Choose your team colour"))
                     .append(Component.space());

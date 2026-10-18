@@ -2,6 +2,8 @@ package me.petr1furious.potatominigames.core.command;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.bukkit.entity.Player;
@@ -87,13 +89,32 @@ public final class PlayCommand {
                             }
                             queues.pickTeam(requirePlayer(c), color);
                         }))));
+        root.then(Commands.literal("difficulty")
+                .executes(ctx -> run(ctx, c -> {
+                    Player player = requirePlayer(c);
+                    menu.openDifficulties(player, queues.requireDifficultyQueue(player));
+                }))
+                .then(Commands.argument("difficulty", StringArgumentType.word())
+                        .suggests((context, builder) -> Suggest.strings(difficultyOptions(context.getSource()))
+                                .getSuggestions(context, builder))
+                        .executes(ctx -> run(ctx, c -> {
+                            String raw = c.getArgument("difficulty", String.class);
+                            queues.pickDifficulty(requirePlayer(c),
+                                    raw.equalsIgnoreCase(QueueService.ANY_DIFFICULTY) ? null : raw);
+                        }))));
         root.then(Commands.argument("game", StringArgumentType.word())
                 .suggests(Suggest.dynamic(this::gameIds))
-                .executes(ctx -> run(ctx, c -> joinGame(c, null)))
+                .executes(ctx -> run(ctx, c -> joinGame(c, null, null)))
                 .then(Commands.argument("mode", StringArgumentType.word())
                         .suggests((context, builder) -> Suggest.strings(
                                 modeIds(context.getArgument("game", String.class))).getSuggestions(context, builder))
-                        .executes(ctx -> run(ctx, c -> joinGame(c, c.getArgument("mode", String.class))))));
+                        .executes(ctx -> run(ctx, c -> joinGame(c, c.getArgument("mode", String.class), null)))
+                        .then(Commands.argument("difficulty", StringArgumentType.word())
+                                .suggests((context, builder) -> Suggest.strings(
+                                        gameDifficulties(context.getArgument("game", String.class)))
+                                        .getSuggestions(context, builder))
+                                .executes(ctx -> run(ctx, c -> joinGame(c, c.getArgument("mode", String.class),
+                                        c.getArgument("difficulty", String.class)))))));
         return root.build();
     }
 
@@ -132,6 +153,25 @@ public final class PlayCommand {
         return ids;
     }
 
+    /** The levels of the sender's queue, or of all games outside one. */
+    private List<String> difficultyOptions(CommandSourceStack source) {
+        List<String> ids = new ArrayList<>(source.getSender() instanceof Player player
+                ? queues.queueOf(player).map(QueueService.Queue::difficulties).orElse(List.of())
+                : List.of());
+        ids.add(QueueService.ANY_DIFFICULTY);
+        return ids;
+    }
+
+    private List<String> gameDifficulties(String gameId) {
+        Minigame game = sessions.game(gameId);
+        if (game == null || game.difficulties().isEmpty()) {
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>(game.difficulties());
+        ids.add(QueueService.ANY_DIFFICULTY);
+        return ids;
+    }
+
     private List<String> gameIds() {
         List<String> ids = new ArrayList<>();
         for (QueueService.Queue queue : queues.visibleQueues()) {
@@ -150,7 +190,9 @@ public final class PlayCommand {
         return queues.queuesOf(game).stream().map(QueueService.Queue::mode).toList();
     }
 
-    private void joinGame(CommandContext<CommandSourceStack> ctx, String mode) throws CommandFailure {
+    /** Then opens the difficulty and team menus, skipping a difficulty given here. */
+    private void joinGame(CommandContext<CommandSourceStack> ctx, String mode, String difficulty)
+            throws CommandFailure {
         Player player = requirePlayer(ctx);
         String gameId = ctx.getArgument("game", String.class);
         Minigame game = sessions.game(gameId);
@@ -172,7 +214,31 @@ public final class PlayCommand {
             queue = available.stream().filter(candidate -> candidate.mode().equalsIgnoreCase(mode)).findFirst()
                     .orElseThrow(() -> new CommandFailure("Unknown or closed mode: " + mode));
         }
-        queues.join(player, queue);
+        if (difficulty != null && !difficulty.equalsIgnoreCase(QueueService.ANY_DIFFICULTY)
+                && !queue.difficulties().contains(difficulty.toLowerCase(Locale.ROOT))) {
+            throw new CommandFailure(queue.difficulties().isEmpty() ? game.id() + " has no difficulty levels."
+                    : "Unknown difficulty: " + difficulty + " (options: " + String.join(", ", queue.difficulties())
+                            + ", " + QueueService.ANY_DIFFICULTY + ")");
+        }
+        // Already queued: just the picks.
+        if (!queue.contains(player.getUniqueId())) {
+            queues.join(player, queue);
+            if (!queue.contains(player.getUniqueId())) {
+                return;
+            }
+        }
+        if (difficulty == null) {
+            menu.openPicks(player, queue);
+            return;
+        }
+        String vote = difficulty.equalsIgnoreCase(QueueService.ANY_DIFFICULTY) ? null
+                : difficulty.toLowerCase(Locale.ROOT);
+        if (!Objects.equals(queue.difficultyVote(player.getUniqueId()), vote)) {
+            queues.pickDifficulty(player, vote);
+        }
+        if (!queue.teamColors().isEmpty()) {
+            menu.openTeams(player, queue);
+        }
     }
 
     private void sendOverview(CommandContext<CommandSourceStack> ctx) {

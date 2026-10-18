@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -31,7 +32,8 @@ import me.petr1furious.potatominigames.core.team.TeamColor;
 
 /**
  * Chest menus: one icon per game, and for games with several modes a second menu with
- * one icon per mode. A running game is spectated, as with {@code /play}.
+ * one icon per mode. A running game is spectated, as with {@code /play}. Joining opens the
+ * difficulty vote and then the team picker, for games with them.
  */
 public final class QueueMenu implements Listener {
     private final SessionManager sessions;
@@ -44,10 +46,14 @@ public final class QueueMenu implements Listener {
     private record Entry(Function<Player, ItemStack> icon, Action action) {
     }
 
+    /** Spread over the levels, easiest first. */
+    private static final List<Material> DIFFICULTY_ICONS = List.of(Material.LIME_CONCRETE, Material.YELLOW_CONCRETE,
+            Material.ORANGE_CONCRETE, Material.RED_CONCRETE, Material.BLACK_CONCRETE);
+
     private static final class Holder implements InventoryHolder {
         private final Map<Integer, Entry> entries = new LinkedHashMap<>();
-        /** Set for a team menu, which closes once they leave that queue. */
-        private QueueService.Queue teamQueue;
+        /** Set for a pick menu, which closes once they leave that queue. */
+        private QueueService.Queue queue;
         private Inventory inventory;
 
         @Override
@@ -82,12 +88,13 @@ public final class QueueMenu implements Listener {
         List<Entry> entries = new ArrayList<>();
         for (QueueService.Queue queue : queues.queuesOf(game)) {
             entries.add(new Entry(viewer -> queueIcon(queue, viewer), clicker -> {
-                if (picksTeam(clicker, queue)) {
-                    openTeams(clicker, queue);
+                if (hasPicks(clicker, queue)) {
+                    openPicks(clicker, queue);
                     return;
                 }
                 clicker.closeInventory();
                 queues.join(clicker, queue);
+                openPicks(clicker, queue);
             }));
         }
         show(player, game.displayName(), entries, new Entry(viewer -> backIcon(), this::open), null);
@@ -99,8 +106,8 @@ public final class QueueMenu implements Listener {
             return;
         }
         Optional<QueueService.Queue> mine = queues.queueOf(player);
-        if (mine.isPresent() && mine.get().game() == game && picksTeam(player, mine.get())) {
-            openTeams(player, mine.get());
+        if (mine.isPresent() && mine.get().game() == game && hasPicks(player, mine.get())) {
+            openPicks(player, mine.get());
             return;
         }
         if (available.size() > 1 && sessions.sessionOf(game).isEmpty()) {
@@ -109,6 +116,61 @@ public final class QueueMenu implements Listener {
         }
         player.closeInventory();
         queues.join(player, available.getFirst());
+        openPicks(player, available.getFirst());
+    }
+
+    /**
+     * After joining: the difficulty menu, then the team menu, for whichever the game has.
+     * Does nothing unless they are in the queue (joining a running game spectates).
+     */
+    public void openPicks(Player player, QueueService.Queue queue) {
+        if (!queue.contains(player.getUniqueId())) {
+            return;
+        }
+        if (!queue.difficulties().isEmpty()) {
+            openDifficulties(player, queue);
+        } else if (!queue.teamColors().isEmpty()) {
+            openTeams(player, queue);
+        }
+    }
+
+    /** Back from the first pick menu: the mode menu, or the game menu for one mode. */
+    private Entry backFromPicks(QueueService.Queue queue) {
+        return new Entry(viewer -> backIcon(), clicker -> {
+            if (queues.queuesOf(queue.game()).size() > 1) {
+                open(clicker, queue.game());
+            } else {
+                open(clicker);
+            }
+        });
+    }
+
+    /** The difficulty vote of the queue the player is in; any pick moves on to the team menu. */
+    public void openDifficulties(Player player, QueueService.Queue queue) {
+        List<String> levels = queue.difficulties();
+        List<Entry> entries = new ArrayList<>();
+        for (int i = 0; i < levels.size(); i++) {
+            String level = levels.get(i);
+            Material material = DIFFICULTY_ICONS.get(levels.size() == 1 ? 0
+                    : i * (DIFFICULTY_ICONS.size() - 1) / (levels.size() - 1));
+            entries.add(new Entry(viewer -> difficultyIcon(queue, level, material, viewer),
+                    clicker -> voteDifficulty(clicker, queue, level)));
+        }
+        Entry any = new Entry(viewer -> anyDifficultyIcon(queue, viewer),
+                clicker -> voteDifficulty(clicker, queue, null));
+        Holder holder = show(player, Component.text("Pick a difficulty: ").append(plain(queue.displayName())),
+                entries, backFromPicks(queue), any);
+        holder.queue = queue;
+    }
+
+    private void voteDifficulty(Player player, QueueService.Queue queue, String level) throws CommandFailure {
+        requireQueued(player, queue);
+        if (!Objects.equals(queue.difficultyVote(player.getUniqueId()), level)) {
+            queues.pickDifficulty(player, level);
+        }
+        if (!queue.teamColors().isEmpty()) {
+            openTeams(player, queue);
+        }
     }
 
     /** The colour menu of the queue the player is in; picks last only while they stay queued. */
@@ -120,24 +182,21 @@ public final class QueueMenu implements Listener {
                 queues.pickTeam(clicker, color);
             }));
         }
-        Entry back = new Entry(viewer -> backIcon(), clicker -> {
-            if (queues.queuesOf(queue.game()).size() > 1) {
-                open(clicker, queue.game());
-            } else {
-                open(clicker);
-            }
-        });
+        Entry back = queue.difficulties().isEmpty() ? backFromPicks(queue)
+                : new Entry(viewer -> backIcon(), clicker -> openDifficulties(clicker, queue));
         Entry auto = new Entry(viewer -> autoTeamIcon(queue, viewer), clicker -> {
             requireQueued(clicker, queue);
             queues.clearTeamPick(clicker);
         });
         Holder holder = show(player, Component.text("Pick a team: ").append(plain(queue.displayName())),
                 entries, back, auto);
-        holder.teamQueue = queue;
+        holder.queue = queue;
     }
 
-    private boolean picksTeam(Player player, QueueService.Queue queue) {
-        return queue.contains(player.getUniqueId()) && !queue.teamColors().isEmpty();
+    /** Queued with a difficulty or team to pick. */
+    private static boolean hasPicks(Player player, QueueService.Queue queue) {
+        return queue.contains(player.getUniqueId())
+                && (!queue.difficulties().isEmpty() || !queue.teamColors().isEmpty());
     }
 
     private static void requireQueued(Player player, QueueService.Queue queue) throws CommandFailure {
@@ -206,6 +265,8 @@ public final class QueueMenu implements Listener {
                                 .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
                                 .append(Component.text(queue.mode(), NamedTextColor.GRAY))
                                 .append(Component.text(" " + queue.countText(), NamedTextColor.WHITE))
+                                .append(Component.text(queue.leadingDifficulty() != null
+                                        ? " (" + queue.leadingDifficulty() + ")" : "", NamedTextColor.DARK_GRAY))
                                 .build()));
                     }
                 } else if (!gameQueues.isEmpty()) {
@@ -213,9 +274,8 @@ public final class QueueMenu implements Listener {
                 }
                 lore.add(Component.empty());
                 Optional<QueueService.Queue> queued = queues.queueOf(viewer);
-                if (mine && queued.isPresent() && picksTeam(viewer, queued.get())) {
-                    teamStatus(lore, queued.get(), viewer);
-                    lore.add(plain(Component.text("» Click to pick a team", NamedTextColor.AQUA)));
+                if (mine && queued.isPresent() && hasPicks(viewer, queued.get())) {
+                    pickStatus(lore, queued.get(), viewer);
                 } else {
                     lore.add(plain(mine ? Component.text("You are queued", NamedTextColor.GREEN)
                             : Component.text(gameQueues.size() > 1 ? "» Click to pick a mode" : "» Click to join",
@@ -246,9 +306,8 @@ public final class QueueMenu implements Listener {
             } else {
                 queueStatus(lore, queue);
                 lore.add(Component.empty());
-                if (picksTeam(viewer, queue)) {
-                    teamStatus(lore, queue, viewer);
-                    lore.add(plain(Component.text("» Click to pick a team", NamedTextColor.AQUA)));
+                if (hasPicks(viewer, queue)) {
+                    pickStatus(lore, queue, viewer);
                 } else {
                     lore.add(plain(mine ? Component.text("You are in this queue", NamedTextColor.GREEN)
                             : Component.text("» Click to join", NamedTextColor.AQUA)));
@@ -260,14 +319,79 @@ public final class QueueMenu implements Listener {
         return item;
     }
 
-    private static void teamStatus(List<Component> lore, QueueService.Queue queue, Player viewer) {
-        TeamColor pick = queue.teamPick(viewer.getUniqueId());
-        lore.add(plain(Component.text()
-                .append(Component.text("Your team: ", NamedTextColor.GRAY))
-                .append(pick != null ? pick.displayNameComponent()
-                        : Component.text("auto", NamedTextColor.WHITE))
-                .build()));
+    /** Their vote and team, and where a click takes them. */
+    private static void pickStatus(List<Component> lore, QueueService.Queue queue, Player viewer) {
+        boolean difficulties = !queue.difficulties().isEmpty();
+        boolean teams = !queue.teamColors().isEmpty();
+        if (difficulties) {
+            String vote = queue.difficultyVote(viewer.getUniqueId());
+            lore.add(plain(Component.text()
+                    .append(Component.text("Your vote: ", NamedTextColor.GRAY))
+                    .append(Component.text(vote != null ? vote : QueueService.ANY_DIFFICULTY, NamedTextColor.WHITE))
+                    .build()));
+        }
+        if (teams) {
+            TeamColor pick = queue.teamPick(viewer.getUniqueId());
+            lore.add(plain(Component.text()
+                    .append(Component.text("Your team: ", NamedTextColor.GRAY))
+                    .append(pick != null ? pick.displayNameComponent()
+                            : Component.text("auto", NamedTextColor.WHITE))
+                    .build()));
+        }
+        String what = difficulties && teams ? "difficulty and team" : difficulties ? "difficulty" : "team";
+        lore.add(plain(Component.text("» Click to pick " + what, NamedTextColor.AQUA)));
     }
+
+    private ItemStack difficultyIcon(QueueService.Queue queue, String level, Material material, Player viewer) {
+        ItemStack item = new ItemStack(material);
+        boolean mine = level.equals(queue.difficultyVote(viewer.getUniqueId()));
+        List<Player> voters = queue.votedFor(level);
+        item.editMeta(meta -> {
+            meta.displayName(plain(Component.text(level, NamedTextColor.WHITE)).decorate(TextDecoration.BOLD));
+            List<Component> lore = new ArrayList<>();
+            if (level.equals(queue.leadingDifficulty())) {
+                lore.add(plain(Component.text("Leading", NamedTextColor.GOLD)));
+            }
+            if (voters.isEmpty()) {
+                lore.add(plain(Component.text("No votes yet", NamedTextColor.DARK_GRAY)));
+            } else {
+                lore.add(plain(Component.text("Votes (" + voters.size() + "):", NamedTextColor.GRAY)));
+                for (Player voter : voters) {
+                    lore.add(plain(Component.text()
+                            .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
+                            .append(Component.text(voter.getName(), NamedTextColor.WHITE))
+                            .build()));
+                }
+            }
+            lore.add(Component.empty());
+            lore.add(plain(mine ? Component.text("Your vote", NamedTextColor.GREEN)
+                    : Component.text("» Click to vote", NamedTextColor.AQUA)));
+            meta.lore(lore);
+            meta.setEnchantmentGlintOverride(mine);
+        });
+        return item;
+    }
+
+    private ItemStack anyDifficultyIcon(QueueService.Queue queue, Player viewer) {
+        ItemStack item = new ItemStack(Material.GLASS);
+        boolean mine = queue.difficultyVote(viewer.getUniqueId()) == null;
+        item.editMeta(meta -> {
+            meta.displayName(plain(Component.text("Any", NamedTextColor.WHITE)).decorate(TextDecoration.BOLD));
+            List<Component> lore = new ArrayList<>();
+            lore.add(plain(Component.text("Leave it to the others' votes", NamedTextColor.GRAY)));
+            lore.add(plain(Component.text()
+                    .append(Component.text("Leading: ", NamedTextColor.GRAY))
+                    .append(Component.text(queue.leadingDifficulty(), NamedTextColor.GOLD))
+                    .build()));
+            lore.add(Component.empty());
+            lore.add(plain(mine ? Component.text("Your choice", NamedTextColor.GREEN)
+                    : Component.text("» Click to clear your vote", NamedTextColor.AQUA)));
+            meta.lore(lore);
+            meta.setEnchantmentGlintOverride(mine);
+        });
+        return item;
+    }
+
 
     private ItemStack teamIcon(QueueService.Queue queue, TeamColor color, Player viewer) {
         ItemStack item = new ItemStack(color.woolMaterial());
@@ -318,6 +442,12 @@ public final class QueueMenu implements Listener {
                 .append(Component.text(queue.countText(), NamedTextColor.WHITE))
                 .append(Component.text(" (needs " + queue.minPlayers() + ")", NamedTextColor.DARK_GRAY))
                 .build()));
+        if (queue.leadingDifficulty() != null) {
+            lore.add(plain(Component.text()
+                    .append(Component.text("Difficulty: ", NamedTextColor.GRAY))
+                    .append(Component.text(queue.leadingDifficulty(), NamedTextColor.GOLD))
+                    .build()));
+        }
         if (queue.countdown() != null) {
             lore.add(plain(Component.text("Starts in " + queue.countdown() + "s", NamedTextColor.GREEN)));
         }
@@ -342,7 +472,7 @@ public final class QueueMenu implements Listener {
     private void refreshOpen() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof Holder holder) {
-                if (holder.teamQueue != null && !holder.teamQueue.contains(player.getUniqueId())) {
+                if (holder.queue != null && !holder.queue.contains(player.getUniqueId())) {
                     player.closeInventory();
                 } else {
                     render(holder, player);

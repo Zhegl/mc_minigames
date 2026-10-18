@@ -173,6 +173,13 @@ public final class SessionManager {
      */
     public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
             boolean queued) throws CommandFailure {
+        return start(game, mode, roster, teamPicks, queued, Map.of());
+    }
+
+    // fix2-queue options carrier; reconcile with fix2-cmd's at merge.
+    /** @param options per-start settings the session reads with {@code SessionServices.option}, e.g. "difficulty" */
+    public ActiveSession start(Minigame game, String mode, List<Player> roster, Map<UUID, TeamColor> teamPicks,
+            boolean queued, Map<String, String> options) throws CommandFailure {
         ActiveSession running = sessions.get(game.id());
         if (running != null) {
             throw new CommandFailure(Component.text()
@@ -203,7 +210,7 @@ public final class SessionManager {
                 new TeamService(teamRegistry), new SessionWorlds(throwawayWorlds, slimeWorlds));
         sessions.put(game.id(), session);
         try {
-            session.start(roster, teamPicks, queued);
+            session.start(roster, teamPicks, queued, options);
         } catch (CommandFailure failure) {
             sessions.remove(game.id(), session);
             throw failure;

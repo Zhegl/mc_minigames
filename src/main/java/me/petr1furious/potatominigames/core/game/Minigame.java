@@ -55,6 +55,17 @@ public interface Minigame {
         return usesTeams() ? List.of(TeamColor.values()) : List.of();
     }
 
+    /** Levels queued players vote on, easiest first; the winner is passed as option "difficulty". */
+    default List<String> difficulties() {
+        return List.of();
+    }
+
+    /** Used for "any", no votes, and to break ties. */
+    default String defaultDifficulty() {
+        List<String> levels = difficulties();
+        return levels.isEmpty() ? null : levels.get(levels.size() / 2);
+    }
+
     default boolean usesGadgets() {
         return false;
     }
