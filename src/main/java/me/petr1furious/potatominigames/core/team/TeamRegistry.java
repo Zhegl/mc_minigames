@@ -53,6 +53,12 @@ public final class TeamRegistry {
         save();
     }
 
+    /** Drops every saved colour of one game. */
+    public void clearAll(String gameId) {
+        config.set(gameId, null);
+        save();
+    }
+
     /** In insertion order. */
     public Map<UUID, TeamColor> all(String gameId) {
         Map<UUID, TeamColor> result = new LinkedHashMap<>();

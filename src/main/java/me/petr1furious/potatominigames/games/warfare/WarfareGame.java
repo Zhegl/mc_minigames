@@ -54,6 +54,13 @@ public final class WarfareGame implements Minigame {
         return true;
     }
 
+    /** Team beacon mode only has the colours whose beacon is set up. */
+    @Override
+    public List<TeamColor> teamColors(String mode) {
+        return mode.equalsIgnoreCase("team_beacon") ? config.teamsWithConfiguredBeacons()
+                : List.of(TeamColor.values());
+    }
+
     @Override
     public boolean usesGadgets() {
         return true;

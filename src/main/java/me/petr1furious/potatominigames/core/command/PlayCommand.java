@@ -31,6 +31,9 @@ import static me.petr1furious.potatominigames.core.command.GameCommands.run;
 
 /** Player commands: {@code /play} and {@code /lobby}. */
 public final class PlayCommand {
+    /** {@code /play team auto} drops the pick. */
+    private static final String AUTO_TEAM = "auto";
+
     private final SessionManager sessions;
     private final QueueService queues;
     private final LobbyService lobby;
@@ -61,11 +64,23 @@ public final class PlayCommand {
         root.then(Commands.literal("vote")
                 .executes(ctx -> run(ctx, c -> queues.vote(requirePlayer(c)))));
         root.then(Commands.literal("team")
+                .executes(ctx -> run(ctx, c -> {
+                    Player player = requirePlayer(c);
+                    QueueService.Queue queue = queues.requireTeamQueue(player);
+                    if (queue.teamColors().isEmpty()) {
+                        throw new CommandFailure("No team colours are available in this queue.");
+                    }
+                    menu.openTeams(player, queue);
+                }))
                 .then(Commands.argument("colour", StringArgumentType.word())
-                        .suggests(Suggest.strings(java.util.Arrays.stream(TeamColor.values())
-                                .map(TeamColor::id).toList()))
+                        .suggests((context, builder) -> Suggest.strings(teamOptions(context.getSource()))
+                                .getSuggestions(context, builder))
                         .executes(ctx -> run(ctx, c -> {
                             String raw = c.getArgument("colour", String.class);
+                            if (raw.equalsIgnoreCase(AUTO_TEAM)) {
+                                queues.clearTeamPick(requirePlayer(c));
+                                return;
+                            }
                             TeamColor color = TeamColor.fromId(raw);
                             if (color == null) {
                                 throw new CommandFailure("Unknown team colour: " + raw);
@@ -102,6 +117,19 @@ public final class PlayCommand {
                     }
                 }))
                 .build();
+    }
+
+    /** The colours of the sender's queue, or all of them outside one. */
+    private List<String> teamOptions(CommandSourceStack source) {
+        List<TeamColor> colours = source.getSender() instanceof Player player
+                ? queues.queueOf(player).map(QueueService.Queue::teamColors).orElse(List.of())
+                : List.of();
+        List<String> ids = new ArrayList<>();
+        for (TeamColor color : colours.isEmpty() ? List.of(TeamColor.values()) : colours) {
+            ids.add(color.id());
+        }
+        ids.add(AUTO_TEAM);
+        return ids;
     }
 
     private List<String> gameIds() {

@@ -143,6 +143,27 @@ public final class QueueService implements Listener {
             }
             return count;
         }
+
+        /** Colours open to picks; empty for a game without teams. */
+        public List<TeamColor> teamColors() {
+            return game.teamColors(mode);
+        }
+
+        public TeamColor teamPick(UUID playerId) {
+            return teamPicks.get(playerId);
+        }
+
+        /** Online members who picked this colour, in pick order. */
+        public List<Player> pickedBy(TeamColor color) {
+            List<Player> result = new ArrayList<>();
+            teamPicks.forEach((id, pick) -> {
+                Player player = Bukkit.getPlayer(id);
+                if (pick == color && player != null) {
+                    result.add(player);
+                }
+            });
+            return result;
+        }
     }
 
     private final JavaPlugin plugin;
@@ -255,9 +276,7 @@ public final class QueueService implements Listener {
                 .append(Component.text("You joined ", NamedTextColor.GREEN))
                 .append(queue.displayName())
                 .append(Component.text(" (" + queue.countText() + "). ", NamedTextColor.GREEN))
-                .append(button("Vote start", "/play vote", "Vote to start early"))
-                .append(Component.space())
-                .append(button("Leave", "/play leave", "Leave the queue"))
+                .append(memberButtons(queue))
                 .build());
         announce(queue, player, true);
     }
@@ -298,7 +317,8 @@ public final class QueueService implements Listener {
         }
     }
 
-    public void pickTeam(Player player, TeamColor color) throws CommandFailure {
+    /** The queue of a team game the player is in. */
+    public Queue requireTeamQueue(Player player) throws CommandFailure {
         Queue queue = byPlayer.get(player.getUniqueId());
         if (queue == null) {
             throw new CommandFailure("Join a queue first.");
@@ -306,12 +326,46 @@ public final class QueueService implements Listener {
         if (!queue.game.usesTeams()) {
             throw new CommandFailure("This game has no teams.");
         }
+        return queue;
+    }
+
+    /** Lasts only while they stay in this queue; never saved. */
+    public void pickTeam(Player player, TeamColor color) throws CommandFailure {
+        Queue queue = requireTeamQueue(player);
+        if (!queue.teamColors().contains(color)) {
+            throw new CommandFailure(Component.text()
+                    .append(color.displayNameComponent())
+                    .append(Component.text(" is not available in ", NamedTextColor.RED))
+                    .append(queue.displayName())
+                    .append(Component.text(".", NamedTextColor.RED))
+                    .build());
+        }
+        if (queue.teamPicks.get(player.getUniqueId()) == color) {
+            throw new CommandFailure("You already picked that team.");
+        }
+        touch(player);
         queue.teamPicks.put(player.getUniqueId(), color);
-        Component line = Component.text()
+        announcePick(queue, Component.text()
                 .append(Component.text(player.getName(), NamedTextColor.AQUA))
                 .append(Component.text(" picked ", NamedTextColor.GRAY))
                 .append(color.displayNameComponent())
-                .build();
+                .build());
+    }
+
+    /** Back to auto-balancing. */
+    public void clearTeamPick(Player player) throws CommandFailure {
+        Queue queue = requireTeamQueue(player);
+        if (queue.teamPicks.remove(player.getUniqueId()) == null) {
+            throw new CommandFailure("You have no team picked.");
+        }
+        touch(player);
+        announcePick(queue, Component.text()
+                .append(Component.text(player.getName(), NamedTextColor.AQUA))
+                .append(Component.text(" will be auto-balanced", NamedTextColor.GRAY))
+                .build());
+    }
+
+    private void announcePick(Queue queue, Component line) {
         for (Player member : online(queue)) {
             QUEUE.send(member, line);
         }
@@ -531,9 +585,7 @@ public final class QueueService implements Listener {
         Component members = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s. ", NamedTextColor.GREEN))
-                .append(button("Vote start", "/play vote", "Vote to start early"))
-                .append(Component.space())
-                .append(button("Leave", "/play leave", "Leave the queue"))
+                .append(memberButtons(queue))
                 .build();
         for (Player member : online(queue)) {
             QUEUE.send(member, members);
@@ -577,6 +629,18 @@ public final class QueueService implements Listener {
                 member.playSound(member.getLocation(), Sound.BLOCK_NOTE_BLOCK_HAT, 0.5f, 1.0f);
             }
         }
+    }
+
+    /** [Vote start] [Pick team] [Leave]; the team button only for games with colours to pick. */
+    private static Component memberButtons(Queue queue) {
+        var buttons = Component.text()
+                .append(button("Vote start", "/play vote", "Vote to start early"))
+                .append(Component.space());
+        if (!queue.teamColors().isEmpty()) {
+            buttons.append(button("Pick team", "/play team", "Choose your team colour"))
+                    .append(Component.space());
+        }
+        return buttons.append(button("Leave", "/play leave", "Leave the queue")).build();
     }
 
     private static Component button(String label, String command, String hover) {

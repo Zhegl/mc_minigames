@@ -116,6 +116,17 @@ public final class WarfareConfig {
         configs.saveFile(FILE);
     }
 
+    /** Beacons set in the config, loaded world or not (an arena may only load it on start). */
+    public List<TeamColor> teamsWithConfiguredBeacons() {
+        List<TeamColor> result = new ArrayList<>();
+        for (TeamColor team : TeamColor.values()) {
+            if (!configs.file(FILE).getString("beacons." + team.id() + ".world", "").isEmpty()) {
+                result.add(team);
+            }
+        }
+        return result;
+    }
+
     public List<TeamColor> teamsWithBeacons() {
         List<TeamColor> result = new ArrayList<>();
         for (TeamColor team : TeamColor.values()) {

@@ -8,6 +8,8 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.text.Component;
 
+import me.petr1furious.potatominigames.core.team.TeamColor;
+
 public interface Minigame {
 
     /** Also the command root, e.g. "bingo". */
@@ -46,6 +48,11 @@ public interface Minigame {
 
     default boolean usesTeams() {
         return false;
+    }
+
+    /** Colours players may pick or be balanced onto; empty without teams. */
+    default List<TeamColor> teamColors(String mode) {
+        return usesTeams() ? List.of(TeamColor.values()) : List.of();
     }
 
     default boolean usesGadgets() {
