@@ -38,8 +38,7 @@ public final class PillarsConfig {
     public final Property<Material> platformMaterial =
             bag.define("platformMaterial", PropertyCodec.MATERIAL, Material.BEDROCK);
     public final Property<Double> maxFall = bag.define("maxFall", PropertyCodec.DOUBLE, 40.0);
-    public final Property<Double> platformDistanceFactor =
-            bag.define("platformDistanceFactor", PropertyCodec.DOUBLE, 10.0);
+    public final Property<Double> pillarDistance = bag.define("pillarDistance", PropertyCodec.DOUBLE, 8.0);
     public final Property<Boolean> enableDraws = bag.define("enableDraws", PropertyCodec.BOOL, true);
     public final Property<Boolean> soundEffects = bag.define("soundEffects", PropertyCodec.BOOL, true);
     public final Property<Integer> soundCooldownSeconds = bag.define("soundCooldownSeconds", PropertyCodec.INT, 3);

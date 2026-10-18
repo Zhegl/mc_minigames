@@ -19,8 +19,9 @@ platformMaterial: BEDROCK
 # How far below the platform a player can fall before they are out.
 maxFall: 40.0
 
-# The pillar circle's circumference per player, in blocks.
-platformDistanceFactor: 10.0
+# Blocks between neighbouring pillars, whatever the player count. Random layouts keep at
+# least this much between any two.
+pillarDistance: 8.0
 
 # Whether players dying at the same moment as the last survivor share the win.
 enableDraws: true
