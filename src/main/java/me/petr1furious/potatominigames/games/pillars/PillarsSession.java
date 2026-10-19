@@ -233,6 +233,8 @@ final class PillarsSession implements GameSession {
 
     private void applyArenaSettings() {
         world.setGameRule(GameRules.IMMEDIATE_RESPAWN, true);
+        // Each arena keeps its own time of day; an arena can still turn it back on in gamerules.
+        world.setGameRule(GameRules.ADVANCE_TIME, false);
         for (Map.Entry<String, Object> entry : arena.gameRules().entrySet()) {
             GameRule<?> rule = resolveGameRule(entry.getKey());
             if (rule == null || !setGameRule(rule, entry.getValue())) {

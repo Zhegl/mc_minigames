@@ -184,7 +184,8 @@ items:
 # The arenas, one picked at random for each game. Each plays in a fresh copy of its slime
 # template (slime_worlds/pillars_<name>.slime unless `template:` says otherwise), at x/z.
 # `time` is a tick of the day or day/noon/sunset/night/midnight/sunrise, and an optional
-# `gamerules:` section sets game rules for the arena's games only.
+# `gamerules:` section sets game rules for the arena's games only. Time does not advance
+# unless an arena sets `advance_time: true` there.
 # `/pillars arena import all` cuts the templates out of the old `pillars` world.
 arenas:
   ice: {x: -704, z: -528, time: night}
