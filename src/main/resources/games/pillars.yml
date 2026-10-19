@@ -33,6 +33,8 @@ itemSound: true
 
 # Each mode's settings. cooldownSeconds is the time between items, timeLimit takes "30s",
 # "5min" or "1h"; layout is circular (an even ring) or random (scattered in a circle).
+# pillarMaterial overrides platformMaterial; luckyBlocks makes the pillar blocks lucky blocks
+# (needs NewAmazingLuckyBlocks in whitelist world mode, and its lucky block type of that material).
 modes:
   original:
     cooldownSeconds: 5
@@ -58,6 +60,16 @@ modes:
     actionBar: true
     bossBar: false
     layout: circular
+  lucky:
+    cooldownSeconds: 5
+    timeLimit: 5min
+    color: '#FFD34D'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    pillarMaterial: SPONGE
+    luckyBlocks: true
 
 # What can be handed out. Read again for every game, so edits apply after /pillars reload.
 items:

@@ -27,7 +27,7 @@ import me.petr1furious.potatominigames.core.config.PropertyCodec;
 /** Items and arenas are read from the file at each game start; other values are properties. */
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
-    static final List<String> MODES = List.of("original", "chaos", "item-shuffle");
+    static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky");
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
@@ -58,9 +58,13 @@ public final class PillarsConfig {
         public final Property<Boolean> bossBar;
         /** "circular" or "random". */
         public final Property<String> layout;
+        /** Empty means platformMaterial. */
+        public final Property<String> pillarMaterial;
+        /** Pillar blocks are NewAmazingLuckyBlocks lucky blocks. */
+        public final Property<Boolean> luckyBlocks;
 
         Mode(String id, PropertyBag bag, int cooldown, String timeLimit, String color, boolean actionBar,
-                boolean bossBar, String layout) {
+                boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks) {
             this.id = id;
             this.cooldownSeconds = bag.define("cooldownSeconds", PropertyCodec.INT, cooldown);
             this.timeLimit = bag.define("timeLimit", PropertyCodec.STRING, timeLimit)
@@ -72,6 +76,20 @@ public final class PillarsConfig {
             this.bossBar = bag.define("bossBar", PropertyCodec.BOOL, bossBar);
             this.layout = bag.define("layout", PropertyCodec.STRING, layout)
                     .oneOf(() -> List.of("circular", "random"));
+            this.pillarMaterial = bag.define("pillarMaterial", PropertyCodec.STRING, pillarMaterial)
+                    .type("block, empty for platformMaterial")
+                    .validate(value -> value.isBlank() || isBlock(value));
+            this.luckyBlocks = bag.define("luckyBlocks", PropertyCodec.BOOL, luckyBlocks);
+        }
+
+        private static boolean isBlock(String value) {
+            Material material = Material.matchMaterial(value.trim());
+            return material != null && material.isBlock();
+        }
+
+        public Material pillarMaterial(Material fallback) {
+            Material material = pillarMaterial.get().isBlank() ? null : Material.matchMaterial(pillarMaterial.get().trim());
+            return material != null && material.isBlock() ? material : fallback;
         }
 
         public long timeLimitSeconds() {
@@ -104,12 +122,19 @@ public final class PillarsConfig {
         addMode("original", 5, "5min", "#FFFFFF", false, true, "circular");
         addMode("chaos", 3, "8min", "#FF5555", false, true, "random");
         addMode("item-shuffle", 10, "5min", "#A3FF54", true, false, "circular");
+        addMode("lucky", 5, "5min", "#FFD34D", false, true, "circular", "SPONGE", true);
     }
 
     private void addMode(String id, int cooldown, String timeLimit, String color, boolean actionBar,
             boolean bossBar, String layout) {
+        addMode(id, cooldown, timeLimit, color, actionBar, bossBar, layout, "", false);
+    }
+
+    private void addMode(String id, int cooldown, String timeLimit, String color, boolean actionBar,
+            boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks) {
         PropertyBag modeBag = new PropertyBag("pillars.modes." + id);
-        modes.put(id, new Mode(id, modeBag, cooldown, timeLimit, color, actionBar, bossBar, layout));
+        modes.put(id, new Mode(id, modeBag, cooldown, timeLimit, color, actionBar, bossBar, layout,
+                pillarMaterial, luckyBlocks));
         configs.register(modeBag, FILE, "modes." + id);
     }
 

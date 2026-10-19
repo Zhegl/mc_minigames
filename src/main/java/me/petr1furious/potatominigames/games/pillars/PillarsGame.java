@@ -107,6 +107,7 @@ public final class PillarsGame implements Minigame, Listener {
         return Component.text(switch (mode) {
             case "chaos" -> "Randomized pillar layout, fast item cooldown";
             case "item-shuffle" -> "Items replaced every 10s (9 new items)";
+            case "lucky" -> "Pillars made of lucky blocks, random items as usual";
             default -> "Random items on pillars, last one standing wins";
         });
     }

@@ -37,6 +37,7 @@ queues:
     original: {enabled: true, minPlayers: 2, maxPlayers: 16}
     chaos: {enabled: true, minPlayers: 2, maxPlayers: 16}
     item-shuffle: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    lucky: {enabled: true, minPlayers: 2, maxPlayers: 16}
   bingo:
     default: {enabled: true, minPlayers: 1, maxPlayers: 0}
     butfast: {enabled: true, minPlayers: 1, maxPlayers: 0}

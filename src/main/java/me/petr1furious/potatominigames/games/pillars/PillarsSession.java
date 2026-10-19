@@ -118,6 +118,8 @@ final class PillarsSession implements GameSession {
 
     /** Start option forcing an arena by name; random otherwise. */
     static final String ARENA_OPTION = "arena";
+    static final String LUCKY_PLUGIN = "NewAmazingLuckyBlocks";
+    private boolean luckyWorldAdded;
 
     PillarsSession(SessionServices services, PillarsGame game, PillarsConfig config, String modeId) {
         this.services = services;
@@ -150,6 +152,14 @@ final class PillarsSession implements GameSession {
         PillarsConfig.Items itemConfig = config.items(services.plugin().getLogger());
         groups = itemConfig.groups();
         items = ItemPool.build(world, itemConfig);
+        if (mode.luckyBlocks.get()) {
+            if (!Bukkit.getPluginManager().isPluginEnabled(LUCKY_PLUGIN)) {
+                throw new CommandFailure("Lucky mode needs the " + LUCKY_PLUGIN + " plugin.");
+            }
+            // A placed pillar block would be a lucky block too.
+            String pillarKey = pillarMaterial().getKey().getKey();
+            items = items.stream().filter(item -> !item.id().equalsIgnoreCase(pillarKey)).toList();
+        }
         if (items.isEmpty()) {
             throw new CommandFailure("Item pool is empty; check games/pillars.yml.");
         }
@@ -211,6 +221,7 @@ final class PillarsSession implements GameSession {
         }
         // Set only once nothing else can fail.
         game.setActiveSession(this);
+        setLuckyWorld(mode.luckyBlocks.get());
         services.plugin().getLogger().info("Pillars (" + mode.id + ") started in arena " + arena.name() + " with "
                 + alive.size() + " players and " + items.size() + " items in the pool");
         updateHud();
@@ -327,8 +338,12 @@ final class PillarsSession implements GameSession {
         return new Location(world, center.getBlockX() + dx, config.platformHeight.get(), center.getBlockZ() + dz);
     }
 
+    private Material pillarMaterial() {
+        return mode.pillarMaterial(config.platformMaterial.get());
+    }
+
     private void placePillar(int x, int z) {
-        Material material = config.platformMaterial.get();
+        Material material = pillarMaterial();
         int top = (int) Math.floor(config.platformHeight.get());
         for (int y = world.getMinHeight(); y <= top; y++) {
             world.getBlockAt(x, y, z).setType(material, false);
@@ -863,8 +878,27 @@ final class PillarsSession implements GameSession {
         services.session().endGame(EndReason.FINISHED);
     }
 
+    /** NewAmazingLuckyBlocks only acts in worlds on its list (whitelist mode). */
+    private void setLuckyWorld(boolean enabled) {
+        if (luckyWorldAdded == enabled || world == null) {
+            return;
+        }
+        luckyWorldAdded = enabled;
+        // Its own command refuses to delete a world that is already unloaded, so call it directly.
+        var plugin = Bukkit.getPluginManager().getPlugin(LUCKY_PLUGIN);
+        try {
+            Class<?> worlds = Class.forName("me.i2000c.newalb.utils.locations.WorldManager", true,
+                    plugin.getClass().getClassLoader());
+            worlds.getMethod(enabled ? "addWorld" : "deleteWorld", String.class).invoke(null, world.getName());
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            services.plugin().getLogger().warning("Could not " + (enabled ? "enable" : "disable")
+                    + " lucky blocks in " + world.getName() + ": " + exception);
+        }
+    }
+
     @Override
     public void onEnd(EndReason reason) {
+        setLuckyWorld(false);
         if (!ending) {
             // Stopped by an admin, or everyone left.
             end(Ending.FORCE, List.of());
