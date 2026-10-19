@@ -837,6 +837,10 @@ final class PillarsSession implements GameSession {
         }
     }
 
+    boolean hasStarted() {
+        return started;
+    }
+
     @Override
     public boolean isInGame(Player player) {
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());

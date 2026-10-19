@@ -18,6 +18,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -148,6 +149,15 @@ public final class PillarsGame implements Minigame, Listener {
     public void onSetSpawn(PlayerSetSpawnEvent event) {
         if ((event.getCause() == PlayerSetSpawnEvent.Cause.BED
                 || event.getCause() == PlayerSetSpawnEvent.Cause.RESPAWN_ANCHOR) && inGame(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Lowest, so lucky blocks are not opened before the start either. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBreakBeforeStart(BlockBreakEvent event) {
+        if (activeSession != null && !activeSession.hasStarted()
+                && activeSession.playsIn(event.getBlock().getWorld())) {
             event.setCancelled(true);
         }
     }
