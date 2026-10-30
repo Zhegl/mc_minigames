@@ -6,7 +6,9 @@ import java.util.List;
 public enum GameMode {
     DEFAULT("default"),
     BUTFAST("butfast"),
-    COLLECTALL("collectall");
+    COLLECTALL("collectall"),
+    /** 5x5; a cell counts only for the team that collects it first; a line wins, else the most cells. */
+    LOCKOUT("lockout");
 
     private final String key;
 
@@ -16,6 +18,11 @@ public enum GameMode {
 
     public String key() {
         return key;
+    }
+
+    /** A full 5x5 board, balanced and won by lines. */
+    public boolean lineBoard() {
+        return this == DEFAULT || this == LOCKOUT;
     }
 
     public static GameMode fromKey(String key) {

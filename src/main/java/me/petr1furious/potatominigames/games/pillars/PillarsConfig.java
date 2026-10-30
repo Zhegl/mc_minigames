@@ -27,7 +27,8 @@ import me.petr1furious.potatominigames.core.config.PropertyCodec;
 /** Items and arenas are read from the file at each game start; other values are properties. */
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
-    static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky");
+    static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky", "tactical", "big_house",
+            "party", "rave", "fusion");
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
@@ -44,6 +45,9 @@ public final class PillarsConfig {
     public final Property<Boolean> soundEffects = bag.define("soundEffects", PropertyCodec.BOOL, true);
     public final Property<Integer> soundCooldownSeconds = bag.define("soundCooldownSeconds", PropertyCodec.INT, 3);
     public final Property<Boolean> itemSound = bag.define("itemSound", PropertyCodec.BOOL, true);
+    /** Chance that a handed-out item that can be enchanted comes enchanted, as from an enchanting table. */
+    public final Property<Double> enchantChance = bag.define("enchantChance", PropertyCodec.DOUBLE, 1.0 / 3)
+            .validate(value -> value >= 0 && value <= 1);
 
     private final Map<String, Mode> modes = new LinkedHashMap<>();
 
@@ -62,9 +66,16 @@ public final class PillarsConfig {
         public final Property<String> pillarMaterial;
         /** Pillar blocks are NewAmazingLuckyBlocks lucky blocks. */
         public final Property<Boolean> luckyBlocks;
+        /** Every player gets the same random items each round, so the luck is shared. */
+        public final Property<Boolean> sameItems;
+        /** Scales pillarDistance, the gap between neighbouring pillars. */
+        public final Property<Double> distanceMultiplier;
+        /** Average seconds between random events (see PillarsEvents); 0 turns them off. */
+        public final Property<Double> eventMeanSeconds;
 
         Mode(String id, PropertyBag bag, int cooldown, String timeLimit, String color, boolean actionBar,
-                boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks) {
+                boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks, boolean sameItems,
+                double distanceMultiplier, double eventMeanSeconds) {
             this.id = id;
             this.cooldownSeconds = bag.define("cooldownSeconds", PropertyCodec.INT, cooldown);
             this.timeLimit = bag.define("timeLimit", PropertyCodec.STRING, timeLimit)
@@ -80,6 +91,11 @@ public final class PillarsConfig {
                     .type("block, empty for platformMaterial")
                     .validate(value -> value.isBlank() || isBlock(value));
             this.luckyBlocks = bag.define("luckyBlocks", PropertyCodec.BOOL, luckyBlocks);
+            this.sameItems = bag.define("sameItems", PropertyCodec.BOOL, sameItems);
+            this.distanceMultiplier = bag.define("distanceMultiplier", PropertyCodec.DOUBLE, distanceMultiplier)
+                    .validate(value -> value > 0);
+            this.eventMeanSeconds = bag.define("eventMeanSeconds", PropertyCodec.DOUBLE, eventMeanSeconds)
+                    .validate(value -> value >= 0);
         }
 
         private static boolean isBlock(String value) {
@@ -122,19 +138,28 @@ public final class PillarsConfig {
         addMode("original", 5, "5min", "#FFFFFF", false, true, "circular");
         addMode("chaos", 3, "8min", "#FF5555", false, true, "random");
         addMode("item-shuffle", 10, "5min", "#A3FF54", true, false, "circular");
-        addMode("lucky", 5, "5min", "#FFD34D", false, true, "circular", "SPONGE", true);
+        addMode("lucky", 5, "5min", "#FFD34D", false, true, "circular", "SPONGE", true, false, 1.0, 0);
+        addMode("tactical", 5, "5min", "#55AAFF", false, true, "circular", "", false, true, 1.0, 0);
+        // Pillars 2.5x further apart, items as fast as chaos.
+        addMode("big_house", 3, "8min", "#C77DFF", false, true, "circular", "", false, false, 2.5, 0);
+        // Random events: one a minute on average; rave twice as often, with chaos-speed items.
+        addMode("party", 5, "8min", "#FF77FF", false, true, "circular", "", false, false, 1.0, 60);
+        addMode("rave", 3, "8min", "#FF2E97", false, true, "circular", "", false, false, 1.0, 30);
+        // A random mix of chaos, shuffle, tactical, big_house and party/rave, rolled every game.
+        addMode("fusion", 5, "8min", "#7DF9FF", false, true, "circular", "", false, false, 1.0, 0);
     }
 
     private void addMode(String id, int cooldown, String timeLimit, String color, boolean actionBar,
             boolean bossBar, String layout) {
-        addMode(id, cooldown, timeLimit, color, actionBar, bossBar, layout, "", false);
+        addMode(id, cooldown, timeLimit, color, actionBar, bossBar, layout, "", false, false, 1.0, 0);
     }
 
     private void addMode(String id, int cooldown, String timeLimit, String color, boolean actionBar,
-            boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks) {
+            boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks, boolean sameItems,
+            double distanceMultiplier, double eventMeanSeconds) {
         PropertyBag modeBag = new PropertyBag("pillars.modes." + id);
         modes.put(id, new Mode(id, modeBag, cooldown, timeLimit, color, actionBar, bossBar, layout,
-                pillarMaterial, luckyBlocks));
+                pillarMaterial, luckyBlocks, sameItems, distanceMultiplier, eventMeanSeconds));
         configs.register(modeBag, FILE, "modes." + id);
     }
 

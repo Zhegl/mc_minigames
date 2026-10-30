@@ -11,7 +11,7 @@ import org.bukkit.World;
 public final class SpawnFinder {
     private final Random random = new Random();
 
-    /** Uniform over the disc; falls back to the center column, then null. */
+    /** Uniform over the disc, never in water or lava; falls back to the center column, then null. */
     public Location findSpawnAround(Location center, int radius) {
         World world = center.getWorld();
         if (world == null) {
@@ -25,7 +25,8 @@ public final class SpawnFinder {
             int x = (int) Math.round(center.getX() + Math.cos(angle) * distance);
             int z = (int) Math.round(center.getZ() + Math.sin(angle) * distance);
             Location candidate = Locations.getFirstSolidBlock(new Location(world, x, center.getY(), z));
-            if (candidate != null) {
+            // Water is passable, so a column in the sea ends on its floor.
+            if (candidate != null && !candidate.getBlock().isLiquid()) {
                 return candidate.add(0.5, 0, 0.5);
             }
         }

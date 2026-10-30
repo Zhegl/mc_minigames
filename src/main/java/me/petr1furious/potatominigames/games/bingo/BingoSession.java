@@ -78,6 +78,8 @@ final class BingoSession implements GameSession {
     private GameDifficulty difficulty;
     private BoardService.Board board;
     private final Map<TeamColor, TeamState> teamStates = new EnumMap<>(TeamColor.class);
+    /** Lockout: the team that collected each cell first; it alone holds it. */
+    private final TeamColor[] owners = new TeamColor[25];
     private final Map<UUID, Punishment> punishments = new HashMap<>();
 
     private long elapsedSeconds;
@@ -233,7 +235,7 @@ final class BingoSession implements GameSession {
         for (TeamState state : ranking) {
             for (Participant participant : services.participants().all()) {
                 if (participant.team() == state.color()) {
-                    services.points().add("bingo", participant.id(), points);
+                    services.award("bingo", participant.id(), points);
                 }
             }
             if (points > 0) {
@@ -381,8 +383,12 @@ final class BingoSession implements GameSession {
             if (target == null || !target.matches(material) || team.collected()[i]) {
                 continue;
             }
+            if (mode == GameMode.LOCKOUT && owners[i] != null) {
+                continue;
+            }
             int reward = mode == GameMode.BUTFAST ? rewardForIndex(i) : 0;
             team.collected()[i] = true;
+            owners[i] = team.color();
             changed = true;
 
             if (mode == GameMode.BUTFAST) {
@@ -416,14 +422,15 @@ final class BingoSession implements GameSession {
     }
 
     private void checkFinish(TeamState team) {
-        boolean won = mode == GameMode.DEFAULT ? computeBestLine(team.collected()) >= 5
+        boolean won = mode.lineBoard() ? computeBestLine(team.collected()) >= 5
                 : allRequiredCollected(team.collected());
 
         if (won && !team.finished()) {
             team.setFinished(true);
             team.setFinishedAtSeconds((int) elapsedSeconds);
             broadcast(team.color().displayNameComponent()
-                    .append(Component.text(" has completed the board.", NamedTextColor.GOLD)));
+                    .append(Component.text(mode == GameMode.LOCKOUT ? " got a bingo line!" : " has completed the board.",
+                            NamedTextColor.GOLD)));
             moveFinishedTeamToSpectators(team.color());
             playParticipantsSound(Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0f, 1.0f);
         }
@@ -436,9 +443,12 @@ final class BingoSession implements GameSession {
             return;
         }
         long finished = active.stream().filter(TeamState::finished).count();
-        boolean shouldEnd = mode == GameMode.BUTFAST
-                ? finished == active.size()
-                : finished >= Math.max(1, active.size() - 1);
+        boolean shouldEnd = switch (mode) {
+            case BUTFAST -> finished == active.size();
+            // A line wins outright; with every cell taken, the most cells win.
+            case LOCKOUT -> finished > 0 || allRequiredCollected(claimedCells());
+            default -> finished >= Math.max(1, active.size() - 1);
+        };
         if (!shouldEnd) {
             return;
         }
@@ -493,6 +503,15 @@ final class BingoSession implements GameSession {
             best = Math.max(best, value);
         }
         return best;
+    }
+
+    /** Lockout: whether each cell has an owner. */
+    private boolean[] claimedCells() {
+        boolean[] claimed = new boolean[owners.length];
+        for (int i = 0; i < owners.length; i++) {
+            claimed[i] = owners[i] != null;
+        }
+        return claimed;
     }
 
     private boolean allRequiredCollected(boolean[] collected) {
@@ -799,7 +818,12 @@ final class BingoSession implements GameSession {
             player.sendActionBar(Component.text("You are not participating.", NamedTextColor.RED));
             return;
         }
-        boardUi.openBoard(player, board, team, mode, difficulty, this::rewardForIndex);
+        boardUi.openBoard(player, board, team, mode, difficulty, this::rewardForIndex, lockoutOwners());
+    }
+
+    /** Passed to the board UI, which marks other teams' cells in lockout. */
+    private TeamColor[] lockoutOwners() {
+        return mode == GameMode.LOCKOUT ? owners : null;
     }
 
     private void handleBoardClick(Player player, int rawSlot) {
@@ -809,7 +833,7 @@ final class BingoSession implements GameSession {
         }
         BoardUiService.ClickAction action = boardUi.mapClick(player, rawSlot);
         if (action.type() == BoardUiService.ClickActionType.TOGGLE_MODE) {
-            boardUi.openBoard(player, board, team, mode, difficulty, this::rewardForIndex);
+            boardUi.openBoard(player, board, team, mode, difficulty, this::rewardForIndex, lockoutOwners());
         }
     }
 
@@ -820,7 +844,7 @@ final class BingoSession implements GameSession {
         for (Player player : services.participants().onlinePlayers()) {
             TeamState team = stateOf(teamOf(player));
             if (team != null) {
-                boardUi.refreshOpenBoard(player, board, team, mode, difficulty, this::rewardForIndex);
+                boardUi.refreshOpenBoard(player, board, team, mode, difficulty, this::rewardForIndex, lockoutOwners());
             }
         }
     }
@@ -962,6 +986,10 @@ final class BingoSession implements GameSession {
     }
 
     private Component teamResultComponent(TeamState state) {
+        if (mode == GameMode.LOCKOUT) {
+            return Component.text(state.score() + (state.finished() ? " BINGO" : ""),
+                    state.finished() ? NamedTextColor.GREEN : NamedTextColor.WHITE);
+        }
         if (mode != GameMode.DEFAULT) {
             return Component.text(state.score(), NamedTextColor.WHITE);
         }
@@ -973,7 +1001,7 @@ final class BingoSession implements GameSession {
 
     private Component teamCollectedMessage(String nickname, TeamState team, String itemName) {
         return Component.text(nickname, team.color().textColor())
-                .append(Component.text(" collected ", NamedTextColor.GOLD))
+                .append(Component.text(mode == GameMode.LOCKOUT ? " claimed " : " collected ", NamedTextColor.GOLD))
                 .append(Component.text(itemName, NamedTextColor.AQUA))
                 .append(Component.text(".", NamedTextColor.GOLD));
     }
@@ -1039,6 +1067,11 @@ final class BingoSession implements GameSession {
     }
 
     private Comparator<TeamState> teamRankingComparator() {
+        if (mode == GameMode.LOCKOUT) {
+            // The team with a line first, then the most cells.
+            return Comparator.comparing(TeamState::finished).reversed()
+                    .thenComparing(Comparator.comparingInt(TeamState::score).reversed());
+        }
         if (mode != GameMode.DEFAULT) {
             return Comparator.comparingInt(TeamState::score).reversed();
         }

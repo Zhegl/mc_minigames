@@ -96,6 +96,11 @@ public final class ThrowawayWorldService {
         };
     }
 
+    /** Null if no world set exists for this id. */
+    public Long seed(String id) {
+        return seeds.get(baseName(id));
+    }
+
     /** Null if the world is not managed. */
     public String baseOf(World world) {
         return world == null ? null : worldToBase.get(world.getName());
@@ -151,9 +156,13 @@ public final class ThrowawayWorldService {
         deleteRecursively(folder.toPath());
     }
 
+    /** Dead players cannot be teleported, so they are respawned first. */
     private void evacuate(World world) {
         var fallback = Bukkit.getWorlds().getFirst().getSpawnLocation();
         for (Player player : world.getPlayers()) {
+            if (player.isDead()) {
+                player.spigot().respawn();
+            }
             player.teleport(fallback);
         }
     }

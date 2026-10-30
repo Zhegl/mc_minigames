@@ -12,3 +12,7 @@ Kotlin code, written by Claude (Anthropic's AI assistant) and modified: it runs
 on the Potato Minigames framework and its slime-world arenas, and drops
 PillarPeril's translations, metrics, update checker, command hooks, block
 rollback and game modifiers. Each file derived from PillarPeril says so at its top.
+
+This fork contains downstream modifications maintained by tiom4eg (2026):
+queue voting, spectator cameras, solo test games, Warfare map rotation,
+Bingo lockout, Pillars modes and events, and world lifecycle and gadget fixes.

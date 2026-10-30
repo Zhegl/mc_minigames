@@ -70,6 +70,50 @@ modes:
     layout: circular
     pillarMaterial: SPONGE
     luckyBlocks: true
+  tactical:
+    cooldownSeconds: 5
+    timeLimit: 5min
+    color: '#55AAFF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    sameItems: true
+  big_house:
+    cooldownSeconds: 3
+    timeLimit: 8min
+    color: '#C77DFF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    distanceMultiplier: 2.5
+  party:
+    cooldownSeconds: 5
+    timeLimit: 8min
+    color: '#FF77FF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    eventMeanSeconds: 60
+  rave:
+    cooldownSeconds: 3
+    timeLimit: 8min
+    color: '#FF2E97'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    eventMeanSeconds: 30
+  fusion:
+    cooldownSeconds: 5
+    timeLimit: 8min
+    color: '#7DF9FF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
 
 # What can be handed out. Read again for every game, so edits apply after /pillars reload.
 items:

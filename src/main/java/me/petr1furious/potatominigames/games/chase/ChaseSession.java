@@ -97,10 +97,17 @@ final class ChaseSession implements GameSession {
         this.gadgets = gadgets;
     }
 
+    /** Caught runners watch the rest of the round. */
+    @Override
+    public boolean mayFollowPlayers(Player participant) {
+        return caught.contains(participant.getUniqueId());
+    }
+
     @Override
     public void onStart() throws CommandFailure {
         List<Player> roster = services.participants().onlinePlayers();
-        if (roster.size() < 2) {
+        // Alone, in a test game, the one player hunts every round.
+        if (roster.size() < (services.isTest() ? 1 : 2)) {
             throw new CommandFailure("Chase needs at least 2 players.");
         }
         buildHunterSets(roster);
@@ -219,7 +226,7 @@ final class ChaseSession implements GameSession {
         phase = RoundPhase.NONE;
         if (reason == EndReason.FINISHED) {
             for (UUID winner : topScorers()) {
-                services.points().add("chase", winner, 1);
+                services.award("chase", winner, 1);
             }
         }
         if (world != null) {
@@ -506,7 +513,10 @@ final class ChaseSession implements GameSession {
         if (phase != RoundPhase.HUNTING && phase != RoundPhase.FREEZE) {
             return;
         }
-        if (aliveRunners().isEmpty() || aliveHunters().isEmpty()) {
+        // A test game may have only one side; its rounds then run out the clock.
+        boolean over = services.isTest() ? aliveRunners().isEmpty() && aliveHunters().isEmpty()
+                : aliveRunners().isEmpty() || aliveHunters().isEmpty();
+        if (over) {
             endRound();
         }
     }

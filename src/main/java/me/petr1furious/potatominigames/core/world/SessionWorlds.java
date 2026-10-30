@@ -1,6 +1,8 @@
 package me.petr1furious.potatominigames.core.world;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.bukkit.World;
@@ -22,6 +24,18 @@ public final class SessionWorlds {
     public World create(String id, World.Environment... eagerDimensions) {
         throwawayIds.add(id);
         return throwaway.create(id, eagerDimensions);
+    }
+
+    /** Seeds of the generated worlds; empty when the session only plays on templates or shared maps. */
+    public List<Long> seeds() {
+        List<Long> seeds = new ArrayList<>();
+        for (String id : throwawayIds) {
+            Long seed = throwaway.seed(id);
+            if (seed != null && !seeds.contains(seed)) {
+                seeds.add(seed);
+            }
+        }
+        return seeds;
     }
 
     public void setupWorld(boolean force) {

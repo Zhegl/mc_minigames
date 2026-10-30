@@ -91,7 +91,7 @@ public final class DummyGame implements Minigame {
         @Override
         public void onEnd(EndReason reason) {
             for (Player player : services.participants().onlinePlayers()) {
-                services.points().add("dummy", player.getUniqueId(), 1);
+                services.award("dummy", player.getUniqueId(), 1);
             }
         }
 

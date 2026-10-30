@@ -1,4 +1,4 @@
-# Bingo settings. mode: default | butfast | collectall. Managed by `/bingo config`.
+# Bingo settings. mode: default | butfast | collectall | lockout. Managed by `/bingo config`.
 # countdownSeconds: time spent caged above the arena before the floor opens.
 
 # Difficulty levels: target crafting-cost score band and per-mode round durations (seconds).
@@ -10,6 +10,7 @@ difficulty-levels:
       default: 600
       butfast: 300
       collectall: 900
+      lockout: 600
   - key: easy
     target-score: 30
     max-deviation: 20
@@ -17,6 +18,7 @@ difficulty-levels:
       default: 900
       butfast: 600
       collectall: 1200
+      lockout: 900
   - key: medium
     target-score: 75
     max-deviation: 35
@@ -24,6 +26,7 @@ difficulty-levels:
       default: 1200
       butfast: 900
       collectall: 1800
+      lockout: 1200
   - key: hard
     target-score: 150
     max-deviation: 50
@@ -31,6 +34,7 @@ difficulty-levels:
       default: 1800
       butfast: 1200
       collectall: 2400
+      lockout: 1800
   - key: insane
     target-score: 800
     max-deviation: 600
@@ -38,3 +42,4 @@ difficulty-levels:
       default: 10800
       butfast: 5400
       collectall: 21600
+      lockout: 10800

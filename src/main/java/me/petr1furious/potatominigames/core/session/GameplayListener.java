@@ -19,6 +19,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceExtractEvent;
@@ -110,6 +111,11 @@ public final class GameplayListener implements Listener {
     @EventHandler
     public void onEntityShootBow(EntityShootBowEvent event) {
         dispatch(event.getEntity().getWorld(), session -> session.onEntityShootBow(event), event.getEntity());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        dispatch(event.getEntity().getWorld(), session -> session.onFoodLevelChange(event), event.getEntity());
     }
 
     @EventHandler

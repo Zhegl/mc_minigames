@@ -66,6 +66,14 @@ public interface Minigame {
         return levels.isEmpty() ? null : levels.get(levels.size() / 2);
     }
 
+    /**
+     * What a mode's queue votes on, in menu order: by default the difficulty, if the game has
+     * levels. A ballot with fewer than two choices is not shown.
+     */
+    default List<Ballot> ballots(String mode) {
+        return difficulties().isEmpty() ? List.of() : List.of(Ballot.difficulty(this));
+    }
+
     default boolean usesGadgets() {
         return false;
     }

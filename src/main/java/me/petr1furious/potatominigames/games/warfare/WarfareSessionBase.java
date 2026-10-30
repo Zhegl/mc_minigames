@@ -2,29 +2,43 @@ package me.petr1furious.potatominigames.games.warfare;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.util.Vector;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
+import me.petr1furious.potatominigames.core.command.CommandFailure;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.gadgets.FPVDroneGadget;
 
 abstract class WarfareSessionBase implements GameSession {
+    /** Start option and queue vote: the map to play. */
+    static final String MAP_OPTION = "map";
+
     protected final SessionServices services;
     protected final WarfareConfig config;
     protected final LiftHandler liftHandler = new LiftHandler();
     protected final List<Component> summary = new ArrayList<>();
     private final FPVDroneGadget fpvDrone;
+
+    /** Null without configured maps, when the game plays in gameWorld. */
+    protected WarfareMap map;
+    private World world;
+    private Vector center;
+    private int radius;
 
     protected int secondsUntilHudRefresh;
 
@@ -34,14 +48,34 @@ abstract class WarfareSessionBase implements GameSession {
         this.fpvDrone = fpvDrone;
     }
 
-    /** With slime-world arenas this is the cloned game world, so it always matches the one being reset. */
-    protected org.bukkit.World gameWorld() {
-        return services.worlds().resolveWorld(config.gameWorld.get());
+    /**
+     * The map's copy, or without maps gameWorld; with slime-world arenas that is the cloned game
+     * world, so it always matches the one being reset.
+     */
+    protected World gameWorld() {
+        return world != null ? world : services.worlds().resolveWorld(config.gameWorld.get());
+    }
+
+    /** The map's center, or gameCenter without maps; the border may move the live one. */
+    protected Vector configuredCenter() {
+        return center != null ? center : config.gameCenter.get();
+    }
+
+    private int configuredRadius() {
+        return map != null ? radius : config.gameRadius.get();
     }
 
     /** Call first from onStart. */
-    protected void setupArena() {
-        services.worlds().setupWorld(false);
+    protected void setupArena() throws CommandFailure {
+        map = chooseMap();
+        if (map != null) {
+            world = services.worlds().cloneSlime(map.template(), map.worldName());
+            center = map.center();
+            radius = map.radius();
+        } else {
+            services.worlds().setupWorld(false);
+            world = services.worlds().resolveWorld(config.gameWorld.get());
+        }
         var world = gameWorld();
         if (config.enforceGameRules.get()) {
             services.arena().applyStandardGameRules(world);
@@ -55,6 +89,25 @@ abstract class WarfareSessionBase implements GameSession {
         }
     }
 
+    /** The voted or forced map, else a random one this mode can play; null without maps. */
+    private WarfareMap chooseMap() throws CommandFailure {
+        if (config.maps().isEmpty()) {
+            return null;
+        }
+        List<WarfareMap> usable = config.mapsFor(services.session().mode());
+        if (usable.isEmpty()) {
+            throw new CommandFailure("No warfare map can host " + services.session().mode()
+                    + " (team beacon maps need beacons for two teams: /war beacon set).");
+        }
+        String forced = services.option(MAP_OPTION);
+        if (forced == null) {
+            return usable.get(ThreadLocalRandom.current().nextInt(usable.size()));
+        }
+        return usable.stream().filter(candidate -> candidate.name().equalsIgnoreCase(forced)).findFirst()
+                .orElseThrow(() -> new CommandFailure("Unknown or unusable map: " + forced + " (options: "
+                        + String.join(", ", usable.stream().map(WarfareMap::name).toList()) + ")"));
+    }
+
     /** False when the session brings the border in itself, later in the game. */
     protected boolean borderAtStart() {
         return true;
@@ -62,7 +115,7 @@ abstract class WarfareSessionBase implements GameSession {
 
     private Location chooseArenaBorderCenter() {
         var world = gameWorld();
-        var gameCenter = config.gameCenter.get();
+        var gameCenter = configuredCenter();
         double radius = Math.max(0.0, config.arenaBorderCenterRadius.get());
         double offsetX = 0.0;
         double offsetZ = 0.0;
@@ -81,15 +134,15 @@ abstract class WarfareSessionBase implements GameSession {
         if (config.arenaBorderEnabled.get()) {
             return world.getWorldBorder().getCenter();
         }
-        return config.gameCenter.get().toLocation(world);
+        return configuredCenter().toLocation(world);
     }
 
     protected int currentGameRadius() {
         if (config.arenaBorderEnabled.get()) {
             double liveBorderRadius = gameWorld().getWorldBorder().getSize() / 2.0 - 1.0;
-            return (int) Math.max(1.0, Math.min(config.gameRadius.get(), liveBorderRadius));
+            return (int) Math.max(1.0, Math.min(configuredRadius(), liveBorderRadius));
         }
-        return Math.max(1, config.gameRadius.get());
+        return Math.max(1, configuredRadius());
     }
 
     protected void prepareAlivePlayer(Player player, Location location, boolean keepInvisibility) {
@@ -107,6 +160,18 @@ abstract class WarfareSessionBase implements GameSession {
             if (kit != null) {
                 player.getInventory().setContents(kit.clone());
             }
+        }
+        if (config.noHunger.get()) {
+            player.setFoodLevel(20);
+        }
+    }
+
+    @Override
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (config.noHunger.get() && event.getEntity() instanceof Player player
+                && services.participants().isParticipant(player)
+                && event.getFoodLevel() < player.getFoodLevel()) {
+            event.setCancelled(true);
         }
     }
 
@@ -236,9 +301,17 @@ abstract class WarfareSessionBase implements GameSession {
         liftHandler.clear();
     }
 
+    /** The result, then "Map: mibc" when playing on a map. */
     @Override
     public List<Component> summary() {
-        return List.copyOf(summary);
+        List<Component> lines = new ArrayList<>(summary);
+        if (map != null) {
+            lines.add(Component.text()
+                    .append(Component.text("Map: ", NamedTextColor.GRAY))
+                    .append(Component.text(map.name(), NamedTextColor.WHITE))
+                    .build());
+        }
+        return lines;
     }
 
 }

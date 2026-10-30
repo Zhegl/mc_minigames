@@ -98,7 +98,8 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
     @Override
     public void onStart() throws CommandFailure {
         List<TeamColor> participatingTeams = services.teams().activeTeams();
-        if (participatingTeams.size() < 2) {
+        // A test game may be one team alone.
+        if (participatingTeams.size() < (services.isTest() ? 1 : 2)) {
             throw new CommandFailure("Team beacon mode needs players on at least two teams.");
         }
         // Beacon locations need the arena world to exist first.
@@ -106,7 +107,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
 
         try {
             for (TeamColor team : participatingTeams) {
-                Location beaconLocation = config.getBeacon(team);
+                Location beaconLocation = map != null ? map.beacon(team, gameWorld()) : config.getBeacon(team);
                 if (beaconLocation == null || beaconLocation.getWorld() == null) {
                     throw new CommandFailure(team.displayName() + " team has no configured beacon.");
                 }
@@ -126,6 +127,14 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
         }
 
         startHud();
+    }
+
+    /** Only once their beacon is gone: waiting to respawn, they would scout the enemy. */
+    @Override
+    public boolean mayFollowPlayers(Player participant) {
+        TeamColor team = teamOf(participant);
+        BeaconState beacon = team == null ? null : beacons.get(team);
+        return !isPlayerAlive(participant) && (beacon == null || beacon.destroyed);
     }
 
     @Override
@@ -595,7 +604,7 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
 
         if (!borderActive) {
             List<Location> anchors = !intact.isEmpty() ? intact
-                    : !players.isEmpty() ? players : List.of(config.gameCenter.get().toLocation(world));
+                    : !players.isEmpty() ? players : List.of(configuredCenter().toLocation(world));
             Location center = boxCenter(anchors);
             List<Location> inside = new ArrayList<>(intact);
             inside.addAll(players);
@@ -716,14 +725,14 @@ final class TeamBeaconWarfareSession extends WarfareSessionBase {
             }
         }
 
-        if (activeTeams.size() == 1) {
+        if (activeTeams.size() == 1 && !services.isTest()) {
             ended = true;
             TeamColor winner = activeTeams.getFirst();
             summary.add(Component.text().append(Component.text("Winner: ", NamedTextColor.GREEN))
                     .append(Component.text(winner.displayName() + " team", winner.textColor())).build());
             for (Player player : services.participants().onlinePlayers()) {
                 if (teamOf(player) == winner) {
-                    services.points().add("war", player.getUniqueId(), 1);
+                    services.award("war", player.getUniqueId(), 1);
                 }
             }
             services.session().endGame(EndReason.FINISHED);

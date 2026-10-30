@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -42,6 +43,7 @@ import me.petr1furious.potatominigames.core.config.ConfigRegistry;
 import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
+import me.petr1furious.potatominigames.core.game.Ballot;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.lobby.LobbyService;
 import me.petr1furious.potatominigames.core.session.ActiveSession;
@@ -64,9 +66,6 @@ public final class QueueService implements Listener {
     private static final Messages QUEUE =
             new Messages(Bukkit::getServer, Messages.tag(Component.text("Queue", NamedTextColor.YELLOW)));
 
-    /** {@code /play difficulty any} drops the vote. */
-    public static final String ANY_DIFFICULTY = "any";
-
     private static final Title.Times COUNTDOWN_TITLE_TIMES =
             Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(200));
 
@@ -79,8 +78,8 @@ public final class QueueService implements Listener {
         private final Set<UUID> members = new LinkedHashSet<>();
         private final Set<UUID> votes = new LinkedHashSet<>();
         private final Map<UUID, TeamColor> teamPicks = new LinkedHashMap<>();
-        /** Difficulty votes; no entry means any. */
-        private final Map<UUID, String> difficultyVotes = new LinkedHashMap<>();
+        /** Ballot key to votes; no entry means any. */
+        private final Map<String, Map<UUID, String>> ballotVotes = new LinkedHashMap<>();
         /** Seconds left, or null while not counting down. */
         private Integer countdown;
 
@@ -173,55 +172,96 @@ public final class QueueService implements Listener {
             return result;
         }
 
-        /** Levels open to votes; empty for a game without difficulties. */
-        public List<String> difficulties() {
-            return game.difficulties();
+        /** The game's ballots with at least two choices, in menu order. */
+        public List<Ballot> ballots() {
+            return game.ballots(mode).stream().filter(ballot -> ballot.choices().get().size() >= 2).toList();
+        }
+
+        public Ballot ballot(String key) {
+            return ballots().stream().filter(ballot -> ballot.key().equals(key)).findFirst().orElse(null);
         }
 
         /** Null for any. */
-        public String difficultyVote(UUID playerId) {
-            return difficultyVotes.get(playerId);
+        public String vote(String key, UUID playerId) {
+            Map<UUID, String> votes = ballotVotes.get(key);
+            return votes == null ? null : votes.get(playerId);
         }
 
-        /** Online members who voted for this level, in vote order. */
-        public List<Player> votedFor(String level) {
+        /** Online members who voted for this choice, in vote order. */
+        public List<Player> votedFor(String key, String choice) {
             List<Player> result = new ArrayList<>();
-            difficultyVotes.forEach((id, vote) -> {
+            ballotVotes.getOrDefault(key, Map.of()).forEach((id, vote) -> {
                 Player player = Bukkit.getPlayer(id);
-                if (vote.equals(level) && player != null) {
+                if (vote.equals(choice) && player != null) {
                     result.add(player);
                 }
             });
             return result;
         }
 
-        /**
-         * The most-voted level; ties go to the default, else the middle of the tied ones.
-         * Null for a game without difficulties.
-         */
-        public String leadingDifficulty() {
-            List<String> levels = difficulties();
-            if (levels.isEmpty()) {
-                return null;
+        /** The ballot's fallback if it is one of the choices; for an ordered ballot, else the middle one. */
+        private String fallback(Ballot ballot, List<String> choices) {
+            String fallback = ballot.fallback() == null ? null : ballot.fallback().get();
+            if (fallback != null && !choices.contains(fallback)) {
+                fallback = choices.get(choices.size() / 2);
             }
-            String fallback = game.defaultDifficulty();
-            if (!levels.contains(fallback)) {
-                fallback = levels.get(levels.size() / 2);
-            }
+            return fallback;
+        }
+
+        /** The most-voted choices, in menu order; all of them without votes. */
+        private List<String> mostVoted(Ballot ballot, List<String> choices) {
             Map<String, Integer> counts = new HashMap<>();
-            difficultyVotes.forEach((id, vote) -> {
-                if (members.contains(id) && levels.contains(vote)) {
+            ballotVotes.getOrDefault(ballot.key(), Map.of()).forEach((id, vote) -> {
+                if (members.contains(id) && choices.contains(vote)) {
                     counts.merge(vote, 1, Integer::sum);
                 }
             });
             if (counts.isEmpty()) {
-                return fallback;
+                return choices;
             }
             int best = counts.values().stream().max(Integer::compare).orElseThrow();
-            List<String> tied = levels.stream().filter(level -> counts.getOrDefault(level, 0) == best).toList();
-            return tied.contains(fallback) ? fallback : tied.get((tied.size() - 1) / 2);
+            return choices.stream().filter(choice -> counts.getOrDefault(choice, 0) == best).toList();
+        }
+
+        /**
+         * The most-voted choice. Ties, and no votes, go to the fallback, else for a ballot with a
+         * fallback to the middle of the tied ones. Null while a ballot without one is undecided.
+         */
+        public String leading(Ballot ballot) {
+            List<String> choices = ballot.choices().get();
+            if (choices.isEmpty()) {
+                return null;
+            }
+            String fallback = fallback(ballot, choices);
+            List<String> tied = mostVoted(ballot, choices);
+            if (tied.size() == 1) {
+                return tied.getFirst();
+            }
+            if (fallback != null) {
+                return tied.contains(fallback) ? fallback : tied.get((tied.size() - 1) / 2);
+            }
+            return null;
+        }
+
+        /** {@link #leading}, or a random one of the tied. Null for a ballot without choices. */
+        public String decide(Ballot ballot) {
+            String leading = leading(ballot);
+            if (leading != null) {
+                return leading;
+            }
+            List<String> tied = mostVoted(ballot, ballot.choices().get());
+            return tied.isEmpty() ? null : tied.get(ThreadLocalRandom.current().nextInt(tied.size()));
+        }
+
+        /** "hard" / "random"; what the ballot would pick now. */
+        public String leadingText(Ballot ballot) {
+            String leading = leading(ballot);
+            return leading != null ? leading : RANDOM;
         }
     }
+
+    /** Shown for an undecided ballot without a fallback. */
+    public static final String RANDOM = "random";
 
     private final JavaPlugin plugin;
     private final SessionManager sessions;
@@ -422,40 +462,44 @@ public final class QueueService implements Listener {
                 .build());
     }
 
-    /** The queue of a game with difficulties the player is in. */
-    public Queue requireDifficultyQueue(Player player) throws CommandFailure {
+    /** The player's queue, if it votes on this ballot. */
+    public Queue requireBallotQueue(Player player, String key) throws CommandFailure {
         Queue queue = byPlayer.get(player.getUniqueId());
         if (queue == null) {
             throw new CommandFailure("Join a queue first.");
         }
-        if (queue.difficulties().isEmpty()) {
-            throw new CommandFailure("This game has no difficulty levels.");
+        if (queue.ballot(key) == null) {
+            throw new CommandFailure("There is no " + key + " vote in this queue.");
         }
         return queue;
     }
 
     /** Null votes for any. Lasts only while they stay in this queue; never saved. */
-    public void pickDifficulty(Player player, String level) throws CommandFailure {
-        Queue queue = requireDifficultyQueue(player);
-        String key = level == null ? null : level.toLowerCase(Locale.ROOT);
-        if (key != null && !queue.difficulties().contains(key)) {
-            throw new CommandFailure("Unknown difficulty: " + level + " (options: "
-                    + String.join(", ", queue.difficulties()) + ", " + ANY_DIFFICULTY + ")");
+    public void pick(Player player, String key, String choice) throws CommandFailure {
+        Queue queue = requireBallotQueue(player, key);
+        Ballot ballot = queue.ballot(key);
+        List<String> choices = ballot.choices().get();
+        String picked = null;
+        if (choice != null) {
+            picked = choices.stream().filter(option -> option.equalsIgnoreCase(choice)).findFirst()
+                    .orElseThrow(() -> new CommandFailure("Unknown " + ballot.title() + ": " + choice
+                            + " (options: " + String.join(", ", choices) + ", " + Ballot.ANY + ")"));
         }
-        if (Objects.equals(queue.difficultyVotes.get(player.getUniqueId()), key)) {
-            throw new CommandFailure(key == null ? "You already voted for any." : "You already voted for that.");
+        Map<UUID, String> votes = queue.ballotVotes.computeIfAbsent(key, ignored -> new LinkedHashMap<>());
+        if (Objects.equals(votes.get(player.getUniqueId()), picked)) {
+            throw new CommandFailure(picked == null ? "You already voted for any." : "You already voted for that.");
         }
         touch(player);
-        if (key == null) {
-            queue.difficultyVotes.remove(player.getUniqueId());
+        if (picked == null) {
+            votes.remove(player.getUniqueId());
         } else {
-            queue.difficultyVotes.put(player.getUniqueId(), key);
+            votes.put(player.getUniqueId(), picked);
         }
         announcePick(queue, Component.text()
                 .append(Component.text(player.getName(), NamedTextColor.AQUA))
-                .append(Component.text(" voted for ", NamedTextColor.GRAY))
-                .append(Component.text(key == null ? ANY_DIFFICULTY : key, NamedTextColor.WHITE))
-                .append(Component.text(" (leading: " + queue.leadingDifficulty() + ")", NamedTextColor.GRAY))
+                .append(Component.text(" voted for " + ballot.title() + " ", NamedTextColor.GRAY))
+                .append(Component.text(picked == null ? Ballot.ANY : picked, NamedTextColor.WHITE))
+                .append(Component.text(" (leading: " + queue.leadingText(ballot) + ")", NamedTextColor.GRAY))
                 .build());
     }
 
@@ -560,11 +604,14 @@ public final class QueueService implements Listener {
             }
         }
         Map<String, String> options = new LinkedHashMap<>();
-        String difficulty = queue.leadingDifficulty();
-        if (difficulty != null) {
-            options.put("difficulty", difficulty);
+        for (Ballot ballot : queue.ballots()) {
+            String winner = queue.decide(ballot);
+            if (winner != null) {
+                options.put(ballot.key(), winner);
+            }
         }
-        Map<UUID, String> difficultyVotes = new LinkedHashMap<>(queue.difficultyVotes);
+        Map<String, Map<UUID, String>> ballotVotes = new LinkedHashMap<>();
+        queue.ballotVotes.forEach((key, votes) -> ballotVotes.put(key, new LinkedHashMap<>(votes)));
         for (Player player : roster) {
             removeQuietly(player);
         }
@@ -583,7 +630,8 @@ public final class QueueService implements Listener {
                 player.sendMessage(failure.text());
             }
             queue.teamPicks.putAll(picks);
-            difficultyVotes.forEach(queue.difficultyVotes::putIfAbsent);
+            ballotVotes.forEach((key, votes) -> votes.forEach(
+                    queue.ballotVotes.computeIfAbsent(key, ignored -> new LinkedHashMap<>())::putIfAbsent));
             queue.members.addAll(rest);
             queue.countdown = countdownSeconds.get();
         }
@@ -629,7 +677,9 @@ public final class QueueService implements Listener {
         queue.members.remove(player.getUniqueId());
         queue.votes.remove(player.getUniqueId());
         queue.teamPicks.remove(player.getUniqueId());
-        queue.difficultyVotes.remove(player.getUniqueId());
+        for (Map<UUID, String> votes : queue.ballotVotes.values()) {
+            votes.remove(player.getUniqueId());
+        }
         player.sendActionBar(Component.empty());
         if (queue.members.size() < queue.minPlayers()) {
             queue.countdown = null;
@@ -687,7 +737,7 @@ public final class QueueService implements Listener {
         Component members = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s"
-                        + difficultySuffix(queue, ", difficulty ") + ". ", NamedTextColor.GREEN))
+                        + ballotSuffix(queue, ", ") + ". ", NamedTextColor.GREEN))
                 .append(memberButtons(queue))
                 .build();
         for (Player member : online(queue)) {
@@ -697,7 +747,7 @@ public final class QueueService implements Listener {
                 .append(queue.displayName())
                 .append(Component.text(" starts in " + queue.countdown + "s with " + queue.countText()
                         + (queue.size() == 1 ? " player" : " players")
-                        + difficultySuffix(queue, ", difficulty ") + ". ", NamedTextColor.GRAY))
+                        + ballotSuffix(queue, ", ") + ". ", NamedTextColor.GRAY))
                 .append(button("Join", queue.command(), "Join this queue"))
                 .build();
         for (Player player : freePlayers()) {
@@ -709,7 +759,7 @@ public final class QueueService implements Listener {
         Component bar = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" • waiting for players " + queue.members.size() + "/" + queue.minPlayers()
-                        + difficultySuffix(queue, " • "),
+                        + ballotSuffix(queue, " • "),
                         NamedTextColor.GRAY))
                 .build();
         for (Player member : online(queue)) {
@@ -722,7 +772,7 @@ public final class QueueService implements Listener {
         Component bar = Component.text()
                 .append(queue.displayName())
                 .append(Component.text(" • " + queue.countText() + " • starts in " + seconds + "s • votes "
-                        + queue.votesCast() + "/" + queue.votesNeeded() + difficultySuffix(queue, " • "),
+                        + queue.votesCast() + "/" + queue.votesNeeded() + ballotSuffix(queue, " • "),
                         NamedTextColor.GRAY))
                 .build();
         for (Player member : online(queue)) {
@@ -737,19 +787,23 @@ public final class QueueService implements Listener {
         }
     }
 
-    /** The leading difficulty after a separator, or "" without difficulties. */
-    private static String difficultySuffix(Queue queue, String separator) {
-        String level = queue.leadingDifficulty();
-        return level == null ? "" : separator + level;
+    /** "difficulty hard" per ballot, each after a separator; "" without ballots. */
+    private static String ballotSuffix(Queue queue, String separator) {
+        StringBuilder suffix = new StringBuilder();
+        for (Ballot ballot : queue.ballots()) {
+            suffix.append(separator).append(ballot.title()).append(' ').append(queue.leadingText(ballot));
+        }
+        return suffix.toString();
     }
 
-    /** [Vote start] [Difficulty] [Pick team] [Leave]; the pick buttons only where there is something to pick. */
+    /** [Vote start] [Difficulty] [Map] [Pick team] [Leave]; the pick buttons only where there is something to pick. */
     private static Component memberButtons(Queue queue) {
         var buttons = Component.text()
                 .append(button("Vote start", "/play vote", "Vote to start early"))
                 .append(Component.space());
-        if (!queue.difficulties().isEmpty()) {
-            buttons.append(button("Difficulty", "/play difficulty", "Vote for the difficulty"))
+        for (Ballot ballot : queue.ballots()) {
+            String label = ballot.title().substring(0, 1).toUpperCase(Locale.ROOT) + ballot.title().substring(1);
+            buttons.append(button(label, "/play " + ballot.key(), "Vote for the " + ballot.title()))
                     .append(Component.space());
         }
         if (!queue.teamColors().isEmpty()) {

@@ -46,6 +46,9 @@ import me.petr1furious.potatominigames.core.world.SessionWorlds;
  * so HUDs, borders and {@link Messages} are scoped to this game's audience.
  */
 public final class ActiveSession {
+    /** Start option of {@code /<game> test}; see {@link #isTest}. */
+    public static final String TEST_OPTION = "test";
+
     private final JavaPlugin plugin;
     private final SessionManager manager;
     private final Minigame game;
@@ -68,6 +71,7 @@ public final class ActiveSession {
     private BukkitTask ticker;
     private BukkitTask endingTask;
     private long elapsedSeconds;
+    private boolean test;
     /** Set when the game ends; sent once everyone is back. */
     private List<Component> summaryLines;
 
@@ -109,6 +113,14 @@ public final class ActiveSession {
 
     public boolean isRunning() {
         return phase == GamePhase.RUNNING;
+    }
+
+    /**
+     * Started with {@code /<game> test} or by a single player: no points, and games keep going
+     * where they would end for the last one standing.
+     */
+    public boolean isTest() {
+        return test;
     }
 
     public long elapsedSeconds() {
@@ -165,6 +177,22 @@ public final class ActiveSession {
         return result;
     }
 
+    /** Who a watcher can follow: online participants still in the game, in its worlds, by name. */
+    public List<Player> followTargets(Player viewer) {
+        List<Player> result = new ArrayList<>();
+        if (session == null) {
+            return result;
+        }
+        for (Player player : participants.onlinePlayers()) {
+            if (player != viewer && !player.isDead() && player.getGameMode() != GameMode.SPECTATOR
+                    && session.isInGame(player) && worlds.owns(player.getWorld())) {
+                result.add(player);
+            }
+        }
+        result.sort(java.util.Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER));
+        return result;
+    }
+
     private Audience audience() {
         List<Audience> members = new ArrayList<>(audiencePlayers());
         members.add(Bukkit.getConsoleSender());
@@ -175,6 +203,7 @@ public final class ActiveSession {
         // RUNNING from the start so a failure below gets cleaned up.
         phase = GamePhase.RUNNING;
         elapsedSeconds = 0;
+        test = options.containsKey(TEST_OPTION) || roster.size() == 1;
         try {
             teams.configureStart(teamPicks, !queued, game.teamColors(mode));
             teams.attach(participants);
@@ -206,7 +235,8 @@ public final class ActiveSession {
         }, 20L, 20L);
         messages.broadcastGlobal(Component.text()
                 .append(displayName())
-                .append(Component.text(" started with " + Messages.count(participants.size(), "player"), NamedTextColor.GREEN))
+                .append(Component.text(" started with " + Messages.count(participants.size(), "player")
+                        + (test ? " (test)" : ""), NamedTextColor.GREEN))
                 .build());
         messages.playSound(participants.onlinePlayers(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
     }
@@ -378,12 +408,22 @@ public final class ActiveSession {
         Bukkit.getConsoleSender().sendMessage(line);
     }
 
-    private void sendSummary(List<Player> players, boolean offerReplay) {
-        if (summaryLines == null) {
+    /** @param seeds of the session's generated worlds; shown even when the game was stopped early */
+    private void sendSummary(List<Player> players, boolean offerReplay, List<Long> seeds) {
+        if (summaryLines == null && seeds.isEmpty()) {
             return;
         }
-        List<Component> body = summaryLines;
+        List<Component> body = new ArrayList<>(summaryLines != null ? summaryLines : List.of());
         summaryLines = null;
+        if (test && !body.isEmpty()) {
+            body.add(Component.text("Test game: no points", NamedTextColor.DARK_GRAY));
+        }
+        if (!seeds.isEmpty()) {
+            if (!body.isEmpty()) {
+                body.add(Component.empty());
+            }
+            body.add(seedLine(seeds));
+        }
         String command = manager.playCommand(game, mode);
         for (Player player : players) {
             if (!player.isOnline()) {
@@ -403,6 +443,21 @@ public final class ActiveSession {
                             buttons);
             player.sendMessage(Summary.frame(displayName(), body, footer));
         }
+    }
+
+    /** "Seed: 123" — click to copy. */
+    private static Component seedLine(List<Long> seeds) {
+        List<Component> values = new ArrayList<>();
+        for (long seed : seeds) {
+            String text = Long.toString(seed);
+            values.add(Component.text(text, NamedTextColor.WHITE)
+                    .clickEvent(ClickEvent.copyToClipboard(text))
+                    .hoverEvent(HoverEvent.showText(Component.text("Click to copy", NamedTextColor.GRAY))));
+        }
+        return Component.text()
+                .append(Component.text(seeds.size() == 1 ? "Seed: " : "Seeds: ", NamedTextColor.GRAY))
+                .append(Component.join(net.kyori.adventure.text.JoinConfiguration.commas(true), values))
+                .build();
     }
 
     private void cleanup(boolean offerReplay, boolean backToQueue) {
@@ -425,6 +480,11 @@ public final class ActiveSession {
         for (Player player : returning) {
             sidebar.clear(player);
             bossBars.hideFrom(player);
+            // A game can end on a death (a draw): the dead cannot be teleported, so they would stay
+            // in the game world and keep it from unloading.
+            if (player.isDead()) {
+                player.spigot().respawn();
+            }
             if (backToQueue) {
                 lobby.backToQueue(player);
             } else {
@@ -434,6 +494,8 @@ public final class ActiveSession {
         sidebar.clearAll();
         bossBars.hideAll();
         arena.restoreAllBorders();
+        // Read before the worlds, and with them their seeds, are gone.
+        List<Long> seeds = worlds.seeds();
         // Only after players have left them.
         worlds.destroyOwn();
         teams.detach();
@@ -442,7 +504,7 @@ public final class ActiveSession {
         participants.clear();
         spectators.clear();
 
-        sendSummary(returning, offerReplay);
+        sendSummary(returning, offerReplay, seeds);
     }
 
     void handleQuit(Player player) {

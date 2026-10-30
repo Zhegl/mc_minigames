@@ -100,6 +100,8 @@ final class PillarsSession implements GameSession {
     private double radius;
     private List<ItemPool.PoolItem> items = List.of();
     private List<ItemPool.ItemGroup> groups = List.of();
+    /** Group boosts for {@code sameItems}, where everyone shares one draw. */
+    private ItemPool.GroupState sharedGroups;
 
     private final Map<UUID, PillarPlayer> players = new LinkedHashMap<>();
     private final List<PillarPlayer> alive = new ArrayList<>();
@@ -114,6 +116,20 @@ final class PillarsSession implements GameSession {
 
     private BossBar bossBar;
     private BukkitTask actionBarTask;
+    /** Random events (party, rave); null when the mode has none. */
+    private PillarsEvents events;
+    /** Item Frenzy divides the item cooldown by this. */
+    private int itemSpeed = 1;
+
+    /**
+     * What this game plays with: the mode's own settings, or for fusion a random mix of other
+     * modes' (see {@link #rollFusion}).
+     */
+    private record Rules(boolean randomLayout, int cooldownSeconds, boolean shuffle, boolean sameItems,
+            double distanceMultiplier, double eventMeanSeconds, List<String> modifiers) {
+    }
+
+    private Rules rules;
     private double actionBarPhase;
 
     /** Start option forcing an arena by name; random otherwise. */
@@ -130,6 +146,9 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onStart() throws CommandFailure {
+        rules = mode.id.equals("fusion") ? rollFusion() : new Rules(mode.layout.get().equalsIgnoreCase("random"),
+                mode.cooldownSeconds.get(), mode.id.equals("item-shuffle"), mode.sameItems.get(),
+                mode.distanceMultiplier.get(), mode.eventMeanSeconds.get(), List.of());
         List<PillarsArena> usable = game.importedArenas();
         if (usable.isEmpty()) {
             throw new CommandFailure("No pillars arenas imported. Use "
@@ -151,6 +170,7 @@ final class PillarsSession implements GameSession {
 
         PillarsConfig.Items itemConfig = config.items(services.plugin().getLogger());
         groups = itemConfig.groups();
+        sharedGroups = new ItemPool.GroupState(groups);
         items = ItemPool.build(world, itemConfig);
         if (mode.luckyBlocks.get()) {
             if (!Bukkit.getPluginManager().isPluginEnabled(LUCKY_PLUGIN)) {
@@ -182,7 +202,7 @@ final class PillarsSession implements GameSession {
         }
 
         radius = ringRadius(alive.size());
-        List<Location> spots = mode.layout.get().equalsIgnoreCase("random") ? randomLayout() : circularLayout();
+        List<Location> spots = rules.randomLayout() ? randomLayout() : circularLayout();
         Location centered = center.toCenterLocation();
         for (int i = 0; i < alive.size(); i++) {
             Location spot = spots.get(i);
@@ -211,7 +231,7 @@ final class PillarsSession implements GameSession {
         }
 
         timeLeft = mode.timeLimitSeconds();
-        itemCountdown = mode.cooldownSeconds.get();
+        itemCountdown = itemCooldown();
         startCountdown = Math.max(0, config.startCountdown.get());
         started = startCountdown <= 0;
         if (!started) {
@@ -222,7 +242,17 @@ final class PillarsSession implements GameSession {
         // Set only once nothing else can fail.
         game.setActiveSession(this);
         setLuckyWorld(mode.luckyBlocks.get());
-        services.plugin().getLogger().info("Pillars (" + mode.id + ") started in arena " + arena.name() + " with "
+        if (rules.eventMeanSeconds() > 0) {
+            events = new PillarsEvents(this, services, rules.eventMeanSeconds());
+        }
+        if (!rules.modifiers().isEmpty() || mode.id.equals("fusion")) {
+            announce(Component.text()
+                    .append(Component.text("Fusion: ", mode.accentColor()))
+                    .append(Component.text(fusionText(), NamedTextColor.WHITE))
+                    .build());
+        }
+        services.plugin().getLogger().info("Pillars (" + mode.id + (rules.modifiers().isEmpty() ? ""
+                : ": " + String.join("+", rules.modifiers())) + ") started in arena " + arena.name() + " with "
                 + alive.size() + " players and " + items.size() + " items in the pool");
         updateHud();
         // No countdown means release() never runs.
@@ -290,9 +320,14 @@ final class PillarsSession implements GameSession {
         return true;
     }
 
+    /** pillarDistance scaled by the mode, e.g. big_house. */
+    private double pillarDistance() {
+        return config.pillarDistance.get() * rules.distanceMultiplier();
+    }
+
     /** Neighbours pillarDistance apart. */
     private double ringRadius(int count) {
-        return count < 2 ? 0 : config.pillarDistance.get() / (2 * Math.sin(Math.PI / count));
+        return count < 2 ? 0 : pillarDistance() / (2 * Math.sin(Math.PI / count));
     }
 
     private List<Location> circularLayout() {
@@ -306,9 +341,9 @@ final class PillarsSession implements GameSession {
 
     /** Any two at least pillarDistance apart; the area grows until everyone fits. */
     private List<Location> randomLayout() {
-        double minDistance = config.pillarDistance.get();
+        double minDistance = pillarDistance();
         double start = radius * 1.2;
-        for (double area = start; area <= start + 64; area++) {
+        for (double area = start; area <= start + 64 * rules.distanceMultiplier(); area++) {
             List<int[]> candidates = new ArrayList<>();
             int extent = (int) area;
             for (int x = -extent; x <= extent; x++) {
@@ -340,7 +375,7 @@ final class PillarsSession implements GameSession {
         return new Location(world, center.getBlockX() + dx, config.platformHeight.get(), center.getBlockZ() + dz);
     }
 
-    private Material pillarMaterial() {
+    Material pillarMaterial() {
         return mode.pillarMaterial(config.platformMaterial.get());
     }
 
@@ -378,6 +413,9 @@ final class PillarsSession implements GameSession {
         }
         itemCountdown--;
         timeLeft--;
+        if (events != null) {
+            events.onSecond();
+        }
         updateHud();
         if (timeLeft <= 0) {
             end(Ending.TIME_OVER, List.of());
@@ -414,30 +452,232 @@ final class PillarsSession implements GameSession {
     }
 
     private void cycleItems() {
-        if (mode.id.equals("item-shuffle")) {
-            for (PillarPlayer pillarPlayer : alive) {
-                Player player = pillarPlayer.player();
-                if (player != null) {
-                    player.getInventory().clear();
-                    giveItems(pillarPlayer, 9);
+        boolean shuffle = rules.shuffle();
+        int count = shuffle ? 10 : 1;
+        // sameItems: one draw, and one stack (potion type, enchantments) copied to everyone,
+        // so nobody is luckier than the rest.
+        List<ItemStack> shared = rules.sameItems() ? create(draw(sharedGroups, count)) : null;
+        for (PillarPlayer pillarPlayer : alive) {
+            Player player = pillarPlayer.player();
+            if (player == null) {
+                continue;
+            }
+            if (shuffle) {
+                player.getInventory().clear();
+            }
+            giveItems(player, shared != null ? shared : create(draw(pillarPlayer.groups, count)));
+        }
+        itemCountdown = itemCooldown();
+    }
+
+    /** Shuffle keeps its own pace; everything else is sped up by Item Frenzy. */
+    private int itemCooldown() {
+        return rules.shuffle() ? Math.max(1, rules.cooldownSeconds())
+                : Math.max(1, rules.cooldownSeconds() / itemSpeed);
+    }
+
+    /**
+     * Fusion: each of chaos, shuffle, tactical and big_house with a 50% chance, and party or rave
+     * with 25% each. Values come from those modes' own settings. Chaos and rave speed items up to
+     * their pace; shuffle keeps item-shuffle's, whatever else is on.
+     */
+    private Rules rollFusion() {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        boolean chaos = random.nextBoolean();
+        boolean shuffle = random.nextBoolean();
+        boolean tactical = random.nextBoolean();
+        boolean bigHouse = random.nextBoolean();
+        int eventRoll = random.nextInt(4);
+        boolean party = eventRoll == 2;
+        boolean rave = eventRoll == 3;
+
+        List<String> modifiers = new ArrayList<>();
+        int cooldown = mode.cooldownSeconds.get();
+        if (chaos) {
+            modifiers.add("chaos");
+            cooldown = Math.min(cooldown, config.mode("chaos").cooldownSeconds.get());
+        }
+        if (shuffle) {
+            modifiers.add("shuffle");
+        }
+        if (tactical) {
+            modifiers.add("tactical");
+        }
+        if (bigHouse) {
+            modifiers.add("big_house");
+        }
+        double eventMean = 0;
+        if (party) {
+            modifiers.add("party");
+            eventMean = config.mode("party").eventMeanSeconds.get();
+        }
+        if (rave) {
+            modifiers.add("rave");
+            eventMean = config.mode("rave").eventMeanSeconds.get();
+            cooldown = Math.min(cooldown, config.mode("rave").cooldownSeconds.get());
+        }
+        if (shuffle) {
+            cooldown = config.mode("item-shuffle").cooldownSeconds.get();
+        }
+        double distance = bigHouse ? config.mode("big_house").distanceMultiplier.get()
+                : mode.distanceMultiplier.get();
+        return new Rules(chaos, cooldown, shuffle, tactical, distance, eventMean, List.copyOf(modifiers));
+    }
+
+    private String fusionText() {
+        return rules.modifiers().isEmpty() ? "no modifiers, plain pillars" : String.join(" + ", rules.modifiers());
+    }
+
+    /** Item Frenzy cannot speed shuffle up, so it is not rolled then. */
+    boolean shuffles() {
+        return rules.shuffle();
+    }
+
+    // For PillarsEvents.
+
+    /** Alive and online. */
+    List<Player> aliveOnline() {
+        List<Player> result = new ArrayList<>();
+        for (PillarPlayer pillarPlayer : alive) {
+            Player player = pillarPlayer.player();
+            if (player != null && player.isOnline()) {
+                result.add(player);
+            }
+        }
+        return result;
+    }
+
+    World world() {
+        return world;
+    }
+
+    Location center() {
+        return center;
+    }
+
+    /** Of the pillar ring. */
+    double arenaRadius() {
+        return radius;
+    }
+
+    /** Pillar blocks still of this material, from the world bottom up to the platform. */
+    List<org.bukkit.block.Block> pillarBlocks(Material material) {
+        List<org.bukkit.block.Block> blocks = new ArrayList<>();
+        int top = (int) Math.floor(config.platformHeight.get());
+        for (PillarPlayer pillarPlayer : players.values()) {
+            if (pillarPlayer.pillar == null) {
+                continue;
+            }
+            for (int y = world.getMinHeight(); y <= top; y++) {
+                var block = world.getBlockAt(pillarPlayer.pillar.getBlockX(), y, pillarPlayer.pillar.getBlockZ());
+                if (block.getType() == material) {
+                    blocks.add(block);
                 }
             }
         }
-        for (PillarPlayer pillarPlayer : alive) {
-            if (pillarPlayer.player() != null) {
-                giveItems(pillarPlayer, 1);
-            }
-        }
-        itemCountdown = mode.cooldownSeconds.get();
+        return blocks;
     }
 
-    private void giveItems(PillarPlayer pillarPlayer, int count) {
-        Player player = pillarPlayer.player();
+    /** Airdrop loot: pool items, rolled like handed-out ones (potion types, enchantments). */
+    List<ItemStack> lootRow(int count) {
+        return create(draw(new ItemPool.GroupState(groups), count));
+    }
+
+    /** Where the pillars of the players still in are centred, at pillar-top height; the arena middle without any. */
+    Location middleOfAlive() {
+        double x = 0;
+        double z = 0;
+        int count = 0;
+        for (PillarPlayer pillarPlayer : alive) {
+            if (pillarPlayer.pillar != null) {
+                x += pillarPlayer.pillar.getX();
+                z += pillarPlayer.pillar.getZ();
+                count++;
+            }
+        }
+        if (count == 0) {
+            return center.clone();
+        }
+        return new Location(world, Math.floor(x / count), pillarTop(), Math.floor(z / count));
+    }
+
+    /** Y of the pillars' top block. */
+    int pillarTop() {
+        return (int) Math.floor(config.platformHeight.get());
+    }
+
+    /** Block Ban: the item stops dropping, unless it is all that is left. */
+    void removeFromPool(Material material) {
+        String id = material.getKey().getKey();
+        List<ItemPool.PoolItem> remaining = items.stream().filter(item -> !item.id().equalsIgnoreCase(id)).toList();
+        if (!remaining.isEmpty()) {
+            items = remaining;
+        }
+    }
+
+    /** Item Frenzy: items speed times as often; the countdown under way shortens at once. */
+    void setItemSpeed(int speed) {
+        itemSpeed = Math.max(1, speed);
+        itemCountdown = Math.min(itemCountdown, itemCooldown());
+    }
+
+    @Override
+    public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
+        if (events != null && started && !ending) {
+            events.onBlockPlace(event);
+        }
+    }
+
+    @Override
+    public void onEntityDamageByEntity(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
+        if (events != null && started && !ending) {
+            events.onDamageByEntity(event);
+        }
+    }
+
+    @Override
+    public void onDropItem(org.bukkit.event.player.PlayerDropItemEvent event) {
+        if (events != null) {
+            events.onDropItem(event);
+        }
+    }
+
+    /** Fresh stacks; random parts (potion type, enchantments) are rolled here. */
+    private List<ItemStack> create(List<ItemPool.PoolItem> drawn) {
+        List<ItemStack> stacks = new ArrayList<>();
+        for (ItemPool.PoolItem item : drawn) {
+            stacks.add(maybeEnchant(item.createItemStack()));
+        }
+        return stacks;
+    }
+
+    /**
+     * With enchantChance, enchants the stack as an enchanting table would at a random level;
+     * items that cannot be enchanted are left as they are. Books are skipped: they would turn
+     * into enchanted books.
+     */
+    private ItemStack maybeEnchant(ItemStack stack) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        if (stack.getType() == Material.BOOK || random.nextDouble() >= config.enchantChance.get()) {
+            return stack;
+        }
+        return Bukkit.getItemFactory().enchantWithLevels(stack, 5 + random.nextInt(26), false, random);
+    }
+
+    private List<ItemPool.PoolItem> draw(ItemPool.GroupState groupState, int count) {
+        List<ItemPool.PoolItem> drawn = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            ItemPool.PoolItem chosen = ItemPool.randomByWeight(items, pillarPlayer.groups::weightOf);
-            pillarPlayer.groups.record(chosen);
-            ItemStack stack = chosen.createItemStack();
-            player.getInventory().addItem(stack);
+            ItemPool.PoolItem chosen = ItemPool.randomByWeight(items, groupState::weightOf);
+            groupState.record(chosen);
+            drawn.add(chosen);
+        }
+        return drawn;
+    }
+
+    /** Copies, so players never share one stack. */
+    private void giveItems(Player player, List<ItemStack> stacks) {
+        for (ItemStack stack : stacks) {
+            player.getInventory().addItem(stack.clone());
         }
         if (config.itemSound.get()) {
             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 0.75f, 1.0f);
@@ -476,7 +716,7 @@ final class PillarsSession implements GameSession {
     }
 
     private float itemCountdownProgress() {
-        float cooldown = Math.max(1, mode.cooldownSeconds.get() - 1);
+        float cooldown = Math.max(1, itemCooldown() - 1);
         return Math.max(0f, Math.min(1f, Math.max(0, itemCountdown) / cooldown));
     }
 
@@ -519,6 +759,12 @@ final class PillarsSession implements GameSession {
         return switch (mode.id) {
             case "chaos" -> "Chaos";
             case "item-shuffle" -> "Item-Shuffle";
+            case "lucky" -> "Lucky";
+            case "tactical" -> "Tactical";
+            case "big_house" -> "Big House";
+            case "party" -> "Party";
+            case "rave" -> "Rave";
+            case "fusion" -> "Fusion";
             default -> "Original";
         };
     }
@@ -587,6 +833,9 @@ final class PillarsSession implements GameSession {
             pillarPlayer.lastLocation = player.getLocation().clone();
         }
         pillarPlayer.deathTick = Bukkit.getCurrentTick();
+        if (events != null) {
+            events.onEliminated(player);
+        }
         updateHud();
 
         boolean win = alive.size() <= 1;
@@ -744,7 +993,8 @@ final class PillarsSession implements GameSession {
 
     List<Component> info() {
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.text("Mode: " + modeName() + ", arena: " + arena.name(), NamedTextColor.GRAY));
+        lines.add(Component.text("Mode: " + modeName() + (mode.id.equals("fusion") ? " (" + fusionText() + ")" : "")
+                + ", arena: " + arena.name(), NamedTextColor.GRAY));
         lines.add(Component.text("Time left: " + TimeFormat.words(timeLeft)
                 + (started ? "" : ", starting in " + startCountdown + "s")
                 + ", next item in " + Math.max(0, itemCountdown) + "s", NamedTextColor.GRAY));
@@ -876,7 +1126,7 @@ final class PillarsSession implements GameSession {
         }
         if (cause == Ending.LAST_STANDING || cause == Ending.DRAW) {
             for (PillarPlayer winner : winners) {
-                services.points().add(game.id(), winner.id, 1);
+                services.award(game.id(), winner.id, 1);
             }
         }
         services.plugin().getLogger().info("Pillars ended (" + cause.name().toLowerCase() + ")"
@@ -905,6 +1155,9 @@ final class PillarsSession implements GameSession {
     @Override
     public void onEnd(EndReason reason) {
         setLuckyWorld(false);
+        if (events != null) {
+            events.close();
+        }
         if (!ending) {
             // Stopped by an admin, or everyone left.
             end(Ending.FORCE, List.of());
@@ -949,6 +1202,10 @@ final class PillarsSession implements GameSession {
             lines.add(Summary.rank(i + 1, Component.text(ranked.get(i).name, NamedTextColor.GRAY),
                     Component.text().append(Component.text(ranked.get(i).kills, NamedTextColor.GOLD))
                             .append(Component.text("⚔", NamedTextColor.RED)).build()));
+        }
+        if (mode.id.equals("fusion") && rules != null) {
+            lines.add(Component.empty());
+            lines.add(Component.text("Fusion: " + fusionText(), NamedTextColor.GRAY));
         }
         return lines;
     }

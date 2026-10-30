@@ -106,6 +106,10 @@ public final class BingoConfig {
         Map<GameMode, Integer> durations = new EnumMap<>(GameMode.class);
         for (GameMode gameMode : GameMode.values()) {
             Object rawValue = durationsMap.get(gameMode.key());
+            if (rawValue == null && gameMode == GameMode.LOCKOUT) {
+                // Defaults to the default mode's duration (see GameDifficulty).
+                continue;
+            }
             if (rawValue == null) {
                 throw new IllegalStateException(
                         "games/bingo.yml: difficulty '" + key + "' is missing durations." + gameMode.key());

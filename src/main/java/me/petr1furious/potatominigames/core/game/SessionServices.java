@@ -38,4 +38,16 @@ public record SessionServices(
     public String option(String key) {
         return session.options().get(key);
     }
+
+    /** See {@link ActiveSession#isTest}. */
+    public boolean isTest() {
+        return session.isTest();
+    }
+
+    /** Adds to the standings, except in a test game. */
+    public void award(String gameId, java.util.UUID playerId, int delta) {
+        if (!session.isTest()) {
+            points.add(gameId, playerId, delta);
+        }
+    }
 }

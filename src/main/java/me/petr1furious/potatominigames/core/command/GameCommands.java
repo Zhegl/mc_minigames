@@ -96,6 +96,7 @@ public final class GameCommands {
 
         root.then(buildStart("start", game, false));
         root.then(buildStart("restart", game, true));
+        root.then(buildTest(game));
 
         root.then(Commands.literal("stop")
                 .requires(GameCommands::isAdmin)
@@ -202,6 +203,46 @@ public final class GameCommands {
                             c.getArgument(option.key(), String.class), restart))));
         }
         node.then(players);
+    }
+
+    /**
+     * {@code test [mode] [option]}: the sender alone, as a test game (no points, no early end for
+     * the last one standing; see {@link ActiveSession#isTest}).
+     */
+    private LiteralArgumentBuilder<CommandSourceStack> buildTest(Minigame game) {
+        LiteralArgumentBuilder<CommandSourceStack> test = Commands.literal("test").requires(GameCommands::isAdmin);
+        addTestTail(test, game, null);
+        if (game.modes().size() > 1) {
+            for (String mode : game.modes()) {
+                LiteralArgumentBuilder<CommandSourceStack> literal = Commands.literal(mode);
+                addTestTail(literal, game, mode);
+                test.then(literal);
+            }
+        }
+        return test;
+    }
+
+    private void addTestTail(ArgumentBuilder<CommandSourceStack, ?> node, Minigame game, String mode) {
+        node.executes(ctx -> run(ctx, c -> launchTest(c, game, mode, null)));
+        StartOption option = game.startOption();
+        if (option != null) {
+            node.then(Commands.argument(option.key(), StringArgumentType.word())
+                    .suggests(Suggest.dynamic(() -> option.values().get()))
+                    .executes(ctx -> run(ctx, c -> launchTest(c, game, mode,
+                            c.getArgument(option.key(), String.class)))));
+        }
+    }
+
+    private void launchTest(CommandContext<CommandSourceStack> ctx, Minigame game, String mode, String optionValue)
+            throws CommandFailure {
+        Player player = requirePlayer(ctx);
+        Map<String, String> options = new HashMap<>();
+        options.put(ActiveSession.TEST_OPTION, "true");
+        if (optionValue != null) {
+            StartOption option = game.startOption();
+            options.put(option.key(), requireOptionValue(option, optionValue));
+        }
+        sessions.start(game, mode != null ? mode : game.defaultMode(), List.of(player), Map.of(), false, options);
     }
 
     /** @param mode null for the default, or the running mode on restart */

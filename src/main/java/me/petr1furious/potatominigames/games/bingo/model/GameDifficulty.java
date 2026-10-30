@@ -15,6 +15,11 @@ public record GameDifficulty(String key, int order, int targetScore, int maxDevi
         if (durations != null) {
             normalizedDurations.putAll(durations);
         }
+        // Configs written before lockout existed have no duration for it: it plays as long as default.
+        Integer lockout = normalizedDurations.get(GameMode.LOCKOUT);
+        if ((lockout == null || lockout <= 0) && normalizedDurations.containsKey(GameMode.DEFAULT)) {
+            normalizedDurations.put(GameMode.LOCKOUT, normalizedDurations.get(GameMode.DEFAULT));
+        }
         for (GameMode mode : GameMode.values()) {
             Integer seconds = normalizedDurations.get(mode);
             if (seconds == null || seconds <= 0) {

@@ -19,6 +19,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import me.petr1furious.potatominigames.core.team.TeamColor;
 import me.petr1furious.potatominigames.games.bingo.model.BoardEntry;
 import me.petr1furious.potatominigames.games.bingo.model.GameDifficulty;
 import me.petr1furious.potatominigames.games.bingo.model.GameMode;
@@ -92,23 +93,24 @@ public final class BoardUiService {
         return marker != null && marker == 1;
     }
 
+    /** @param owners lockout: the team that claimed each cell, else null */
     public void openBoard(Player player, BoardService.Board board, TeamState team, GameMode mode,
             GameDifficulty difficulty,
-            IntUnaryOperator rewardForIndex) {
+            IntUnaryOperator rewardForIndex, TeamColor[] owners) {
         Inventory inventory = Bukkit.createInventory(new BoardViewHolder(), 45,
                 Component.text(BOARD_TITLE, NamedTextColor.GOLD));
-        fillBoard(inventory, player, board, team, mode, difficulty, rewardForIndex);
+        fillBoard(inventory, player, board, team, mode, difficulty, rewardForIndex, owners);
         player.openInventory(inventory);
     }
 
     public void refreshOpenBoard(Player player, BoardService.Board board, TeamState team, GameMode mode,
             GameDifficulty difficulty,
-            IntUnaryOperator rewardForIndex) {
+            IntUnaryOperator rewardForIndex, TeamColor[] owners) {
         Inventory inventory = player.getOpenInventory().getTopInventory();
         if (!isBoardView(inventory.getHolder())) {
             return;
         }
-        fillBoard(inventory, player, board, team, mode, difficulty, rewardForIndex);
+        fillBoard(inventory, player, board, team, mode, difficulty, rewardForIndex, owners);
         player.updateInventory();
     }
 
@@ -132,13 +134,18 @@ public final class BoardUiService {
 
     private void fillBoard(Inventory inventory, Player player, BoardService.Board board, TeamState team, GameMode mode,
             GameDifficulty difficulty,
-            IntUnaryOperator rewardForIndex) {
+            IntUnaryOperator rewardForIndex, TeamColor[] owners) {
         int displayMode = displayModes.getOrDefault(player.getUniqueId(), 0);
         for (int i = 0; i < 25; i++) {
             BoardEntry entry = board.entries()[i];
             int slot = BOARD_SLOTS[i];
             if (entry == null) {
                 inventory.setItem(slot, null);
+                continue;
+            }
+            TeamColor owner = owners == null ? null : owners[i];
+            if (owner != null && owner != team.color()) {
+                inventory.setItem(slot, claimedCell(entry, owner));
                 continue;
             }
             boolean collected = team.collected()[i];
@@ -165,12 +172,26 @@ public final class BoardUiService {
             case DEFAULT -> Material.NAME_TAG;
             case BUTFAST -> Material.DIAMOND;
             case COLLECTALL -> Material.NETHER_STAR;
+            case LOCKOUT -> Material.SHIELD;
         };
         ItemStack stack = new ItemStack(icon, 1);
         ItemMeta meta = stack.getItemMeta();
         meta.displayName(Component.text("Mode: " + mode.key(), NamedTextColor.GOLD)
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(List.of(Component.text("Difficulty: " + difficulty.key(), NamedTextColor.YELLOW)
+                .decoration(TextDecoration.ITALIC, false)));
+        stack.setItemMeta(meta);
+        return stack;
+    }
+
+    /** Lockout: another team's cell, in its colour; no longer collectable. */
+    private static ItemStack claimedCell(BoardEntry entry, TeamColor owner) {
+        ItemStack stack = new ItemStack(owner.woolMaterial(), 1);
+        ItemMeta meta = stack.getItemMeta();
+        meta.displayName(Component.text("Claimed by ", NamedTextColor.GRAY)
+                .append(owner.displayNameComponent())
+                .decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text(prettify(entry.id()), NamedTextColor.DARK_GRAY)
                 .decoration(TextDecoration.ITALIC, false)));
         stack.setItemMeta(meta);
         return stack;

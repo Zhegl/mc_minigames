@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameRule;
 import org.bukkit.Registry;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
@@ -48,9 +49,18 @@ public final class SlimeWorldService {
         return fileLoader().worldExists(templateName);
     }
 
-    /** In-memory copy, never saved; see {@link #discardClone}. */
+    /**
+     * In-memory copy, never saved; see {@link #discardClone}. A copy left loaded by an earlier game
+     * is discarded first: clones are only ever made by the one session of their game.
+     */
     public World cloneTemplate(String templateName, String worldName) {
         init();
+        World leftover = Bukkit.getWorld(worldName);
+        if (leftover != null) {
+            plugin.getLogger().warning("ASP: " + worldName + " was still loaded; discarding it");
+            evacuate(leftover);
+            Bukkit.unloadWorld(leftover, false);
+        }
         if (Bukkit.getWorld(worldName) != null) {
             throw new IllegalStateException("A world called " + worldName + " is already loaded");
         }
@@ -70,18 +80,36 @@ public final class SlimeWorldService {
         return world;
     }
 
-    /** Unloads without saving, evacuating players first. */
+    /** Unloads without saving, evacuating players first; retried for a few seconds if refused. */
     public void discardClone(String worldName) {
+        discardClone(worldName, 3);
+    }
+
+    private void discardClone(String worldName, int retries) {
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
             return;
         }
-        final var spawn = Bukkit.getWorlds().getFirst().getSpawnLocation();
-        for (final var player : world.getPlayers()) {
-            player.teleport(spawn);
+        evacuate(world);
+        if (Bukkit.unloadWorld(world, false)) {
+            return;
         }
-        if (!Bukkit.unloadWorld(world, false)) {
-            plugin.getLogger().warning("ASP: failed to unload clone " + worldName);
+        if (retries > 0) {
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> discardClone(worldName, retries - 1), 20L);
+        } else {
+            plugin.getLogger().warning("ASP: failed to unload clone " + worldName + "; still in it: "
+                    + world.getPlayers().stream().map(Player::getName).toList());
+        }
+    }
+
+    /** To the main world's spawn; dead players cannot be teleported, so they are respawned first. */
+    private static void evacuate(World world) {
+        final var spawn = Bukkit.getWorlds().getFirst().getSpawnLocation();
+        for (final Player player : world.getPlayers()) {
+            if (player.isDead()) {
+                player.spigot().respawn();
+            }
+            player.teleport(spawn);
         }
     }
 
@@ -157,10 +185,7 @@ public final class SlimeWorldService {
             return;
         }
         final var world = Objects.requireNonNull(Bukkit.getWorld(worldName));
-        final var spawn = Bukkit.getWorlds().getFirst().getSpawnLocation();
-        for (final var player : world.getPlayers()) {
-            player.teleport(spawn);
-        }
+        evacuate(world);
         if (!Bukkit.unloadWorld(world, false)) {
             plugin.getLogger().warning("ASP: failed to unload world " + worldName);
         }

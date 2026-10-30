@@ -85,8 +85,23 @@ public class OreshnikGadget extends AbstractGadget {
         player.setCooldown(Material.REPEATER, 20);
     }
 
+    /**
+     * 500 blocks above the target, or just under a barrier above it: an arena roofed in barriers
+     * (e.g. warfare maps walled off from flying out) would otherwise stop every arrow at the roof.
+     * Only barriers count, so ordinary roofs are still hit from the sky.
+     */
+    private static double spawnHeight(Location center) {
+        var world = center.getWorld();
+        for (int y = center.getBlockY() + 1; y < world.getMaxHeight(); y++) {
+            if (world.getBlockAt(center.getBlockX(), y, center.getBlockZ()).getType() == Material.BARRIER) {
+                return Math.max(1, y - 1 - center.getY());
+            }
+        }
+        return 500;
+    }
+
     private void spawnArrowWaves(Location center, int waves, int arrows, ProjectileSource shooter) {
-        double spawnHeight = 500;
+        double spawnHeight = spawnHeight(center);
         for (int wave = 0; wave < waves; wave++) {
             int delay = wave * wavesDelay.get();
             context.plugin().getServer().getScheduler().runTaskLater(context.plugin(), () -> {

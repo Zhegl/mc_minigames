@@ -87,6 +87,7 @@ public final class BingoGame implements Minigame {
         return Component.text(switch (mode) {
             case "butfast" -> "First team to collect an item scores it";
             case "collectall" -> "Collect every item on a 3x3 card";
+            case "lockout" -> "Each item goes to whoever collects it first; a line wins, else the most items";
             default -> "Collect a line of items on your 5x5 card";
         });
     }

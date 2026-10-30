@@ -128,11 +128,10 @@ public class FPVDroneGadget extends AbstractGadget {
                 endSession(owner);
 
                 Player ownerPlayer = plugin.getServer().getPlayer(owner);
-                if (ownerPlayer != null && ownerPlayer.isOnline()) {
-                    if (ownerPlayer.getGameMode() == GameMode.SPECTATOR) {
-                        ownerPlayer.setGameMode(GameMode.SURVIVAL);
-                    }
-
+                // The body died, so the pilot does; unless they are already out of the game, who
+                // must not be put back in survival only to die again.
+                if (ownerPlayer != null && ownerPlayer.isOnline()
+                        && ownerPlayer.getGameMode() != GameMode.SPECTATOR) {
                     ownerPlayer.damage(1000.0, event.getDamageSource());
                 }
             }

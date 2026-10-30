@@ -101,7 +101,8 @@ final class ClassicWarfareSession extends WarfareSessionBase {
             return;
         }
         List<Player> alive = alivePlayers();
-        if (alive.size() > 1) {
+        // A test game has no last one standing; it ends when nobody is left.
+        if (alive.size() > (services.isTest() ? 0 : 1)) {
             return;
         }
         ended = true;
@@ -110,7 +111,7 @@ final class ClassicWarfareSession extends WarfareSessionBase {
         } else {
             Player winner = alive.getFirst();
             summary.add(Summary.winners(List.of(Component.text(winner.getName(), NamedTextColor.WHITE))));
-            services.points().add("war", winner.getUniqueId(), 1);
+            services.award("war", winner.getUniqueId(), 1);
         }
         services.session().endGame(EndReason.FINISHED);
     }

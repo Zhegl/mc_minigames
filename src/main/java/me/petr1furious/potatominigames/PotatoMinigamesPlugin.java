@@ -17,6 +17,7 @@ import me.petr1furious.potatominigames.core.queue.QueueService;
 import me.petr1furious.potatominigames.core.score.PointsService;
 import me.petr1furious.potatominigames.core.session.GameplayListener;
 import me.petr1furious.potatominigames.core.session.SessionManager;
+import me.petr1furious.potatominigames.core.session.SpectatorCamera;
 import me.petr1furious.potatominigames.core.team.TeamRegistry;
 import me.petr1furious.potatominigames.core.team.TeamService;
 import me.petr1furious.potatominigames.core.text.Messages;
@@ -99,6 +100,8 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         queues.createQueues(configs);
         QueueMenu menu = new QueueMenu(this, sessions, queues);
         lobby.setMenuOpener(menu::open);
+        SpectatorCamera camera = new SpectatorCamera(this, sessions);
+        configs.register(camera.config(), "config.yml", "spectate");
 
         GameCommands gameCommands = new GameCommands(sessions, teams, points, configs, messages, gadgets);
         PmCommand pmCommand = new PmCommand(this, sessions, configs, messages, gameCommands, queues);
@@ -118,6 +121,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         pluginManager.registerEvents(lobby, this);
         pluginManager.registerEvents(queues, this);
         pluginManager.registerEvents(menu, this);
+        pluginManager.registerEvents(camera, this);
         pluginManager.registerEvents(new DimensionLinkListener(this, throwawayWorlds), this);
 
         // Snapshots can point into worlds other plugins load.

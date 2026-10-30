@@ -109,6 +109,11 @@ public final class PillarsGame implements Minigame, Listener {
             case "chaos" -> "Randomized pillar layout, fast item cooldown";
             case "item-shuffle" -> "Items replaced every 10s (9 new items)";
             case "lucky" -> "Pillars made of lucky blocks, random items as usual";
+            case "tactical" -> "Everyone gets the same random items: skill over luck";
+            case "big_house" -> "Pillars 2.5x further apart, items as fast as chaos";
+            case "party" -> "Random events, about one a minute";
+            case "rave" -> "Random events twice as often, items as fast as chaos";
+            case "fusion" -> "A random mix of chaos, shuffle, tactical, big house and party/rave";
             default -> "Random items on pillars, last one standing wins";
         });
     }

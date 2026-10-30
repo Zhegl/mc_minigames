@@ -105,7 +105,7 @@ public final class BoardService {
     }
 
     private BoardAssessment scoreDistance(GameMode mode, GameDifficulty difficulty, Board board) {
-        if (mode == GameMode.DEFAULT) {
+        if (mode.lineBoard()) {
             double minAverage = Double.POSITIVE_INFINITY;
             double maxAverage = Double.NEGATIVE_INFINITY;
             double averageSum = 0d;

@@ -1,10 +1,11 @@
 package me.petr1furious.potatominigames.core.command;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import org.bukkit.entity.Player;
 
@@ -20,6 +21,7 @@ import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 
+import me.petr1furious.potatominigames.core.game.Ballot;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.lobby.LobbyService;
 import me.petr1furious.potatominigames.core.queue.QueueMenu;
@@ -89,19 +91,22 @@ public final class PlayCommand {
                             }
                             queues.pickTeam(requirePlayer(c), color);
                         }))));
-        root.then(Commands.literal("difficulty")
-                .executes(ctx -> run(ctx, c -> {
-                    Player player = requirePlayer(c);
-                    menu.openDifficulties(player, queues.requireDifficultyQueue(player));
-                }))
-                .then(Commands.argument("difficulty", StringArgumentType.word())
-                        .suggests((context, builder) -> Suggest.strings(difficultyOptions(context.getSource()))
-                                .getSuggestions(context, builder))
-                        .executes(ctx -> run(ctx, c -> {
-                            String raw = c.getArgument("difficulty", String.class);
-                            queues.pickDifficulty(requirePlayer(c),
-                                    raw.equalsIgnoreCase(QueueService.ANY_DIFFICULTY) ? null : raw);
-                        }))));
+        // /play difficulty, /play map, ...: one per ballot any game has.
+        for (String key : ballotKeys()) {
+            root.then(Commands.literal(key)
+                    .executes(ctx -> run(ctx, c -> {
+                        Player player = requirePlayer(c);
+                        QueueService.Queue queue = queues.requireBallotQueue(player, key);
+                        menu.openBallot(player, queue, queue.ballot(key));
+                    }))
+                    .then(Commands.argument("choice", StringArgumentType.word())
+                            .suggests((context, builder) -> Suggest.strings(
+                                    choiceOptions(context.getSource(), key)).getSuggestions(context, builder))
+                            .executes(ctx -> run(ctx, c -> {
+                                String raw = c.getArgument("choice", String.class);
+                                queues.pick(requirePlayer(c), key, raw.equalsIgnoreCase(Ballot.ANY) ? null : raw);
+                            }))));
+        }
         root.then(Commands.argument("game", StringArgumentType.word())
                 .suggests(Suggest.dynamic(this::gameIds))
                 .executes(ctx -> run(ctx, c -> joinGame(c, null, null)))
@@ -109,13 +114,27 @@ public final class PlayCommand {
                         .suggests((context, builder) -> Suggest.strings(
                                 modeIds(context.getArgument("game", String.class))).getSuggestions(context, builder))
                         .executes(ctx -> run(ctx, c -> joinGame(c, c.getArgument("mode", String.class), null)))
-                        .then(Commands.argument("difficulty", StringArgumentType.word())
+                        .then(Commands.argument("choice", StringArgumentType.word())
                                 .suggests((context, builder) -> Suggest.strings(
-                                        gameDifficulties(context.getArgument("game", String.class)))
+                                        firstBallotChoices(context.getArgument("game", String.class),
+                                                context.getArgument("mode", String.class)))
                                         .getSuggestions(context, builder))
                                 .executes(ctx -> run(ctx, c -> joinGame(c, c.getArgument("mode", String.class),
-                                        c.getArgument("difficulty", String.class)))))));
+                                        c.getArgument("choice", String.class)))))));
         return root.build();
+    }
+
+    /** Every ballot key of every game and mode, e.g. difficulty and map. */
+    private Set<String> ballotKeys() {
+        Set<String> keys = new LinkedHashSet<>();
+        for (Minigame game : sessions.games()) {
+            for (String mode : game.modes()) {
+                for (Ballot ballot : game.ballots(mode)) {
+                    keys.add(ballot.key());
+                }
+            }
+        }
+        return keys;
     }
 
     public LiteralCommandNode<CommandSourceStack> buildLobby() {
@@ -153,22 +172,29 @@ public final class PlayCommand {
         return ids;
     }
 
-    /** The levels of the sender's queue, or of all games outside one. */
-    private List<String> difficultyOptions(CommandSourceStack source) {
-        List<String> ids = new ArrayList<>(source.getSender() instanceof Player player
-                ? queues.queueOf(player).map(QueueService.Queue::difficulties).orElse(List.of())
-                : List.of());
-        ids.add(QueueService.ANY_DIFFICULTY);
+    /** The ballot's choices in the sender's queue, and "any". */
+    private List<String> choiceOptions(CommandSourceStack source, String key) {
+        List<String> ids = new ArrayList<>();
+        if (source.getSender() instanceof Player player) {
+            queues.queueOf(player).map(queue -> queue.ballot(key))
+                    .ifPresent(ballot -> ids.addAll(ballot.choices().get()));
+        }
+        ids.add(Ballot.ANY);
         return ids;
     }
 
-    private List<String> gameDifficulties(String gameId) {
+    /** The choices of the first ballot of that queue, and "any"; empty without one. */
+    private List<String> firstBallotChoices(String gameId, String mode) {
         Minigame game = sessions.game(gameId);
-        if (game == null || game.difficulties().isEmpty()) {
+        if (game == null) {
             return List.of();
         }
-        List<String> ids = new ArrayList<>(game.difficulties());
-        ids.add(QueueService.ANY_DIFFICULTY);
+        Optional<QueueService.Queue> queue = queues.find(game, mode);
+        if (queue.isEmpty() || queue.get().ballots().isEmpty()) {
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>(queue.get().ballots().getFirst().choices().get());
+        ids.add(Ballot.ANY);
         return ids;
     }
 
@@ -190,8 +216,8 @@ public final class PlayCommand {
         return queues.queuesOf(game).stream().map(QueueService.Queue::mode).toList();
     }
 
-    /** Then opens the difficulty and team menus, skipping a difficulty given here. */
-    private void joinGame(CommandContext<CommandSourceStack> ctx, String mode, String difficulty)
+    /** Then opens the vote and team menus; a choice given here is the vote of the first ballot. */
+    private void joinGame(CommandContext<CommandSourceStack> ctx, String mode, String choice)
             throws CommandFailure {
         Player player = requirePlayer(ctx);
         String gameId = ctx.getArgument("game", String.class);
@@ -214,11 +240,15 @@ public final class PlayCommand {
             queue = available.stream().filter(candidate -> candidate.mode().equalsIgnoreCase(mode)).findFirst()
                     .orElseThrow(() -> new CommandFailure("Unknown or closed mode: " + mode));
         }
-        if (difficulty != null && !difficulty.equalsIgnoreCase(QueueService.ANY_DIFFICULTY)
-                && !queue.difficulties().contains(difficulty.toLowerCase(Locale.ROOT))) {
-            throw new CommandFailure(queue.difficulties().isEmpty() ? game.id() + " has no difficulty levels."
-                    : "Unknown difficulty: " + difficulty + " (options: " + String.join(", ", queue.difficulties())
-                            + ", " + QueueService.ANY_DIFFICULTY + ")");
+        Ballot ballot = queue.ballots().isEmpty() ? null : queue.ballots().getFirst();
+        if (choice != null && ballot == null) {
+            throw new CommandFailure(game.id() + " has nothing to vote on.");
+        }
+        String vote = null;
+        if (choice != null && !choice.equalsIgnoreCase(Ballot.ANY)) {
+            vote = ballot.choices().get().stream().filter(option -> option.equalsIgnoreCase(choice)).findFirst()
+                    .orElseThrow(() -> new CommandFailure("Unknown " + ballot.title() + ": " + choice + " (options: "
+                            + String.join(", ", ballot.choices().get()) + ", " + Ballot.ANY + ")"));
         }
         // Already queued: just the picks.
         if (!queue.contains(player.getUniqueId())) {
@@ -227,16 +257,17 @@ public final class PlayCommand {
                 return;
             }
         }
-        if (difficulty == null) {
+        if (choice == null) {
             menu.openPicks(player, queue);
             return;
         }
-        String vote = difficulty.equalsIgnoreCase(QueueService.ANY_DIFFICULTY) ? null
-                : difficulty.toLowerCase(Locale.ROOT);
-        if (!Objects.equals(queue.difficultyVote(player.getUniqueId()), vote)) {
-            queues.pickDifficulty(player, vote);
+        if (!Objects.equals(queue.vote(ballot.key(), player.getUniqueId()), vote)) {
+            queues.pick(player, ballot.key(), vote);
         }
-        if (!queue.teamColors().isEmpty()) {
+        List<Ballot> ballots = queue.ballots();
+        if (ballots.size() > 1) {
+            menu.openBallot(player, queue, ballots.get(1));
+        } else if (!queue.teamColors().isEmpty()) {
             menu.openTeams(player, queue);
         }
     }

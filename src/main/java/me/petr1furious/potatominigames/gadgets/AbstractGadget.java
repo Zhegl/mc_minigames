@@ -1,5 +1,6 @@
 package me.petr1furious.potatominigames.gadgets;
 
+import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 
 import me.petr1furious.potatominigames.core.config.Property;
@@ -32,6 +33,11 @@ public abstract class AbstractGadget implements Gadget {
 
     @Override
     public final boolean usableBy(Player player) {
+        // Knocked-out participants are still in the game, but must not act in it; e.g. a drone
+        // launched from spectator mode would put them back in survival.
+        if (player.getGameMode() == GameMode.SPECTATOR) {
+            return false;
+        }
         if (context.inGame(player)) {
             return true;
         }

@@ -12,6 +12,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceExtractEvent;
@@ -102,6 +103,15 @@ public interface GameSession {
         return false;
     }
 
+    /**
+     * Whether a participant in spectator mode is out and may watch the others' view (see
+     * {@code spectate.followPlayers}); spectators who are not playing always may. False for
+     * someone only briefly out, e.g. waiting to respawn, who should not scout.
+     */
+    default boolean mayFollowPlayers(Player participant) {
+        return !isInGame(participant);
+    }
+
     default void onTeamChange(Player player, TeamColor team) {
     }
 
@@ -129,6 +139,9 @@ public interface GameSession {
     }
 
     default void onEntityShootBow(EntityShootBowEvent event) {
+    }
+
+    default void onFoodLevelChange(FoodLevelChangeEvent event) {
     }
 
     default void onPlayerInteract(PlayerInteractEvent event) {

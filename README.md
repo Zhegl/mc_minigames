@@ -1,5 +1,9 @@
 # Potato Minigames
 
+Server fork of [Petr1Furious/potato-minigames](https://github.com/Petr1Furious/potato-minigames),
+preserving the upstream Git history and the server's downstream patches.
+The original Apache-2.0 license and attribution are retained in `LICENSE` and `NOTICE`.
+
 One Paper plugin with four minigames on a shared framework, built for a server
 anybody can join and play at any time: players queue for a game, wait in a lobby,
 and the game starts by itself. Different games run side by side.
@@ -9,8 +13,8 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
-| **Bingo** | `/bingo` | `default`, `butfast`, `collectall` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `party`, `rave`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, which any mode can enable). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. One handed-out item in three that can be enchanted comes enchanted (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
 
@@ -26,6 +30,7 @@ player is in one queue at a time.
 | `/play <game> [mode]` | join that queue (or spectate, if that game is being played) |
 | `/play vote` | vote to start without waiting |
 | `/play team <colour>` | pick a team for the queued game (team games only) |
+| `/play difficulty <level\|any>`, `/play map <map\|any>` | vote on what the queued game plays: bingo's difficulty, warfare's map |
 | `/play leave` | leave the queue, or stop spectating or playing |
 | `/lobby` | go to the lobby from anywhere |
 
@@ -39,6 +44,14 @@ A game type plays one session at a time, so joining the queue of a running game
 spectates it, and when a game starts, everyone left in its queues (other modes,
 players past its maximum) becomes a spectator. Spectators see the game's sidebar,
 boss bars and chat, cannot teleport out of it, and leave with `/play leave`.
+
+Votes (difficulty, map) are shown in the menu after joining, one after another, before the
+team picker. The most-voted choice wins; ties go to the default difficulty, or a random map.
+
+With `spectate.followPlayers` (default on), spectators and players knocked out of a game
+watch the remaining players through their eyes; sneaking moves to the next one. A player
+only briefly out — waiting to respawn in team beacon, a bingo death punishment — is not
+moved, so they cannot scout.
 
 A game's chat (deaths, rounds, results) goes only to its players and spectators;
 the rest of the server just sees "Pillars started with 4 players" and the result.
@@ -63,6 +76,7 @@ Starting, stopping and joining games, changing teams, setting `config` values an
 | command | what it does |
 |---|---|
 | `start [mode] [players] [arena\|difficulty]` | start now, with the selector or everyone online who is not playing; see below |
+| `test [mode] [arena\|difficulty\|map]` | start a test game with just yourself; see below |
 | `stop` | stop this game |
 | `restart [mode] [players] [arena\|difficulty]` | end the current game and start another; by default with the same players, mode and arena/difficulty |
 | `join [players]` | put players into the running game, or a knocked-out player back in |
@@ -74,17 +88,60 @@ Starting, stopping and joining games, changing teams, setting `config` values an
 `start` takes its arguments in order: the mode (games with several modes; without one,
 the configured `mode`), a player selector, then a game-specific value: `/pillars start
 chaos @a lodestone` forces an imported arena, `/bingo start butfast @a hard` a
-difficulty (otherwise the configured one). `/chase start [players]` has neither. The
+difficulty (otherwise the configured one), `/war start classic @a mibc` a map.
+`/chase start [players]` has neither. The
 defaults are set with `config mode <value>` (and `/bingo config difficulty <value>`).
 
+A test game — from `test`, or any game started with a single player, queued or not — awards
+no points and does not end for the last one standing: warfare runs until you die or `stop`,
+team beacon allows one team, and alone in chase you hunt every round until the clock runs
+out. It is marked "(test)" in chat and the summary. To let anyone queue alone, set
+`/pm config queues.<game>.<mode>.minPlayers 1`.
+
 Pillars adds `respawn [player]`, `time add|remove|set <time>`, `info`, `arenas` and
-`arena import <arena|all> [world] [radius]` (see below).
+`arena import <arena|all> [world] [radius]` (see below). Warfare adds `map add|remove|list`,
+`beacon set|clear|info`, `kit save|load` and `setcenter` (see [Warfare maps](#warfare-maps)).
 
 `/pm` is the cross-game root: `status` (games and queues), `games`, `stop [game]`,
 `forcestart <game> [mode]` (start a queue's game now with whoever is in it, ignoring
 its minimum and timers; without a mode, the fullest queue), `reload`,
 `config [path] [value]` (`config.yml`, plus `gadgets.yml` under `gadgets.`),
 `inventory <save|load|copy>`, `give <gadget>`.
+
+## Pillars fusion
+
+`fusion` rolls its rules every game: chaos (random layout, chaos-speed items), shuffle (at
+item-shuffle's own pace, which nothing speeds up), tactical (with shuffle, everyone gets the same
+set), big_house, each with a 50% chance, and party or rave with 25% each. The values come from
+those modes' settings. The roll is announced at the start and shown in the summary.
+
+## Pillars events (party, rave)
+
+`party` and `rave` add random events: every second one starts with the same chance, so they come
+every `eventMeanSeconds` on average (60 in party, 30 in rave, which also drops items as fast as
+chaos). Each is picked evenly among those not already running, and announced on screen 5s ahead.
+"Moving" means having moved within the last 10 ticks, so lag does not count as standing still.
+
+| event | lasts | what happens |
+|---|---|---|
+| Boat Rain | 15s | unbreakable boats fall from the sky; afterwards riders get a slow fall and boats vanish |
+| Disco | 30s | standing still hurts (1 heart more each time) and darkens the screen for 3s |
+| Block Ban | 7s | a slot-machine subtitle picks a placed block type (the pillars' own, rarely); all of it is removed and it stops dropping |
+| Stiff Neck | 20s | the view is locked left-right; up-down still works |
+| Swap | — | two or three players trade places |
+| Low Gravity | 10s | gravity at a quarter |
+| Giants & Gnomes | 20s | everyone at double or half size |
+| Slippery Floor | 20s | placed blocks turn to packed ice |
+| Spotlight | 15s | everyone glows |
+| Hangover | 15s | nausea III, slowness II and a flash of wither |
+| Wind | 60s | a steady push in one direction, shown as an arrow; sneaking holds on |
+| Knockback Party | 20s | a Knockback II stick for everyone, taken back after |
+| Item Frenzy | 15s | items three times as often |
+| Hot Potato | 20s | a TNT passed on by hitting someone; it explodes on whoever holds it at the end |
+| Darkness | 15s | darkness |
+| Vanishing Blocks | rest of game | placed blocks disappear after 15s |
+| SUPERHOT | 30s | standing still takes your items away until you move |
+| Airdrop | — | a chest with a row of random items appears between the players, 3 to 15 blocks above the pillars |
 
 ## Pillars arenas
 
@@ -98,6 +155,28 @@ To create or rebuild templates, build the arena in a normal world and run
 64): it copies the chunks within the radius of each arena's center into its template.
 An arena with nothing in it becomes an empty (void) template. `/pillars arenas` shows
 which arenas have a template.
+
+## Warfare maps
+
+Warfare can rotate between maps. Each is a slime template (`slime_worlds/<template>.slime`,
+imported with `/swp import`) plus a center, a radius players spawn within, and its own team
+beacons; every game plays in a throwaway copy, so damage never persists. Queued players vote
+for the map (`/play map`), and `noHunger` (default on) keeps their food full.
+
+```yaml
+maps:
+  mibc:
+    template: mibc
+    center: 880.0 4.0 760.0
+    radius: 250
+    beacons:            # team beacon mode needs two; set with /war beacon set <team>
+      red: 900.0 5.0 700.0
+```
+
+In game: `/swp goto <template>`, stand at the center, `/war map add <name> [radius]`; then
+`/war beacon set <team>` while looking at each beacon spot. Team beacon mode offers only
+the maps with two beacons, and only the colours every such map has. `/war map list` shows
+them all. Without any map, warfare plays in `gameWorld` around `gameCenter`, as before.
 
 ## Gadgets
 
@@ -113,13 +192,23 @@ config.yml                    core, lobby, queue timers, per-queue limits, asp w
 games/pillars.yml             pillars modes, platform, item pool and groups, arenas
 games/bingo.yml               mode, difficulty (+ difficulty-levels table), timings
 games/bingo-board-entries.yml the crafting-cost node graph behind board generation
-games/warfare.yml             mode, arena/border, distances, lifts, teamBeacon, beacons, kit
+games/warfare.yml             mode, arena/border, distances, lifts, noHunger, teamBeacon, maps, beacons, kit
 games/chase.yml               rounds, hunters, timings, build limits, hunterGadgets
 gadgets.yml                   one section per gadget
 data/                         points.yml, teams.yml, inventories.yml, snapshots/
 ```
 
 Values are edited at runtime with the `config` commands below and written back to the files.
+
+The running server overrides the bundled party/rave event intervals to 40/20 seconds
+on average. To apply the same settings:
+
+```
+/pillars config modes.party.eventMeanSeconds 40
+/pillars config modes.rave.eventMeanSeconds 20
+```
+
+Worlds, player data and separately installed plugins are not included in this repository.
 
 ## Config commands
 
@@ -140,8 +229,8 @@ segment at a time.
 
 Settings the code declares apply at once; other keys (arenas, item weights, lists) are
 re-read by the next game. Structured sections are hidden and edited in the file:
-pillars `items.groups` and `items.custom`, bingo `difficulty-levels`, warfare `beacons`
-(`/war beacon`) and `gameInventory` (`/war kit`). Each game declares its hidden prefixes
+pillars `items.groups` and `items.custom`, bingo `difficulty-levels`, warfare `maps`
+(`/war map`), `beacons` (`/war beacon`) and `gameInventory` (`/war kit`). Each game declares its hidden prefixes
 with `ConfigRegistry.hide` next to its config registration.
 
 ## Building
