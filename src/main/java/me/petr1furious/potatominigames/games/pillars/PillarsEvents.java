@@ -51,7 +51,7 @@ import me.petr1furious.potatominigames.core.game.SessionServices;
 /**
  * Random events of the party and rave modes. Every second an event starts with the same chance,
  * so the wait between them averages {@code eventMeanSeconds}; it is picked evenly among the events
- * not already running or announced, and announced on screen five seconds ahead.
+ * not already running or announced. Swap starts immediately; others are announced five seconds ahead.
  */
 final class PillarsEvents {
     enum Kind {
@@ -164,6 +164,10 @@ final class PillarsEvents {
             return;
         }
         Kind kind = candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
+        if (kind == Kind.SWAP) {
+            begin(kind);
+            return;
+        }
         pending.add(kind);
         Title warning = Title.title(
                 Component.text(kind.title, NamedTextColor.GOLD).decorate(TextDecoration.BOLD),

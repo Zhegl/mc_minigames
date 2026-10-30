@@ -152,7 +152,7 @@ Writes are atomic; a failed write leaves the previous presets intact.
 
 `party` and `rave` add random events: every second one starts with the same chance, so they come
 every `eventMeanSeconds` on average (60 in party, 30 in rave, which also drops items as fast as
-chaos). Each is picked evenly among those not already running, and announced on screen 5s ahead.
+chaos). Each is picked evenly among those not already running. Most events are announced 5s ahead.
 "Moving" means having moved within the last 10 ticks, so lag does not count as standing still.
 
 | event | lasts | what happens |
@@ -161,7 +161,7 @@ chaos). Each is picked evenly among those not already running, and announced on 
 | Disco | 30s | standing still hurts (1 heart more each time) and darkens the screen for 3s |
 | Block Ban | 7s | a slot-machine subtitle picks a placed block type (the pillars' own, rarely); all of it is removed and it stops dropping |
 | Stiff Neck | 20s | the view is locked left-right; up-down still works |
-| Swap | — | two or three players trade places |
+| Swap | — | two or three players trade places immediately, without a warning countdown |
 | Low Gravity | 10s | gravity at a quarter |
 | Giants & Gnomes | 20s | everyone at double or half size |
 | Slippery Floor | 20s | placed blocks turn to packed ice |
