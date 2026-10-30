@@ -115,6 +115,39 @@ item-shuffle's own pace, which nothing speeds up), tactical (with shuffle, every
 set), big_house, each with a 50% chance, and party or rave with 25% each. The values come from
 those modes' settings. The roll is announced at the start and shown in the summary.
 
+## Player Pillars presets
+
+Every player can save up to **five** named, fixed Fusion mixes. Names are shared
+server-wide; anyone can play a preset, but only its owner can replace or delete it.
+Ownership and the limit use the player's UUID, including across restarts.
+
+```
+/pillars preset save duel tactical big_house rave
+/pillars preset list
+/play pillars duel
+/pillars preset delete duel
+```
+
+Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`.
+`party` and `rave` are mutually exclusive. With no modifiers, `save` creates plain
+Pillars with Fusion's base settings. Unlike Fusion, the selected modifiers always
+apply: there is no random roll. Their settings and precedence are the same as
+Fusion, including shuffle's fixed item pace and the live party/rave event intervals.
+
+Use 1–24 letters `a-z`, digits, `_` or `-`, starting with a letter or digit.
+Names are lowercased; built-in mode names are reserved. Saving your own existing
+name replaces it without taking another slot. A preset cannot be changed or
+deleted while anyone is queued for it or it is being played.
+
+Saved presets appear immediately in `/play`, the lobby menu and command suggestions;
+menus paginate when necessary. Queue starts and voting work normally. Admins can
+also use `/pillars start duel @a [arena]` or `/pillars test duel [arena]` immediately,
+without reloading commands. Other games and the built-in Pillars modes are unchanged.
+
+Presets live in `data/pillars-presets.yml` inside the plugin's data folder.
+Writes are atomic; a failed write leaves the previous presets intact.
+
+
 ## Pillars events (party, rave)
 
 `party` and `rave` add random events: every second one starts with the same chance, so they come
@@ -195,7 +228,7 @@ games/bingo-board-entries.yml the crafting-cost node graph behind board generati
 games/warfare.yml             mode, arena/border, distances, lifts, noHunger, teamBeacon, maps, beacons, kit
 games/chase.yml               rounds, hunters, timings, build limits, hunterGadgets
 gadgets.yml                   one section per gadget
-data/                         points.yml, teams.yml, inventories.yml, snapshots/
+data/                         points.yml, teams.yml, inventories.yml, snapshots/, pillars-presets.yml
 ```
 
 Values are edited at runtime with the `config` commands below and written back to the files.
@@ -242,6 +275,9 @@ nix-shell -p temurin-bin-25 --run 'sh ./gradlew build --no-daemon -Pmc=26.2'  # 
 
 The jar name says which API it was built against (`potato-minigames-<version>-mc26.3.jar`).
 The 26.2 build exists for the bot-tested dev server; the servers run 26.3.
+
+`build` also runs the preset self-check without adding a test framework (quota, ownership,
+validation, reload and failed-write preservation). Run it alone with `sh ./gradlew checkPillarsPresets`.
 
 ## License
 

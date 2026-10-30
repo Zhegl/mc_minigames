@@ -38,6 +38,11 @@ public final class ConfigRegistry {
         loadBag(bindings.get(bag.id()));
     }
 
+    /** Removes a dynamic queue's binding without deleting its saved admin settings. */
+    public void unregister(String bagId) {
+        bindings.remove(bagId);
+    }
+
     /** Keys under these dotted prefixes are neither shown nor editable by {@code config}. */
     public void hide(String fileName, String... prefixes) {
         spec(fileName).hidden().addAll(List.of(prefixes));

@@ -91,13 +91,15 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         sessions.addCleanupHook(gadgets::endForPlayers);
 
         // Registration order is the menu order.
-        sessions.registerGame(new PillarsGame(this, configs, slimeWorlds));
+        PillarsGame pillars = new PillarsGame(this, configs, slimeWorlds);
+        sessions.registerGame(pillars);
         sessions.registerGame(new BingoGame(this, configs));
         sessions.registerGame(new WarfareGame(configs, fpvDrone));
         sessions.registerGame(new ChaseGame(configs, gadgets));
 
         QueueService queues = new QueueService(this, sessions, lobby);
         queues.createQueues(configs);
+        pillars.setQueues(queues);
         QueueMenu menu = new QueueMenu(this, sessions, queues);
         lobby.setMenuOpener(menu::open);
         SpectatorCamera camera = new SpectatorCamera(this, sessions);

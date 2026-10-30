@@ -15,4 +15,5 @@ rollback and game modifiers. Each file derived from PillarPeril says so at its t
 
 This fork contains downstream modifications maintained by tiom4eg (2026):
 queue voting, spectator cameras, solo test games, Warfare map rotation,
-Bingo lockout, Pillars modes and events, and world lifecycle and gadget fixes.
+Bingo lockout, Pillars modes and events, player-owned Pillars presets,
+and world lifecycle and gadget fixes.

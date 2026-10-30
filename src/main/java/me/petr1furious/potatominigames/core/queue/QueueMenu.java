@@ -220,14 +220,22 @@ public final class QueueMenu implements Listener {
      * below.
      */
     private Holder show(Player player, Component title, List<Entry> entries, Entry back, Entry extra) {
+        return show(player, title, entries, back, extra, 0);
+    }
+
+    private Holder show(Player player, Component title, List<Entry> entries, Entry back, Entry extra, int page) {
+        int offset = page * 28;
+        int count = Math.min(28, entries.size() - offset);
         int perRow = 7;
-        int contentRows = Math.max(1, (entries.size() + perRow - 1) / perRow);
+        int contentRows = Math.max(1, (count + perRow - 1) / perRow);
         int rows = Math.min(6, contentRows + 2);
         Holder holder = new Holder();
-        holder.inventory = Bukkit.createInventory(holder, rows * 9, title);
-        for (int i = 0; i < entries.size() && i < (rows - 2) * perRow; i++) {
+        int pages = Math.max(1, (entries.size() + 27) / 28);
+        holder.inventory = Bukkit.createInventory(holder, rows * 9, pages > 1
+                ? title.append(Component.text(" [" + (page + 1) + "/" + pages + "]")) : title);
+        for (int i = 0; i < count; i++) {
             int row = 1 + i / perRow;
-            int inRow = Math.min(perRow, entries.size() - (row - 1) * perRow);
+            int inRow = Math.min(perRow, count - (row - 1) * perRow);
             // Centre each row; with an even count the icons sit one slot apart.
             int index = i % perRow;
             int column;
@@ -236,7 +244,7 @@ public final class QueueMenu implements Listener {
             } else {
                 column = 1 + (perRow - inRow) / 2 + index;
             }
-            holder.entries.put(row * 9 + column, entries.get(i));
+            holder.entries.put(row * 9 + column, entries.get(offset + i));
         }
         int bottom = (rows - 1) * 9;
         if (back != null) {
@@ -244,6 +252,18 @@ public final class QueueMenu implements Listener {
         }
         if (extra != null) {
             holder.entries.put(bottom + (back != null ? 5 : 4), extra);
+        }
+        if (page > 0) {
+            holder.entries.put(bottom, new Entry(viewer -> navigationIcon("Previous page"), clicker -> {
+                Holder previous = show(clicker, title, entries, back, extra, page - 1);
+                previous.queue = holder.queue;
+            }));
+        }
+        if (page + 1 < pages) {
+            holder.entries.put(bottom + 8, new Entry(viewer -> navigationIcon("Next page"), clicker -> {
+                Holder next = show(clicker, title, entries, back, extra, page + 1);
+                next.queue = holder.queue;
+            }));
         }
         render(holder, player);
         player.openInventory(holder.inventory);
@@ -481,8 +501,12 @@ public final class QueueMenu implements Listener {
     }
 
     private static ItemStack backIcon() {
+        return navigationIcon("Back");
+    }
+
+    private static ItemStack navigationIcon(String label) {
         ItemStack item = new ItemStack(Material.ARROW);
-        item.editMeta(meta -> meta.displayName(plain(Component.text("Back", NamedTextColor.GRAY))));
+        item.editMeta(meta -> meta.displayName(plain(Component.text(label, NamedTextColor.GRAY))));
         return item;
     }
 

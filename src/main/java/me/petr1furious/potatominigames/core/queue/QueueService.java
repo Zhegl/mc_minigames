@@ -292,12 +292,7 @@ public final class QueueService implements Listener {
     public void createQueues(ConfigRegistry configs) {
         configs.register(config, "config.yml", "queue");
         for (Minigame game : sessions.games()) {
-            for (String mode : game.modes()) {
-                PropertyBag bag = new PropertyBag("queues." + game.id() + "." + mode);
-                Queue queue = new Queue(game, mode, bag);
-                configs.register(bag, "config.yml", "queues." + game.id() + "." + mode);
-                queues.put(game.id() + "." + mode, queue);
-            }
+            refreshQueues(game, configs);
         }
         sessions.addStartListener(this::onGameStarted);
         // Any way into a game (admin join, spectating) removes them from queues.
@@ -308,6 +303,39 @@ public final class QueueService implements Listener {
             }
         });
         plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
+    }
+
+    /** Reconciles dynamic modes without resetting queues that still exist. */
+    public void refreshQueues(Minigame game, ConfigRegistry configs) {
+        List<String> modes = game.modes();
+        for (Queue queue : queues.values()) {
+            if (queue.game == game && !modes.contains(queue.mode) && isModeInUse(game, queue.mode)) {
+                throw new IllegalStateException("Cannot remove a queue in use: " + queue.mode);
+            }
+        }
+        queues.entrySet().removeIf(entry -> {
+            Queue queue = entry.getValue();
+            if (queue.game != game || modes.contains(queue.mode)) {
+                return false;
+            }
+            configs.unregister("queues." + game.id() + "." + queue.mode);
+            return true;
+        });
+        for (String mode : modes) {
+            String key = game.id() + "." + mode;
+            if (!queues.containsKey(key)) {
+                PropertyBag bag = new PropertyBag("queues." + key);
+                Queue queue = new Queue(game, mode, bag);
+                configs.register(bag, "config.yml", "queues." + key);
+                queues.put(key, queue);
+            }
+        }
+    }
+
+    public boolean isModeInUse(Minigame game, String mode) {
+        Queue queue = queues.get(game.id() + "." + mode);
+        return (queue != null && queue.size() > 0)
+                || sessions.sessionOf(game).map(session -> session.mode().equals(mode)).orElse(false);
     }
 
     public List<Queue> visibleQueues() {
@@ -329,7 +357,7 @@ public final class QueueService implements Listener {
 
     /** Spectates instead if the game is already running. */
     public void join(Player player, Queue queue) throws CommandFailure {
-        if (!queue.enabled()) {
+        if (queues.get(queue.game.id() + "." + queue.mode) != queue || !queue.enabled()) {
             throw new CommandFailure("That queue is closed.");
         }
         Optional<ActiveSession> current = sessions.sessionOf(player);

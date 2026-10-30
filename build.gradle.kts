@@ -49,3 +49,18 @@ tasks.processResources {
         expand("version" to pluginVersion)
     }
 }
+
+val checks by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+    runtimeClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+}
+
+val checkPillarsPresets by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.PillarsPresetsCheck")
+}
+
+tasks.check {
+    dependsOn(checkPillarsPresets)
+}

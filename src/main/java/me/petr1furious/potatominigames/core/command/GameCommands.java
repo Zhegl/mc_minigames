@@ -8,6 +8,7 @@ import java.util.Map;
 import org.bukkit.entity.Player;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -18,6 +19,7 @@ import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
+import io.papermc.paper.command.brigadier.argument.CustomArgumentType;
 import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSelectorArgumentResolver;
 
 import net.kyori.adventure.text.Component;
@@ -176,30 +178,31 @@ public final class GameCommands {
                 .orElseThrow(() -> new CommandFailure("No " + game.id() + " game is active."));
     }
 
-    /** {@code start [mode] [players] [option]}; single-mode games have no mode. Modes are literals. */
+    /** {@code start [mode] [players] [option]}; mode suggestions remain live for player presets. */
     private LiteralArgumentBuilder<CommandSourceStack> buildStart(String name, Minigame game, boolean restart) {
         LiteralArgumentBuilder<CommandSourceStack> start = Commands.literal(name).requires(GameCommands::isAdmin);
-        addStartTail(start, game, null, restart);
         if (game.modes().size() > 1) {
-            for (String mode : game.modes()) {
-                LiteralArgumentBuilder<CommandSourceStack> literal = Commands.literal(mode);
-                addStartTail(literal, game, mode, restart);
-                start.then(literal);
-            }
+            var mode = Commands.argument("mode", modeArgument(game)).suggests(Suggest.dynamic(game::modes));
+            addStartTail(mode, game, true, restart);
+            start.then(mode);
         }
+        addStartTail(start, game, false, restart);
         return start;
     }
 
-    private void addStartTail(ArgumentBuilder<CommandSourceStack, ?> node, Minigame game, String mode,
+    private void addStartTail(ArgumentBuilder<CommandSourceStack, ?> node, Minigame game, boolean modeArgument,
             boolean restart) {
-        node.executes(ctx -> run(ctx, c -> launch(c, game, mode, false, null, restart)));
+        node.executes(ctx -> run(ctx, c -> launch(c, game,
+                modeArgument ? c.getArgument("mode", String.class) : null, false, null, restart)));
         var players = Commands.argument("players", ArgumentTypes.players())
-                .executes(ctx -> run(ctx, c -> launch(c, game, mode, true, null, restart)));
+                .executes(ctx -> run(ctx, c -> launch(c, game,
+                        modeArgument ? c.getArgument("mode", String.class) : null, true, null, restart)));
         StartOption option = game.startOption();
         if (option != null) {
             players.then(Commands.argument(option.key(), StringArgumentType.word())
                     .suggests(Suggest.dynamic(() -> option.values().get()))
-                    .executes(ctx -> run(ctx, c -> launch(c, game, mode, true,
+                    .executes(ctx -> run(ctx, c -> launch(c, game,
+                            modeArgument ? c.getArgument("mode", String.class) : null, true,
                             c.getArgument(option.key(), String.class), restart))));
         }
         node.then(players);
@@ -211,30 +214,31 @@ public final class GameCommands {
      */
     private LiteralArgumentBuilder<CommandSourceStack> buildTest(Minigame game) {
         LiteralArgumentBuilder<CommandSourceStack> test = Commands.literal("test").requires(GameCommands::isAdmin);
-        addTestTail(test, game, null);
         if (game.modes().size() > 1) {
-            for (String mode : game.modes()) {
-                LiteralArgumentBuilder<CommandSourceStack> literal = Commands.literal(mode);
-                addTestTail(literal, game, mode);
-                test.then(literal);
-            }
+            var mode = Commands.argument("mode", modeArgument(game)).suggests(Suggest.dynamic(game::modes));
+            addTestTail(mode, game, true);
+            test.then(mode);
         }
+        addTestTail(test, game, false);
         return test;
     }
 
-    private void addTestTail(ArgumentBuilder<CommandSourceStack, ?> node, Minigame game, String mode) {
-        node.executes(ctx -> run(ctx, c -> launchTest(c, game, mode, null)));
+    private void addTestTail(ArgumentBuilder<CommandSourceStack, ?> node, Minigame game, boolean modeArgument) {
+        node.executes(ctx -> run(ctx, c -> launchTest(c, game,
+                modeArgument ? c.getArgument("mode", String.class) : null, null)));
         StartOption option = game.startOption();
         if (option != null) {
             node.then(Commands.argument(option.key(), StringArgumentType.word())
                     .suggests(Suggest.dynamic(() -> option.values().get()))
-                    .executes(ctx -> run(ctx, c -> launchTest(c, game, mode,
+                    .executes(ctx -> run(ctx, c -> launchTest(c, game,
+                            modeArgument ? c.getArgument("mode", String.class) : null,
                             c.getArgument(option.key(), String.class)))));
         }
     }
 
     private void launchTest(CommandContext<CommandSourceStack> ctx, Minigame game, String mode, String optionValue)
             throws CommandFailure {
+        requireKnownMode(game, mode);
         Player player = requirePlayer(ctx);
         Map<String, String> options = new HashMap<>();
         options.put(ActiveSession.TEST_OPTION, "true");
@@ -248,6 +252,7 @@ public final class GameCommands {
     /** @param mode null for the default, or the running mode on restart */
     private void launch(CommandContext<CommandSourceStack> ctx, Minigame game, String mode, boolean selected,
             String optionValue, boolean restart) throws CommandFailure, CommandSyntaxException {
+        requireKnownMode(game, mode);
         List<Player> roster = selected ? resolveRoster(ctx, game, mode == null) : null;
         Map<String, String> options = new HashMap<>();
         if (optionValue != null) {
@@ -293,6 +298,30 @@ public final class GameCommands {
                     + String.join(", ", game.modes()) + ")");
         }
         throw new CommandFailure("No player called " + raw + " is online.");
+    }
+
+    /** Reject non-modes during parsing, so the sibling player/arena argument can still match. */
+    private static ArgumentType<String> modeArgument(Minigame game) {
+        return new CustomArgumentType.Converted<String, String>() {
+            @Override
+            public String convert(String value) throws CommandSyntaxException {
+                if (!game.modes().contains(value)) {
+                    throw CommandSyntaxException.BUILT_IN_EXCEPTIONS.dispatcherUnknownArgument().create();
+                }
+                return value;
+            }
+
+            @Override
+            public ArgumentType<String> getNativeType() {
+                return StringArgumentType.word();
+            }
+        };
+    }
+
+    private static void requireKnownMode(Minigame game, String mode) throws CommandFailure {
+        if (mode != null && !game.modes().contains(mode)) {
+            throw new CommandFailure("Unknown mode: " + mode + " (modes: " + String.join(", ", game.modes()) + ")");
+        }
     }
 
     private static String requireOptionValue(StartOption option, String raw) throws CommandFailure {
