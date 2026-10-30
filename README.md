@@ -13,7 +13,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `party`, `rave`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, which any mode can enable). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. One handed-out item in three that can be enchanted comes enchanted (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
@@ -107,6 +107,25 @@ Pillars adds `respawn [player]`, `time add|remove|set <time>`, `info`, `arenas` 
 its minimum and timers; without a mode, the fullest queue), `reload`,
 `config [path] [value]` (`config.yml`, plus `gadgets.yml` under `gadgets.`),
 `inventory <save|load|copy>`, `give <gadget>`.
+
+## Pillars Sniper Duel
+
+Join with `/play pillars sniper_duel`, or use `/pillars test sniper_duel` as an admin.
+Pillars are 1.5 times further apart. The default item pace and time limit match
+original: one drop every 5 seconds, a 5-minute game.
+
+Each player's first five drops are random vanilla `*_log` items (including stripped
+logs); the sixth is a fresh crossbow with no enchantments. Every later drop chooses
+one of three categories with equal probability:
+
+- an arrow: ordinary, spectral, or tipped with a random potion effect;
+- an explosive firework rocket with a random shape, colour, trail/flicker and flight duration;
+- a normal drop from the configured weighted Pillars pool, with its usual group boosts
+  and enchantment chance. This category can also contain ammunition.
+
+Forced logs, the crossbow and ammunition bypass the general item blacklist.
+Drop progress is per player, survives reconnects, and resets with each new game.
+This is a standalone mode, not another random Fusion modifier.
 
 ## Pillars fusion
 
@@ -276,8 +295,9 @@ nix-shell -p temurin-bin-25 --run 'sh ./gradlew build --no-daemon -Pmc=26.2'  # 
 The jar name says which API it was built against (`potato-minigames-<version>-mc26.3.jar`).
 The 26.2 build exists for the bot-tested dev server; the servers run 26.3.
 
-`build` also runs the preset self-check without adding a test framework (quota, ownership,
-validation, reload and failed-write preservation). Run it alone with `sh ./gradlew checkPillarsPresets`.
+`build` runs self-checks without adding a test framework: preset ownership, quota,
+reload and failed-write preservation, plus Sniper Duel's opening sequence and equal
+later drop categories. Run them alone with `sh ./gradlew checkPillarsPresets checkSniperDuel`.
 
 ## License
 

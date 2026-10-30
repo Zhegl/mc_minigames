@@ -13,8 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
+import org.bukkit.FireworkEffect;
 import org.bukkit.GameMode;
 import org.bukkit.GameRule;
 import org.bukkit.GameRules;
@@ -29,6 +32,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.ItemType;
+import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
@@ -64,6 +69,7 @@ final class PillarsSession implements GameSession {
         final String name;
         final ItemPool.GroupState groups;
         int kills;
+        int sniperDrops;
         Integer deathTick;
         Location pillar;
         /** Death or disconnect location; used by respawn. */
@@ -88,6 +94,7 @@ final class PillarsSession implements GameSession {
             Title.Times.times(Duration.ZERO, Duration.ofMillis(900), Duration.ofMillis(200));
     /** Draw window and delay before moving the dead. */
     private static final int DEATH_DELAY_TICKS = 19;
+    private static final FireworkEffect.Type[] FIREWORK_SHAPES = FireworkEffect.Type.values();
 
     private final SessionServices services;
     private final PillarsGame game;
@@ -104,6 +111,10 @@ final class PillarsSession implements GameSession {
     private List<ItemPool.ItemGroup> groups = List.of();
     /** Group boosts for {@code sameItems}, where everyone shares one draw. */
     private ItemPool.GroupState sharedGroups;
+    private List<ItemPool.PoolItem> sniperLogs;
+    private List<ItemPool.PoolItem> sniperArrows;
+    private ItemPool.PoolItem sniperCrossbow;
+    private ItemPool.PoolItem sniperRocket;
 
     private final Map<UUID, PillarPlayer> players = new LinkedHashMap<>();
     private final List<PillarPlayer> alive = new ArrayList<>();
@@ -191,6 +202,9 @@ final class PillarsSession implements GameSession {
         }
         if (items.isEmpty()) {
             throw new CommandFailure("Item pool is empty; check games/pillars.yml.");
+        }
+        if (mode.id.equals("sniper_duel")) {
+            prepareSniperDrops();
         }
 
         for (Participant participant : services.participants().all()) {
@@ -461,11 +475,12 @@ final class PillarsSession implements GameSession {
     }
 
     private void cycleItems() {
+        boolean sniper = mode.id.equals("sniper_duel");
         boolean shuffle = rules.shuffle();
         int count = shuffle ? 10 : 1;
         // sameItems: one draw, and one stack (potion type, enchantments) copied to everyone,
         // so nobody is luckier than the rest.
-        List<ItemStack> shared = rules.sameItems() ? create(draw(sharedGroups, count)) : null;
+        List<ItemStack> shared = !sniper && rules.sameItems() ? create(draw(sharedGroups, count)) : null;
         for (PillarPlayer pillarPlayer : alive) {
             Player player = pillarPlayer.player();
             if (player == null) {
@@ -474,9 +489,82 @@ final class PillarsSession implements GameSession {
             if (shuffle) {
                 player.getInventory().clear();
             }
-            giveItems(player, shared != null ? shared : create(draw(pillarPlayer.groups, count)));
+            if (sniper) {
+                player.getInventory().addItem(sniperItem(pillarPlayer));
+                playItemSound(player);
+            } else {
+                giveItems(player, shared != null ? shared : create(draw(pillarPlayer.groups, count)));
+            }
         }
         itemCountdown = itemCooldown();
+    }
+
+    enum SniperDrop {
+        LOG, CROSSBOW, ARROW, FIREWORK, RANDOM
+    }
+
+    static SniperDrop sniperDropKind(int drop, RandomGenerator random) {
+        if (drop <= 5) {
+            return SniperDrop.LOG;
+        }
+        if (drop == 6) {
+            return SniperDrop.CROSSBOW;
+        }
+        return switch (random.nextInt(3)) {
+            case 0 -> SniperDrop.ARROW;
+            case 1 -> SniperDrop.FIREWORK;
+            default -> SniperDrop.RANDOM;
+        };
+    }
+
+    /** Forced drops bypass the general blacklist; the random third still uses the ordinary pool. */
+    private void prepareSniperDrops() throws CommandFailure {
+        List<ItemPool.PoolItem> logs = new ArrayList<>();
+        List<ItemPool.PoolItem> arrows = new ArrayList<>();
+        for (ItemType type : Registry.ITEM) {
+            if (!world.isEnabled(type)) {
+                continue;
+            }
+            String id = ItemPool.itemId(type);
+            if (id.endsWith("_log")) {
+                logs.add(ItemPool.poolItem(type, id, 1));
+            } else if (id.equals("arrow") || id.endsWith("_arrow")) {
+                arrows.add(ItemPool.poolItem(type, id, 1));
+            } else if (id.equals("crossbow")) {
+                sniperCrossbow = ItemPool.poolItem(type, id, 1);
+            } else if (id.equals("firework_rocket")) {
+                sniperRocket = ItemPool.poolItem(type, id, 1);
+            }
+        }
+        if (logs.isEmpty() || arrows.isEmpty() || sniperCrossbow == null || sniperRocket == null) {
+            throw new CommandFailure("Sniper Duel needs logs, arrows, crossbows and firework rockets enabled.");
+        }
+        sniperLogs = List.copyOf(logs);
+        sniperArrows = List.copyOf(arrows);
+    }
+
+    private ItemStack sniperItem(PillarPlayer player) {
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        SniperDrop kind = sniperDropKind(++player.sniperDrops, random);
+        ItemPool.PoolItem chosen = switch (kind) {
+            case LOG -> sniperLogs.get(random.nextInt(sniperLogs.size()));
+            case CROSSBOW -> sniperCrossbow;
+            case ARROW -> sniperArrows.get(random.nextInt(sniperArrows.size()));
+            case FIREWORK -> sniperRocket;
+            case RANDOM -> ItemPool.randomByWeight(items, player.groups::weightOf);
+        };
+        player.groups.record(chosen);
+        ItemStack stack = chosen.createItemStack();
+        if (kind == SniperDrop.FIREWORK) {
+            stack.editMeta(FireworkMeta.class, meta -> {
+                meta.setPower(1 + random.nextInt(3));
+                meta.addEffect(FireworkEffect.builder()
+                        .with(FIREWORK_SHAPES[random.nextInt(FIREWORK_SHAPES.length)])
+                        .withColor(Color.fromRGB(random.nextInt(0x1000000)))
+                        .flicker(random.nextBoolean()).trail(random.nextBoolean()).build());
+            });
+        }
+        return kind == SniperDrop.CROSSBOW ? stack : maybeEnchant(stack);
     }
 
     /** Shuffle keeps its own pace; everything else is sped up by Item Frenzy. */
@@ -684,6 +772,10 @@ final class PillarsSession implements GameSession {
         for (ItemStack stack : stacks) {
             player.getInventory().addItem(stack.clone());
         }
+        playItemSound(player);
+    }
+
+    private void playItemSound(Player player) {
         if (config.itemSound.get()) {
             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 0.75f, 1.0f);
         }
@@ -770,6 +862,7 @@ final class PillarsSession implements GameSession {
             case "lucky" -> "Lucky";
             case "tactical" -> "Tactical";
             case "big_house" -> "Big House";
+            case "sniper_duel" -> "Sniper Duel";
             case "party" -> "Party";
             case "rave" -> "Rave";
             case "fusion" -> "Fusion";

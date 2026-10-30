@@ -232,7 +232,7 @@ public final class ItemPool {
         return weight;
     }
 
-    private static PoolItem poolItem(ItemType type, String id, int weight) {
+    static PoolItem poolItem(ItemType type, String id, int weight) {
         if (!POTION_FORMS.contains(id) || effectivePotionTypes().isEmpty()) {
             return new PoolItem(id, weight, type::createItemStack);
         }

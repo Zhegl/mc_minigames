@@ -28,7 +28,7 @@ import me.petr1furious.potatominigames.core.config.PropertyCodec;
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
     static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky", "tactical", "big_house",
-            "party", "rave", "fusion");
+            "sniper_duel", "party", "rave", "fusion");
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
@@ -142,6 +142,7 @@ public final class PillarsConfig {
         addMode("tactical", 5, "5min", "#55AAFF", false, true, "circular", "", false, true, 1.0, 0);
         // Pillars 2.5x further apart, items as fast as chaos.
         addMode("big_house", 3, "8min", "#C77DFF", false, true, "circular", "", false, false, 2.5, 0);
+        addMode("sniper_duel", 5, "5min", "#55FFFF", false, true, "circular", "", false, false, 1.5, 0);
         // Random events: one a minute on average; rave twice as often, with chaos-speed items.
         addMode("party", 5, "8min", "#FF77FF", false, true, "circular", "", false, false, 1.0, 60);
         addMode("rave", 3, "8min", "#FF2E97", false, true, "circular", "", false, false, 1.0, 30);

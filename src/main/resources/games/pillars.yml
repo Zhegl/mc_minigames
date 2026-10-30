@@ -88,6 +88,15 @@ modes:
     bossBar: true
     layout: circular
     distanceMultiplier: 2.5
+  sniper_duel:
+    cooldownSeconds: 5
+    timeLimit: 5min
+    color: '#55FFFF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    distanceMultiplier: 1.5
   party:
     cooldownSeconds: 5
     timeLimit: 8min
