@@ -423,51 +423,6 @@ and complete restoration, protected terrain, knockback symmetry and hit cooldown
 death and stale-shot handling, respawn/reconnect progress, timeout standings and
 all sixteen spawn points, including the farthest-from-enemies selection.
 
-## Server deployment: automatic staging, manual apply
-
-The server checks the latest `main` once a minute through the existing user's cron:
-
-```cron
-* * * * * "$HOME/teploteplo/minecraft/update.sh" >> "$HOME/teploteplo/minecraft/update.log" 2>&1 # mc-minigames-stage
-```
-
-`update.sh` uses a managed checkout in `~/teploteplo/minecraft/.deploy/repo`.
-It only fast-forwards a clean `main`, runs `clean build` and all Gradle checks in
-the Java 25 Docker image, then atomically stages `.deploy/releases/<commit>.jar`.
-`.deploy/pending` points to the latest successful build. Failed builds keep the
-previous candidate. Repeated checks of the same prepared commit do not rebuild.
-If several commits arrive between checks, the latest tip is prepared.
-
-**Automatic updates never replace live JARs or restart Minecraft.** Even an
-unrelated container restart does not apply a pending release. Apply explicitly:
-
-```bash
-~/teploteplo/minecraft/apply-update.sh
-```
-
-The apply script waits for any build, backs up the plugin JARs, stops Minecraft,
-installs the candidate as `potato-minigames.jar` and removes its legacy versioned
-JARs from both plugin directories. It starts the container and verifies RCON,
-plugin loading and the installed JAR before setting `.deploy/applied`.
-A failed apply restores the previous plugin and starts the old server.
-Worlds, player data and configuration files are not replaced.
-Reapplying the already running release does not restart it.
-
-Build/apply share a lock. Plugin backups remain in `.deploy/backup.*`; build
-output is in `~/teploteplo/minecraft/update.log`. To fetch/build immediately,
-run `~/teploteplo/minecraft/update.sh`; this still does not apply anything.
-The original `potato-minigames` checkout is preserved, and its `.gradle-home`
-cache is reused. Make source changes in GitHub, not the managed checkout.
-
-The public repository is fetched over HTTPS without copying a personal SSH key.
-If it becomes private, configure read-only authentication for the managed origin.
-Builds use the existing SOCKS proxy on `127.0.0.1:14881`, at most 2 CPUs and 2 GiB RAM;
-the Java 25 Docker image must already be installed.
-
-Run `bash deploy/check.sh` for isolated deployment transaction/failure checks.
-`MINECRAFT_ROOT` and `MINECRAFT_CONTAINER` can target an isolated smoke server;
-normal operator commands need neither override.
-
 ## License
 
 Apache-2.0 (see `LICENSE`). Pillars is derived from PillarPeril by MarcPG, also
