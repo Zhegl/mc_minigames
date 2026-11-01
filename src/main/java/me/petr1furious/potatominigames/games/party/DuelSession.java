@@ -22,28 +22,46 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.Snowball;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityMountEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.PotionSplashEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
+import net.kyori.adventure.title.Title;
+import java.time.Duration;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitTask;
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -54,13 +72,20 @@ import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.core.text.TimeFormat;
 
 final class DuelSession implements GameSession {
-    private enum Phase { COUNTDOWN, FIGHT, BREAK, DONE }
+    private enum Phase { COUNTDOWN, FIGHT, RESULT, BREAK, DONE }
+    private record Hit(UUID attacker, int tick) { }
     private final SessionServices services;
     private final PartyConfig config;
     private final boolean sumo;
     private final String title;
     private final Set<UUID> fighters = new HashSet<>();
     private final SumoCombat sumoCombat = new SumoCombat();
+    private final CountdownFreeze countdownFreeze = new CountdownFreeze();
+    private final ArenaProjectiles projectiles = new ArenaProjectiles();
+    private final PvpCombat combat = new PvpCombat();
+    private final PvpMounts mounts = new PvpMounts();
+    private final DeathPause deathPause = new DeathPause();
+    private final Map<UUID, Hit> lastHit = new HashMap<>();
     private final Random random = new Random();
     private final NamespacedKey abilityKey;
     private final Map<UUID, String> names = new LinkedHashMap<>();
@@ -99,6 +124,15 @@ final class DuelSession implements GameSession {
         abilityKey = new NamespacedKey(services.plugin(), "party_pvp_ability");
     }
     @Override public void onStart() throws CommandFailure {
+        try {
+            start();
+        } catch (CommandFailure | RuntimeException failure) {
+            countdownFreeze.releaseAll();
+            mounts.clear();
+            throw failure;
+        }
+    }
+    private void start() throws CommandFailure {
         List<UUID> roster = new ArrayList<>();
         for (var participant : services.participants().all()) {
             roster.add(participant.id()); names.put(participant.id(), participant.name());
@@ -115,11 +149,12 @@ final class DuelSession implements GameSession {
         services.arena().applyStandardGameRules(world);
         world.setDifficulty(Difficulty.NORMAL);
         world.setGameRule(GameRules.PVP, true);
+        world.setGameRule(GameRules.IMMEDIATE_RESPAWN, false);
         world.setTime(6000);
         world.setStorm(false);
         world.setGameRule(GameRules.ADVANCE_TIME, false);
         world.setGameRule(GameRules.ADVANCE_WEATHER, false);
-        world.setGameRule(GameRules.NATURAL_HEALTH_REGENERATION, false);
+        world.setGameRule(GameRules.NATURAL_HEALTH_REGENERATION, !sumo);
         world.setGameRule(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER, 0);
         arena = sumo ? new SumoArena(world) : new PvpArena(world);
         arena.build();
@@ -138,13 +173,15 @@ final class DuelSession implements GameSession {
     private Player player(UUID id) { return withdrawn.contains(id) ? null : Bukkit.getPlayer(id); }
     private boolean fighter(Player p) { return fighters.contains(p.getUniqueId()) && !withdrawn.contains(p.getUniqueId()); }
     private boolean fighting(Player p) {
-        return phase == Phase.FIGHT && fighter(p) && !eliminated.contains(p.getUniqueId()) && p.getGameMode() == GameMode.SURVIVAL;
+        return phase == Phase.FIGHT && fighter(p) && !eliminated.contains(p.getUniqueId())
+                && p.getGameMode() == GameMode.SURVIVAL && !p.isDead();
     }
     private void teleport(Player p, Location to) {
         internalTeleport = true;
         try { p.teleport(to); } finally { internalTeleport = false; }
     }
     private void spectator(Player p) {
+        mounts.remove(p.getUniqueId());
         if (p.isDead()) p.spigot().respawn();
         if (p.getGameMode() == GameMode.SPECTATOR) p.setSpectatorTarget(null);
         services.playerState().resetForRound(p, GameMode.SPECTATOR);
@@ -196,11 +233,17 @@ final class DuelSession implements GameSession {
         }
     }
     private void prepareRound() {
+        countdownFreeze.releaseAll();
+        projectiles.clearAll();
+        mounts.clear();
         phase = Phase.COUNTDOWN;
+        combat.reset();
+        deathPause.clear(); lastHit.clear();
         deadline = now + countdown;
         suddenDeath = false; eliminated.clear(); readyAt.clear(); kits.clear(); fighters.clear(); sumoCombat.reset();
         arena.reset();
-        services.arena().applyBorder(world, arena.center(), 53, 53, 0);
+        int borderSize = sumo ? 53 : PvpArena.BORDER_SIZE;
+        services.arena().applyBorder(world, arena.center(), borderSize, borderSize, 0);
         for (Player p : services.participants().onlinePlayers()) spectator(p);
         if (training) {
             UUID id = names.keySet().iterator().next();
@@ -219,22 +262,28 @@ final class DuelSession implements GameSession {
             if (p == null) continue;
             p.setSpectatorTarget(null);
             services.playerState().resetForRound(p, GameMode.SURVIVAL);
-            p.setAbsorptionAmount(0); p.setNoDamageTicks(0); p.setSaturation(20);
+            p.setAbsorptionAmount(0); p.setNoDamageTicks(0);
             PvpClass kit = kits.get(id);
             if (kit != null) kit.equip(p, abilityKey);
+            else if (sumo) SumoCombat.equip(p);
             boolean east = !training && match.pair().second().equals(id);
             if (!training && match.roundsWon() % 2 == 1) east = !east;
             teleport(p, arena.spawn(east));
             if (kit != null) {
                 p.sendMessage(text("Класс: " + kit.title + " — " + kit.description, NamedTextColor.GREEN));
+                p.sendMessage(text(kit.passiveDescription(), NamedTextColor.AQUA));
+                p.sendMessage(text(kit.ability + ": " + kit.abilityDescription() + " • " + kit.cooldown + " с", NamedTextColor.GOLD));
                 p.sendMessage(text("Способность в слоте 8: ПКМ. Ломать можно только поставленные игроками блоки.", NamedTextColor.GRAY));
-            } else p.sendMessage(text("Сумо: бей пустой рукой и столкни соперника вниз. Спринт усиливает отбрасывание.", NamedTextColor.GREEN));
+            } else p.sendMessage(text("Сумо: палка с Отдачей I, урона нет. Спринт усиливает удар; держись подальше от края.", NamedTextColor.GREEN));
         }
+        for (Player player : services.participants().onlinePlayers()) countdownFreeze.freeze(player);
         updateHud();
     }
     @Override public void onSecondTick(long secondsElapsed) {
         now = secondsElapsed;
         if (phase == Phase.DONE) return;
+        // Preserve the same-tick trade window before the result task locks combat.
+        if (phase == Phase.FIGHT && resolution != null && !eliminated.isEmpty()) { updateHud(); return; }
         if (names.keySet().stream().allMatch(withdrawn::contains)) {
             services.session().endGame(EndReason.ALL_PLAYERS_LEFT); return;
         }
@@ -246,11 +295,16 @@ final class DuelSession implements GameSession {
             updateHud(); return;
         }
         if (phase == Phase.COUNTDOWN && now >= deadline) {
+            countdownFreeze.releaseAll();
             phase = Phase.FIGHT; fightStarted = now;
             services.messages().broadcast(text("Бой!", NamedTextColor.RED));
             for (UUID id : fighters) {
                 Player p = player(id);
-                if (p != null) { p.setNoDamageTicks(0); p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1.5f); }
+                if (p != null) {
+                    p.setNoDamageTicks(0);
+                    if (kits.get(id) == PvpClass.LANCER) mounts.spawn(p);
+                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1.5f);
+                }
             }
         } else if (phase == Phase.BREAK && now >= deadline) {
             if (training || !match.isComplete()) prepareRound(); else nextMatch();
@@ -266,8 +320,8 @@ final class DuelSession implements GameSession {
             }
             if (elapsed >= roundLength && !suddenDeath) {
                 suddenDeath = true;
-                if (!sumo) services.arena().applyBorder(world, arena.center(), 53, 7, 30);
-                services.messages().broadcast(text(sumo ? "Овертайм! Края платформы исчезают каждые 3 секунды."
+                if (!sumo) services.arena().applyBorder(world, arena.center(), PvpArena.BORDER_SIZE, 7, 30);
+                services.messages().broadcast(text(sumo ? "Овертайм! Края платформы исчезают каждые 2–3 секунды."
                         : "Овертайм! Граница сужается, через 30 секунд сравним оставшееся здоровье.", NamedTextColor.RED));
             }
             if (elapsed >= roundLength + 30) {
@@ -280,11 +334,21 @@ final class DuelSession implements GameSession {
                 }
             }
         }
+        if (!sumo && phase == Phase.FIGHT) {
+            projectiles.expire(now * 20);
+            mounts.tick(now);
+            for (var entry : kits.entrySet()) {
+                Player player = player(entry.getKey());
+                if (player != null && fighting(player)) entry.getValue().replenishArrows(player);
+            }
+        }
         updateHud();
     }
     private void finishRound(UUID winner) {
-        if (phase != Phase.FIGHT) return;
+        if (phase != Phase.FIGHT && phase != Phase.RESULT) return;
         phase = Phase.BREAK; deadline = now + intermission;
+        projectiles.clearAll();
+        mounts.clear();
         arena.reset();
         for (UUID id : fighters) { Player p = player(id); if (p != null) spectator(p); }
         if (winner == null) services.messages().broadcast(text(sumo ? "Ничья в раунде — переигровка."
@@ -297,6 +361,10 @@ final class DuelSession implements GameSession {
         }
     }
     private void completeMatch(UUID winner) {
+        if (resolution != null) { resolution.cancel(); resolution = null; }
+        countdownFreeze.releaseAll();
+        projectiles.clearAll();
+        mounts.clear();
         boolean forfeit = !match.isComplete();
         if (forfeit) match.forfeit(winner);
         if (!playoff) tournament.record(match.pair(), winner);
@@ -324,6 +392,11 @@ final class DuelSession implements GameSession {
     }
     @Override public void onEnd(EndReason reason) {
         phase = Phase.DONE;
+        countdownFreeze.releaseAll();
+        projectiles.clearAll();
+        mounts.clear();
+        combat.reset();
+        deathPause.clear(); lastHit.clear();
         if (resolution != null) resolution.cancel();
         if (reason == EndReason.FINISHED && tournament != null) {
             for (UUID id : names.keySet()) services.award("party", id, tournament.points(id));
@@ -336,10 +409,12 @@ final class DuelSession implements GameSession {
     }
     private void updateHud() {
         if (bar == null || phase == Phase.DONE) return;
-        long remaining = phase == Phase.FIGHT ? Math.max(0, roundLength + (suddenDeath ? 30 : 0) - (now - fightStarted))
+        long remaining = phase == Phase.RESULT ? (deathPause.remaining(Bukkit.getCurrentTick()) + 19) / 20
+                : phase == Phase.FIGHT ? Math.max(0, roundLength + (suddenDeath ? 30 : 0) - (now - fightStarted))
                 : Math.max(0, deadline - now);
         String barTitle = phase == Phase.COUNTDOWN ? "Бой через " + remaining + " с"
                 : phase == Phase.BREAK ? "Следующий раунд через " + remaining + " с"
+                : phase == Phase.RESULT ? "Раунд окончен • " + remaining + " с"
                 : (suddenDeath ? "Овертайм • " : title + " • ") + TimeFormat.clock(remaining);
         bar.name(text(barTitle, NamedTextColor.GOLD));
         bar.progress(Math.clamp((float) remaining / (phase == Phase.FIGHT ? suddenDeath ? 30 : roundLength : countdown), 0, 1));
@@ -369,11 +444,16 @@ final class DuelSession implements GameSession {
         // Waiting participants stay enrolled, but the camera only follows active fighters.
         return fighter(player) && !eliminated.contains(player.getUniqueId());
     }
-    @Override public boolean mayFollowPlayers(Player player) { return !isInGame(player); }
+    @Override public boolean mayFollowPlayers(Player player) { return phase != Phase.COUNTDOWN && !isInGame(player); }
     @Override public Location spectatorLocation(Player viewer) { return arena == null ? null : arena.spectator(); }
     @Override public void onParticipantQuit(Player p) { withdraw(p); }
     @Override public void onParticipantLeave(Player p) { withdraw(p); }
     private void withdraw(Player p) {
+        countdownFreeze.release(p.getUniqueId());
+        projectiles.clear(p.getUniqueId());
+        mounts.remove(p.getUniqueId());
+        combat.forget(p.getUniqueId());
+        lastHit.remove(p.getUniqueId()); deathPause.forget(p.getUniqueId());
         if (phase == Phase.DONE || !names.containsKey(p.getUniqueId())) return;
         withdrawn.add(p.getUniqueId());
         services.messages().broadcast(text(p.getName() + " выбыл из турнира; оставшиеся матчи — технические поражения.", NamedTextColor.YELLOW));
@@ -382,6 +462,7 @@ final class DuelSession implements GameSession {
         // Reconnecting does not reroll a kit or erase a forfeit.
         withdrawn.add(p.getUniqueId());
         spectator(p);
+        if (phase == Phase.COUNTDOWN) countdownFreeze.freeze(p);
         p.sendMessage(text("Вы выбыли из этого турнира и можете наблюдать.", NamedTextColor.YELLOW));
     }
     @Override public void onParticipantJoin(Player p) { onParticipantRejoin(p); }
@@ -400,10 +481,36 @@ final class DuelSession implements GameSession {
         }
         return true;
     }
+    private boolean validMountDamage(EntityDamageEvent event, Player owner) {
+        if (sumo || !fighting(owner)) return false;
+        if (event instanceof EntityDamageByEntityEvent hit) {
+            Player attacker = source(hit.getDamager());
+            return attacker != null && fighting(attacker) && mounts.mayDamage(event.getEntity(), attacker);
+        }
+        return true;
+    }
     @Override public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
-        if (!(event.getEntity() instanceof Player p) || !validDamage(event, p)) event.setCancelled(true);
+        Player owner = mounts.owner(event.getEntity());
+        if (owner != null) {
+            if (!validMountDamage(event, owner)) event.setCancelled(true);
+        } else if (!(event.getEntity() instanceof Player p) || !validDamage(event, p)) event.setCancelled(true);
     }
     @Override public void onEntityDamage(EntityDamageEvent event) {
+        // Cap lancer melee in either hand: swapping the spear to the offhand must not bypass the limit.
+        if (!sumo && event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker
+                && kits.get(attacker.getUniqueId()) == PvpClass.LANCER) {
+            event.setDamage(PvpMounts.spearDamage(event.getDamage()));
+        }
+        Player owner = mounts.owner(event.getEntity());
+        if (owner != null) {
+            if (!validMountDamage(event, owner)) { event.setCancelled(true); return; }
+            if (event.getFinalDamage() >= ((LivingEntity) event.getEntity()).getHealth()) {
+                event.setCancelled(true);
+                mounts.remove(owner.getUniqueId());
+                owner.sendMessage(text("Конь выбыл до конца раунда. Копьё и запасной меч остаются у тебя.", NamedTextColor.YELLOW));
+            }
+            return;
+        }
         if (!(event.getEntity() instanceof Player p)) return;
         if (sumo) {
             event.setCancelled(true);
@@ -413,48 +520,100 @@ final class DuelSession implements GameSession {
             }
             if (event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker
                     && attacker != p && fighting(attacker)
-                    && attacker.getInventory().getItemInMainHand().getType() == Material.AIR
+                    && (attacker.getInventory().getItemInMainHand().getType() == Material.AIR
+                        || attacker.getInventory().getItemInMainHand().getType() == Material.STICK)
                     && sumoCombat.acceptHit(p.getUniqueId(), Bukkit.getCurrentTick())) {
                 var away = p.getLocation().toVector().subtract(attacker.getLocation().toVector());
                 if (away.clone().setY(0).lengthSquared() < 1.0e-6) away = attacker.getLocation().getDirection();
-                p.setVelocity(SumoCombat.knockback(away, p.getVelocity(), attacker.isSprinting()));
+                lastHit.put(p.getUniqueId(), new Hit(attacker.getUniqueId(), Bukkit.getCurrentTick()));
+                int level = attacker.getInventory().getItemInMainHand().getEnchantmentLevel(Enchantment.KNOCKBACK);
+                p.setVelocity(SumoCombat.knockback(away, p.getVelocity(), attacker.isSprinting(), level));
                 p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, .5f, 1);
             }
             return;
         }
         if (!validDamage(event, p)) { event.setCancelled(true); return; }
-        if (event.getFinalDamage() >= p.getHealth()) {
-            event.setCancelled(true);
-            if (training) { phase = Phase.BREAK; deadline = now + intermission; spectator(p); return; }
-            eliminate(p);
+        if (event instanceof EntityDamageByEntityEvent damage && event.getFinalDamage() > 0) {
+            Player attacker = source(damage.getDamager());
+            if (attacker != null && !attacker.getUniqueId().equals(p.getUniqueId()))
+                lastHit.put(p.getUniqueId(), new Hit(attacker.getUniqueId(), Bukkit.getCurrentTick()));
         }
+        if (event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker
+                && attacker != p && event.getFinalDamage() > 0) {
+            PvpClass kit = kits.get(attacker.getUniqueId());
+            var facing = p.getLocation();
+            facing.setPitch(0);
+            if (kit == PvpClass.DUELIST && attacker.getInventory().getItemInMainHand().getType() == kit.primaryWeapon()
+                    && combat.backstab(attacker.getUniqueId(), now, facing.getDirection(),
+                    attacker.getLocation().toVector().subtract(p.getLocation().toVector()))) {
+                event.setDamage(event.getDamage() + 2);
+                attacker.sendActionBar(text("Удар в спину!", NamedTextColor.GOLD));
+                attacker.playSound(attacker.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, .7f, 1.2f);
+            }
+            if (kit == PvpClass.BERSERKER && combat.leech(attacker.getUniqueId(), now)) PvpCombat.heal(attacker, 1);
+        }
+        // Lethal damage reaches vanilla: PlayerDeathEvent owns elimination and the death screen.
+    }
+    private UUID recentKiller(Player victim) {
+        Hit hit = lastHit.remove(victim.getUniqueId());
+        return hit != null && Bukkit.getCurrentTick() - hit.tick() <= 8 * 20 ? hit.attacker() : null;
+    }
+    private void announceDeath(Player victim, UUID killer, boolean ringOut) {
+        services.messages().broadcast(text(killer == null ? name(victim.getUniqueId()) + (ringOut ? " выбыл с платформы" : " погиб")
+                : name(killer) + (ringOut ? " вытолкнул " : " убил ") + name(victim.getUniqueId()), NamedTextColor.RED));
+        Player winner = killer == null ? null : player(killer);
+        if (winner != null && !winner.isDead()) winner.showTitle(Title.title(text(ringOut ? "Вы вытолкнули соперника" : "Вы убили соперника", NamedTextColor.GOLD),
+                text(name(victim.getUniqueId()), NamedTextColor.WHITE),
+                Title.Times.times(Duration.ZERO, Duration.ofSeconds(3), Duration.ofMillis(300))));
     }
     private void ringOut(Player player) {
         if (!fighting(player)) return;
-        if (training) {
-            phase = Phase.BREAK; deadline = now + intermission;
-            spectator(player);
-        } else eliminate(player);
+        UUID killer = recentKiller(player);
+        announceDeath(player, killer, true);
+        player.showTitle(Title.title(text("Вы выбыли", NamedTextColor.RED),
+                text(killer == null ? "Вы упали с платформы" : "Вас вытолкнул " + name(killer), NamedTextColor.WHITE),
+                Title.Times.times(Duration.ZERO, Duration.ofSeconds(3), Duration.ofMillis(300))));
+        eliminate(player);
     }
     private void eliminate(Player p) {
-        eliminated.add(p.getUniqueId());
-        p.setGameMode(GameMode.SPECTATOR);
+        if (!eliminated.add(p.getUniqueId())) return;
+        deathPause.begin(p.getUniqueId(), Bukkit.getCurrentTick());
+        mounts.remove(p.getUniqueId());
+        if (!p.isDead() && sumo) p.setGameMode(GameMode.SPECTATOR);
         if (resolution == null) resolution = Bukkit.getScheduler().runTask(services.plugin(), () -> {
-            resolution = null;
-            if (phase != Phase.FIGHT || !services.session().isRunning()) return;
-            UUID a = match.pair().first(), b = match.pair().second();
-            finishRound(eliminated.contains(a) && eliminated.contains(b) ? null : eliminated.contains(a) ? b : a);
+            if (phase != Phase.FIGHT || !services.session().isRunning()) { resolution = null; return; }
+            // One tick for simultaneous deaths, then three seconds to read the outcome.
+            phase = Phase.RESULT;
+            UUID winner = training ? null : eliminated.contains(match.pair().first()) && eliminated.contains(match.pair().second())
+                    ? null : eliminated.contains(match.pair().first()) ? match.pair().second() : match.pair().first();
+            updateHud();
+            resolution = Bukkit.getScheduler().runTaskLater(services.plugin(), () -> {
+                resolution = null;
+                if (phase != Phase.RESULT || !services.session().isRunning()) return;
+                if (training) {
+                    phase = Phase.BREAK; deadline = now + intermission;
+                    spectator(p);
+                } else finishRound(winner);
+            }, Math.max(1, deathPause.remaining(Bukkit.getCurrentTick())));
         });
     }
     @Override public void onPlayerDeath(PlayerDeathEvent event) {
-        if (!fighter(event.getPlayer())) return;
-        event.deathMessage(null); event.getDrops().clear(); event.setDroppedExp(0);
+        Player p = event.getPlayer();
+        if (!fighter(p) || eliminated.contains(p.getUniqueId())) return;
+        UUID killer = recentKiller(p);
+        event.deathMessage(null);
+        event.deathScreenMessageOverride(text(killer == null ? "Вы погибли" : "Вас убил " + name(killer), NamedTextColor.RED));
+        event.getDrops().clear(); event.setDroppedExp(0);
         event.setKeepInventory(true); event.setKeepLevel(true);
-        Bukkit.getScheduler().runTask(services.plugin(), () -> {
-            if (!services.session().isRunning()) return;
-            Player p = event.getPlayer();
-            if (p.isOnline()) { p.spigot().respawn(); if (!training && phase == Phase.FIGHT) eliminate(p); else spectator(p); }
-        });
+        announceDeath(p, killer, false);
+        eliminate(p);
+    }
+    @Override public void onPlayerRespawn(PlayerRespawnEvent event) {
+        if (phase != Phase.DONE && eliminated.contains(event.getPlayer().getUniqueId())) event.setRespawnLocation(arena.spectator());
+    }
+    @Override public void onPlayerPostRespawn(PlayerPostRespawnEvent event) {
+        // Clicking Respawn early never puts the defeated player back into the current round.
+        if (phase != Phase.DONE && eliminated.contains(event.getPlayer().getUniqueId())) spectator(event.getPlayer());
     }
     @Override public void onBlockBreak(BlockBreakEvent event) {
         if (!fighting(event.getPlayer()) || !arena.isPlaced(event.getBlock())) { event.setCancelled(true); return; }
@@ -481,30 +640,92 @@ final class DuelSession implements GameSession {
         long remaining = readyAt.getOrDefault(p.getUniqueId(), 0L) - now;
         if (remaining > 0) { p.sendActionBar(text("Перезарядка: " + remaining + " с", NamedTextColor.RED)); return; }
         PvpClass kit = kits.get(p.getUniqueId());
-        kit.activate(p); readyAt.put(p.getUniqueId(), now + kit.cooldown);
+        Player opponent = fighters.stream().filter(id -> !id.equals(p.getUniqueId())).map(this::player)
+                .filter(other -> other != null && fighting(other)).findFirst().orElse(null);
+        if (!(kit == PvpClass.LANCER && mounts.boost(p, now)) && !kit.activate(p, opponent)) return;
+        if (kit == PvpClass.PYROMANCER && opponent != null)
+            lastHit.put(opponent.getUniqueId(), new Hit(p.getUniqueId(), Bukkit.getCurrentTick()));
+        readyAt.put(p.getUniqueId(), now + kit.cooldown);
         p.playSound(p.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 1, 1.5f);
         services.messages().broadcast(text(p.getName() + " • " + kit.ability, NamedTextColor.YELLOW));
     }
     @Override public void onPlayerMove(PlayerMoveEvent event) {
-        if (!fighter(event.getPlayer()) || internalTeleport) return;
+        if (internalTeleport || countdownFreeze.hold(event) || !fighter(event.getPlayer())) return;
         if (sumo) {
-            if (phase == Phase.COUNTDOWN && event.hasChangedPosition()) event.setTo(event.getFrom());
-            else if (phase == Phase.FIGHT && arena.isOut(event.getTo())) ringOut(event.getPlayer());
-            return;
+            if (phase == Phase.FIGHT && arena.isOut(event.getTo())) ringOut(event.getPlayer());
         }
-        if (phase == Phase.COUNTDOWN && event.hasChangedPosition() || !arena.contains(event.getTo())) {
-            event.setTo(event.getFrom());
-        }
+        // PvP's physical barrier wall handles collisions without per-packet position corrections.
     }
+    @Override public void onPlayerJump(PlayerJumpEvent event) { countdownFreeze.onJump(event); }
     @Override public void onPlayerTeleport(PlayerTeleportEvent event) {
         if (internalTeleport || !fighter(event.getPlayer())) return;
         if (sumo || !fighting(event.getPlayer()) || event.getCause() != PlayerTeleportEvent.TeleportCause.ENDER_PEARL
                 || !arena.contains(event.getTo())) event.setCancelled(true);
     }
     @Override public void onEntityShootBow(EntityShootBowEvent event) {
-        if (sumo || !(event.getEntity() instanceof Player p) || !fighting(p)) event.setCancelled(true);
+        if (sumo || !(event.getEntity() instanceof Player p) || !fighting(p)) { event.setCancelled(true); return; }
+        if (!event.isCancelled()) projectiles.track(p.getUniqueId(), event.getProjectile(), now * 20);
     }
-    @Override public void onFoodLevelChange(FoodLevelChangeEvent event) { event.setCancelled(true); }
+    @Override public void onProjectileLaunch(ProjectileLaunchEvent event) {
+        if (!(event.getEntity().getShooter() instanceof Player shooter)) return;
+        if (sumo || !fighting(shooter)) { event.setCancelled(true); return; }
+        // Bows are tracked by onEntityShootBow; also clean up potions and pearls between rounds.
+        if (!(event.getEntity() instanceof AbstractArrow)) projectiles.track(shooter.getUniqueId(), event.getEntity(), now * 20);
+    }
+    @Override public void onProjectileHit(ProjectileHitEvent event) {
+        if (sumo || !(event.getEntity() instanceof Snowball)
+                || !(event.getEntity().getShooter() instanceof Player caster)
+                || !fighting(caster) || kits.get(caster.getUniqueId()) != PvpClass.CRYOMANCER) return;
+        Entity target = event.getHitEntity();
+        Player player = target instanceof Player p ? p : mounts.owner(target);
+        if (player == null || caster == player || !fighting(player) || !(target instanceof LivingEntity living)) return;
+        if (combat.frost(caster.getUniqueId(), now)) {
+            living.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 0));
+            if (player.getVehicle() instanceof LivingEntity horse && mounts.owner(horse) == player)
+                horse.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 0));
+            caster.playSound(caster.getLocation(), Sound.BLOCK_GLASS_BREAK, .4f, 1.5f);
+        }
+    }
+    @Override public void onPotionSplash(PotionSplashEvent event) {
+        if (!(event.getPotion().getShooter() instanceof Player caster) || sumo || !fighting(caster)) {
+            event.setCancelled(true); return;
+        }
+        PvpPotion potion = PvpPotion.from(event.getPotion().getItem());
+        if (potion == null) { event.setCancelled(true); return; }
+        for (var entity : new ArrayList<>(event.getAffectedEntities())) {
+            Player owner = entity instanceof Player player ? player : mounts.owner(entity);
+            boolean self = owner != null && owner.getUniqueId().equals(caster.getUniqueId());
+            boolean active = owner != null && fighting(owner) && (entity instanceof Player || potion.harmful);
+            if (!potion.affects(self, active)) event.setIntensity(entity, 0);
+        }
+    }
+    @Override public void onEntityMount(EntityMountEvent event) {
+        if (mounts.owner(event.getMount()) != null
+                && (!(event.getEntity() instanceof Player player) || !fighting(player)
+                    || !mounts.mayRide(player, event.getMount()))) event.setCancelled(true);
+    }
+    @Override public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        if (mounts.owner(event.getRightClicked()) == null) return;
+        event.setCancelled(true);
+        Player player = event.getPlayer();
+        if (event.getHand() == EquipmentSlot.HAND && fighting(player) && !player.isSneaking()
+                && !player.isInsideVehicle() && mounts.mayRide(player, event.getRightClicked()))
+            event.getRightClicked().addPassenger(player);
+    }
+    @Override public void onInventoryOpen(InventoryOpenEvent event) {
+        if (event.getInventory().getHolder() instanceof Entity entity && mounts.owner(entity) != null)
+            event.setCancelled(true);
+    }
+    @Override public void onEntityDeath(EntityDeathEvent event) {
+        Player owner = mounts.owner(event.getEntity());
+        if (owner == null) return;
+        event.getDrops().clear();
+        event.setDroppedExp(0);
+        mounts.remove(owner.getUniqueId());
+    }
+    @Override public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (sumo || !(event.getEntity() instanceof Player player) || !fighting(player)) event.setCancelled(true);
+    }
     @Override public void onDropItem(PlayerDropItemEvent event) { event.setCancelled(true); }
     @Override public void onPickupItem(EntityPickupItemEvent event) { event.setCancelled(true); }
     @Override public void onCraftItem(CraftItemEvent event) { event.setCancelled(true); }

@@ -16,22 +16,33 @@ import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityMountEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.PotionSplashEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceExtractEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 
 import me.petr1furious.potatominigames.core.game.GameSession;
 
@@ -77,6 +88,16 @@ public final class GameplayListener implements Listener {
         dispatch(player.getWorld(), session -> session.onPlayerDeath(event), player, player.getKiller());
     }
 
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        dispatch(event.getPlayer().getWorld(), session -> session.onPlayerRespawn(event), event.getPlayer());
+    }
+
+    @EventHandler
+    public void onPlayerPostRespawn(PlayerPostRespawnEvent event) {
+        dispatch(event.getPlayer().getWorld(), session -> session.onPlayerPostRespawn(event), event.getPlayer());
+    }
+
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onBlockBreak(BlockBreakEvent event) {
         dispatch(event.getBlock().getWorld(), session -> session.onBlockBreak(event), event.getPlayer());
@@ -108,9 +129,49 @@ public final class GameplayListener implements Listener {
         dispatch(event.getEntity().getWorld(), session -> session.onEntityDamage(event), event.getEntity());
     }
 
+    @EventHandler(ignoreCancelled = true)
+    public void onEntityDeath(EntityDeathEvent event) {
+        dispatch(event.getEntity().getWorld(), session -> session.onEntityDeath(event), event.getEntity());
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    public void onEntityMount(EntityMountEvent event) {
+        dispatch(event.getMount().getWorld(), session -> session.onEntityMount(event), event.getEntity(), event.getMount());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+        dispatch(event.getRightClicked().getWorld(), session -> session.onPlayerInteractEntity(event), event.getPlayer(), event.getRightClicked());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerInteractAtEntity(PlayerInteractAtEntityEvent event) {
+        dispatch(event.getRightClicked().getWorld(), session -> session.onPlayerInteractEntity(event), event.getPlayer(), event.getRightClicked());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        dispatch(event.getPlayer().getWorld(), session -> session.onInventoryOpen(event), event.getPlayer());
+    }
+
     @EventHandler
     public void onEntityShootBow(EntityShootBowEvent event) {
         dispatch(event.getEntity().getWorld(), session -> session.onEntityShootBow(event), event.getEntity());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onProjectileLaunch(ProjectileLaunchEvent event) {
+        dispatch(event.getEntity().getWorld(), session -> session.onProjectileLaunch(event), event.getEntity());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onProjectileHit(ProjectileHitEvent event) {
+        dispatch(event.getEntity().getWorld(), session -> session.onProjectileHit(event), event.getEntity(), event.getHitEntity());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPotionSplash(PotionSplashEvent event) {
+        dispatch(event.getPotion().getWorld(), session -> session.onPotionSplash(event), event.getPotion());
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -126,6 +187,11 @@ public final class GameplayListener implements Listener {
     @EventHandler
     public void onPlayerMove(PlayerMoveEvent event) {
         dispatch(event.getTo().getWorld(), session -> session.onPlayerMove(event), event.getPlayer());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerJump(PlayerJumpEvent event) {
+        dispatch(event.getPlayer().getWorld(), session -> session.onPlayerJump(event), event.getPlayer());
     }
 
     /** Keeps spectator-menu teleports within the game's worlds. */

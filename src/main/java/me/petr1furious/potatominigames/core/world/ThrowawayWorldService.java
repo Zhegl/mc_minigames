@@ -71,6 +71,7 @@ public final class ThrowawayWorldService {
         long seed = random.nextLong();
         seeds.put(base, seed);
         World world = Bukkit.createWorld(new WorldCreator(base).seed(seed).generateStructures(false)
+                .keepSpawnLoaded(TriState.FALSE)
                 .generator(new ChunkGenerator() {
                     @Override
                     public org.bukkit.Location getFixedSpawnLocation(World world, Random random) {
@@ -80,6 +81,10 @@ public final class ThrowawayWorldService {
         if (world == null) {
             throw new IllegalStateException("Failed to create arena world " + base);
         }
+        // Party arenas fit within four chunks per axis; avoid loading a survival-sized region.
+        world.setViewDistance(4);
+        world.setSimulationDistance(3);
+        world.setGameRule(org.bukkit.GameRules.SPECTATORS_GENERATE_CHUNKS, false);
         sets.computeIfAbsent(base, key -> new HashMap<>()).put(World.Environment.NORMAL, world);
         worldToBase.put(base, base);
         return world;

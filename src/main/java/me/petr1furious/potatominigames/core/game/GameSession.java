@@ -9,21 +9,31 @@ import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityMountEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.PotionSplashEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.FurnaceExtractEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 
 import me.petr1furious.potatominigames.core.team.TeamColor;
 
@@ -117,6 +127,12 @@ public interface GameSession {
 
     // Event hooks, forwarded only while RUNNING.
 
+    default void onPlayerRespawn(PlayerRespawnEvent event) {
+    }
+
+    default void onPlayerPostRespawn(PlayerPostRespawnEvent event) {
+    }
+
     default void onPlayerDeath(PlayerDeathEvent event) {
     }
 
@@ -138,7 +154,28 @@ public interface GameSession {
     default void onEntityDamage(EntityDamageEvent event) {
     }
 
+    default void onEntityDeath(EntityDeathEvent event) {
+    }
+
+    default void onEntityMount(EntityMountEvent event) {
+    }
+
+    default void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
+    }
+
+    default void onInventoryOpen(InventoryOpenEvent event) {
+    }
+
     default void onEntityShootBow(EntityShootBowEvent event) {
+    }
+
+    default void onProjectileLaunch(ProjectileLaunchEvent event) {
+    }
+
+    default void onProjectileHit(ProjectileHitEvent event) {
+    }
+
+    default void onPotionSplash(PotionSplashEvent event) {
     }
 
     default void onFoodLevelChange(FoodLevelChangeEvent event) {
@@ -148,6 +185,9 @@ public interface GameSession {
     }
 
     default void onPlayerMove(PlayerMoveEvent event) {
+    }
+
+    default void onPlayerJump(PlayerJumpEvent event) {
     }
 
     default void onPlayerTeleport(PlayerTeleportEvent event) {
