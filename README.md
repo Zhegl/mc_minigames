@@ -41,7 +41,7 @@ PvP combat: eat to keep hunger high and regenerate. Each class also has a limite
 supply of healing potions. Abilities and passives are described in the starting chat
 messages and the ability item's tooltip. Sumo still has no hunger or health damage.
 
-| Class | Equipment and tradeoff | Active ability (right-click slot 8) |
+| Class | Equipment and tradeoff | Class ability (slot 8) |
 |---|---|---|
 | Страж / Guardian | Stone sword, shield, iron armour with netherite boots and Projectile Protection I chestplate; 2 Healing I splashes, 1 Slowness I splash | **Bastion:** Resistance II + self Slowness I for 4 s; 22 s cooldown |
 | Стрелок / Ranger | Wooden sword, Power I bow, unlimited regular arrows and 6 spectral arrows; chain chestplate, remaining iron armour; 1 healing and 1 slowness splash | **Retreat:** backward dash and Speed I for 4 s; 16 s cooldown |
@@ -50,10 +50,11 @@ messages and the ability item's tooltip. Sumo still has no hunger or health dama
 | Маг / Mage (formerly Alchemist) | Knockback I wooden ritual blade, gold helmet, purple leather robe with Protection II, chain leggings, iron boots; 12 splashes, listed below | **Magic Stock:** restores one harming, poison and slowness potion, capped at two of each; 24 s cooldown. Healing is never restored |
 | Инженер / Engineer | Stone sword, Quick Charge I + Piercing I crossbow, unlimited arrows, 64 wool; iron armour with chain leggings; 2 slowness and 1 healing splash | **Fortify:** Absorption II (4 extra hearts) for 6 s and up to 16 wool, capped at 64 carried wool; 24 s cooldown |
 | Воздушный рыцарь / Aerial Knight | Density I mace, backup stone sword, 8 wind charges; chain chest/leggings, iron helmet, leather boots with Feather Falling III; 1 speed and 1 healing splash | **Wind Leap:** upward launch and up to 4 wind charges, capped at 8 carried charges; 20 s cooldown |
-| Паладин / Paladin | Iron sword and shield, chain chest/leggings and iron helmet/boots; 1 speed and 1 healing splash | **Purify:** heals 1.5 hearts, removes poison/weakness/slowness and extinguishes fire, then Resistance I for 2 s; 24 s cooldown |
+| Паладин / Paladin | Iron sword and shield, chain chest/leggings and iron helmet/boots; 1 speed and 1 healing splash | **Purify:** heals 1.5 hearts, removes poison/weakness/slowness/blindness and extinguishes fire, then Resistance I for 2 s; 24 s cooldown |
 | Криомант / Cryomancer | Sharpness I stone sword, 16 snowballs; cyan leather robe with Protection II, remaining iron armour; 1 slowness and 2 healing splashes. Snowball hits apply Slowness I for 2 s, at most once per 2 s | **Frost:** up to 8 snowballs (cap 16), Speed I for 3 s, and Slowness I for 3 s on a visible opponent within 6 blocks; 20 s cooldown |
 | Пиромант / Pyromancer | Fire Aspect I wooden sword, Flame I bow, unlimited arrows; chain chest/leggings and iron helmet/boots; 1 weakness and 1 healing splash. Fire Resistance lasts the round | **Flare:** ignites a visible opponent within 8 blocks for 5 s and grants 2 absorption hearts for 4 s; 20 s cooldown. No target means no cooldown spent |
 | Всадник / Lancer | Iron spear, backup stone sword, leather chestplate, chain helmet/leggings, iron boots; 1 speed and 1 healing splash; vulnerable horse, once per round | **Spur:** faster horse for 3 s, or Speed I for 3 s on foot; 20 s cooldown |
+| Тень / Shadow | Unenchanted diamond sword, **no armour**, 2 splash Invisibility potions (up to 20 s each), 1 speed and 1 healing splash. Hits do not remove invisibility; its stock cannot be replenished | **Dark Wand:** hit an opponent with the tagged stick in slot 8 to apply Blindness I for 2 s and Slowness II for 3 s, once per 20 s. No health damage; shields block the proc; right-click does not activate it |
 
 The lancer receives a saddled horse **only when the countdown ends**. It has
 8 hearts, no armour, fixed movement speed 0.19 (0.23 during Spur), and jump strength
@@ -66,6 +67,17 @@ hits, including native speed-scaled charges, are capped at **8 damage before arm
 light armour, one speed splash and one healing splash complete the kit. Spur gives
 the rider Speed I for 3 s when used on foot, with the same 20 s cooldown. Mounts
 are removed on elimination, leaving, round reset and session shutdown.
+
+Shadow's invisibility is a finite consumable, not a cooldown ability. Each of its
+two splashes grants up to 20 seconds, depending on splash intensity; refreshing the
+effect does not add unused duration. The potions only affect their caster, and no
+ability restores them. Attacking and taking damage do not remove invisibility.
+Items held in either hand remain visible, as with native Minecraft invisibility;
+fire and Glowing also give away the player. The absence of armour, limited potions
+and a 20-second wand cooldown offset the diamond sword and longer concealment.
+The wand perk requires a successful unblocked melee hit on a player; it deals no
+health damage. Shields do not spend its cooldown, hit spam cannot refresh its
+control, and the HUD shows its remaining cooldown. Paladin Purify removes Blindness.
 
 The aerial knight uses native mace smash attacks and native wind-charge boosts.
 Its leap preserves falling attacks: no Slow Falling effect is applied. Charges are
@@ -85,8 +97,8 @@ Mage refills cannot exceed the individual stock caps or generate healing. Activa
 Magic Stock while all three stocks are full does not consume its cooldown. Blood
 Fury cannot kill its caster. Backstab and lifesteal cooldowns reset every round,
 and class perks do not leave permanent player attributes behind. The mage retains
-the original alchemist enum entry. There are now eleven equally likely classes: each
-has a 1/11 (about 9.09%) marginal chance per player; the two opening classes are always distinct.
+the original alchemist enum entry. There are now twelve equally likely classes: each
+has a 1/12 (about 8.33%) marginal chance per player; the two opening classes are always distinct.
 
 Rangers, engineers and pyromancers start with 64 arrows; their arrow stack is replenished to 64
 every second during combat, including overtime. Moving the stack to another slot
@@ -504,8 +516,9 @@ and lifetime bounds, mount ownership and cleanup, the spear damage cap, and deat
 duplicate callbacks and per-player/round cleanup).
 `checkPartyPvp` also enforces the lightweight map geometry.
 `checkPvpClasses` verifies kit slot safety, the mage's twelve-potion loadout, stock
-caps and potion targets, all 110 equally weighted opening matchups, backstab,
-lifesteal and frost cooldowns, safe dash/leap vectors, the native mace/wind-charge
+caps and potion targets, all 132 equally weighted opening matchups, backstab,
+lifesteal and frost/wand cooldowns (including blocked-hit rejection), finite invisibility
+stock and the unarmoured Shadow loadout, safe dash/leap vectors, the native mace/wind-charge
 loadout, unlimited ammunition for every bow class and the Blood Fury health cost.
 
 ## License

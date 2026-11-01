@@ -273,7 +273,8 @@ final class DuelSession implements GameSession {
                 p.sendMessage(text("Класс: " + kit.title + " — " + kit.description, NamedTextColor.GREEN));
                 p.sendMessage(text(kit.passiveDescription(), NamedTextColor.AQUA));
                 p.sendMessage(text(kit.ability + ": " + kit.abilityDescription() + " • " + kit.cooldown + " с", NamedTextColor.GOLD));
-                p.sendMessage(text("Способность в слоте 8: ПКМ. Ломать можно только поставленные игроками блоки.", NamedTextColor.GRAY));
+                p.sendMessage(text((kit == PvpClass.SHADOW ? "Палка в слоте 8: ударь соперника; ПКМ её не активирует. "
+                        : "Способность в слоте 8: ПКМ. ") + "Ломать можно только поставленные игроками блоки.", NamedTextColor.GRAY));
             } else p.sendMessage(text("Сумо: палка с Отдачей I, урона нет. Спринт усиливает удар; держись подальше от края.", NamedTextColor.GREEN));
         }
         for (Player player : services.participants().onlinePlayers()) countdownFreeze.freeze(player);
@@ -432,8 +433,9 @@ final class DuelSession implements GameSession {
             PvpClass kit = kits.get(p.getUniqueId());
             if (kit != null) {
                 own.add(text("Класс: " + kit.title, NamedTextColor.GREEN));
-                long cooldown = Math.max(0, readyAt.getOrDefault(p.getUniqueId(), 0L) - now);
-                own.add(text("ПКМ: " + (cooldown == 0 ? "готово" : cooldown + " с"), NamedTextColor.GOLD));
+                long cooldown = kit == PvpClass.SHADOW ? combat.shadowRemaining(p.getUniqueId(), now)
+                        : Math.max(0, readyAt.getOrDefault(p.getUniqueId(), 0L) - now);
+                own.add(text((kit == PvpClass.SHADOW ? "Палка: " : "ПКМ: ") + (cooldown == 0 ? "готово" : cooldown + " с"), NamedTextColor.GOLD));
             }
             if (sumo) own.add(text("Столкни соперника вниз!", NamedTextColor.GREEN));
             services.sidebar().update(p, text("Вечеринка • " + title, NamedTextColor.LIGHT_PURPLE), own);
@@ -504,6 +506,10 @@ final class DuelSession implements GameSession {
         Player owner = mounts.owner(event.getEntity());
         if (owner != null) {
             if (!validMountDamage(event, owner)) { event.setCancelled(true); return; }
+            if (event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker) {
+                if (kits.get(attacker.getUniqueId()) == PvpClass.SHADOW
+                        && PvpClass.shadowWand(attacker.getInventory().getItemInMainHand())) { event.setDamage(0); return; }
+            }
             if (event.getFinalDamage() >= ((LivingEntity) event.getEntity()).getHealth()) {
                 event.setCancelled(true);
                 mounts.remove(owner.getUniqueId());
@@ -533,6 +539,22 @@ final class DuelSession implements GameSession {
             return;
         }
         if (!validDamage(event, p)) { event.setCancelled(true); return; }
+        if (event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker && attacker != p) {
+            if (kits.get(attacker.getUniqueId()) == PvpClass.SHADOW
+                    && PvpClass.shadowWand(attacker.getInventory().getItemInMainHand())) {
+                boolean landed = event.getFinalDamage() > 0;
+                event.setDamage(0);
+                if (combat.shadowStrike(attacker.getUniqueId(), now, landed)) {
+                    lastHit.put(p.getUniqueId(), new Hit(attacker.getUniqueId(), Bukkit.getCurrentTick()));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, PvpCombat.SHADOW_BLINDNESS_TICKS, 0));
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, PvpCombat.SHADOW_SLOWNESS_TICKS, 1));
+                    p.sendActionBar(text("Палка мрака: слепота и замедление", NamedTextColor.DARK_PURPLE));
+                    attacker.sendActionBar(text("Палка мрака • перезарядка 20 с", NamedTextColor.GOLD));
+                    p.playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, .5f, .7f);
+                } else if (landed) attacker.sendActionBar(text("Палка мрака: " + combat.shadowRemaining(attacker.getUniqueId(), now) + " с", NamedTextColor.RED));
+                return;
+            }
+        }
         if (event instanceof EntityDamageByEntityEvent damage && event.getFinalDamage() > 0) {
             Player attacker = source(damage.getDamager());
             if (attacker != null && !attacker.getUniqueId().equals(p.getUniqueId()))

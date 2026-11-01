@@ -9,6 +9,10 @@ import org.bukkit.util.Vector;
 
 /** Class passives have separate cooldowns; no lasting player attributes are modified. */
 final class PvpCombat {
+    static final int SHADOW_WAND_COOLDOWN = 20;
+    static final int SHADOW_BLINDNESS_TICKS = 40;
+    static final int SHADOW_SLOWNESS_TICKS = 60;
+    private final Map<UUID, Long> shadowReady = new HashMap<>();
     private final Map<UUID, Long> backstabReady = new HashMap<>();
     private final Map<UUID, Long> leechReady = new HashMap<>();
     private final Map<UUID, Long> frostReady = new HashMap<>();
@@ -28,8 +32,14 @@ final class PvpCombat {
         frostReady.put(player, second + 2);
         return true;
     }
-    void forget(UUID player) { backstabReady.remove(player); leechReady.remove(player); frostReady.remove(player); }
-    void reset() { backstabReady.clear(); leechReady.clear(); frostReady.clear(); }
+    boolean shadowStrike(UUID player, long second, boolean unblockedHit) {
+        if (!unblockedHit || shadowRemaining(player, second) > 0) return false;
+        shadowReady.put(player, second + SHADOW_WAND_COOLDOWN);
+        return true;
+    }
+    long shadowRemaining(UUID player, long second) { return Math.max(0, shadowReady.getOrDefault(player, 0L) - second); }
+    void forget(UUID player) { backstabReady.remove(player); leechReady.remove(player); frostReady.remove(player); shadowReady.remove(player); }
+    void reset() { backstabReady.clear(); leechReady.clear(); frostReady.clear(); shadowReady.clear(); }
     static boolean isBehind(Vector facing, Vector towardsAttacker) {
         Vector a = facing.clone().setY(0), b = towardsAttacker.clone().setY(0);
         return a.lengthSquared() > 1.0e-6 && b.lengthSquared() > 1.0e-6 && a.normalize().dot(b.normalize()) <= -.5;

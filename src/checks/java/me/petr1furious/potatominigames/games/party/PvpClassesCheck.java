@@ -14,7 +14,7 @@ public final class PvpClassesCheck {
         loadouts();
         randomEligibility();
         combatRules();
-        System.out.println("PvP classes: " + PvpClass.values().length + " equally eligible kits, mage potions, wind charges, slot safety, refill caps, frost/backstab/leech cooldowns and safe movement passed");
+        System.out.println("PvP classes: " + PvpClass.values().length + " equally eligible kits, mage potions, wind charges, slot safety, refill caps, frost/backstab/leech/wand cooldowns and safe movement passed");
     }
     private static void loadouts() {
         for (PvpClass kit : PvpClass.values()) {
@@ -48,6 +48,20 @@ public final class PvpClassesCheck {
         check(PvpClass.LANCER.primaryWeapon() == Material.IRON_SPEAR, "Lancer uses the native iron spear");
         check(PvpClass.LANCER.supplies().stream().anyMatch(slot -> slot.material() == Material.STONE_SWORD), "Lancer retains a backup after losing their horse");
         check(PvpClass.LANCER.armor().chestplate() == Material.LEATHER_CHESTPLATE, "Mounted mobility has a light-armour tradeoff");
+        check(PvpClass.SHADOW.primaryWeapon() == Material.DIAMOND_SWORD, "Shadow has the requested diamond sword");
+        check(PvpClass.SHADOW.armor().helmet() == Material.AIR
+                && PvpClass.SHADOW.armor().chestplate() == Material.AIR
+                && PvpClass.SHADOW.armor().leggings() == Material.AIR
+                && PvpClass.SHADOW.armor().boots() == Material.AIR, "Shadow has no armour even outside invisibility");
+        int invisibility = PvpClass.SHADOW.potions().stream().filter(slot -> slot.kind() == PvpPotion.INVISIBILITY)
+                .mapToInt(PvpClass.PotionSlot::amount).sum();
+        check(invisibility == 2 && PvpPotion.INVISIBILITY.durationTicks == 400, "Shadow has two finite twenty-second splash invisibility charges");
+        check(PvpClass.SHADOW.cooldown == PvpCombat.SHADOW_WAND_COOLDOWN, "Wand tooltip and on-hit cooldown agree");
+        for (PvpClass kit : PvpClass.values()) {
+            check(!kit.focusPotions().contains(PvpPotion.INVISIBILITY), "No class can replenish invisibility potions");
+            if (kit != PvpClass.SHADOW) check(kit.potions().stream().noneMatch(slot -> slot.kind() == PvpPotion.INVISIBILITY),
+                    "Only Shadow receives invisibility stock");
+        }
         for (PvpPotion potion : PvpClass.ALCHEMIST.focusPotions()) {
             check(potion.harmful, "Focus cannot regenerate healing or speed potions");
             check(PvpClass.ALCHEMIST.potions().stream().anyMatch(slot -> slot.kind() == potion), "Focus only supplies existing mage spells");
@@ -67,7 +81,7 @@ public final class PvpClassesCheck {
     private static void randomEligibility() {
         PvpClass[] classes = PvpClass.values();
         int n = classes.length;
-        check(n == 11, "Mounted lancer joins the existing ten classes");
+        check(n == 12, "Shadow joins the existing eleven classes");
         int[][] pairs = new int[n][n];
         for (int first = 0; first < n; first++) for (int second = 0; second < n - 1; second++) {
             int a = first, b = second;
@@ -94,9 +108,17 @@ public final class PvpClassesCheck {
         check(combat.backstab(a, 5, forward, behind) && combat.backstab(b, 5, forward, behind), "Backstab is per player");
         check(combat.leech(a, 0) && !combat.leech(a, 2) && combat.leech(a, 3), "Lifesteal has a three-second cooldown");
         check(combat.frost(a, 0) && !combat.frost(a, 1) && combat.frost(a, 2), "Frost projectiles cannot continuously refresh slow effects");
+        check(!combat.shadowStrike(a, 0, false) && combat.shadowRemaining(a, 0) == 0, "Blocked/invalid wand hits cannot activate the perk or spend its cooldown");
+        check(combat.shadowStrike(a, 0, true) && !combat.shadowStrike(a, 1, true) && !combat.shadowStrike(a, 19, true), "Wand hit spam cannot chain blindness or refresh slowness");
+        check(combat.shadowRemaining(a, 19) == 1 && combat.shadowStrike(a, 20, true), "Wand becomes ready exactly after twenty seconds");
+        check(combat.shadowStrike(b, 1, true), "Two Shadows have independent wand cooldowns");
+        check(Math.max(PvpCombat.SHADOW_BLINDNESS_TICKS, PvpCombat.SHADOW_SLOWNESS_TICKS) < PvpCombat.SHADOW_WAND_COOLDOWN * 20,
+                "Control always ends before the next possible proc");
         combat.forget(a);
+        check(combat.shadowStrike(a, 20, true), "Leaving clears personal wand cooldown");
         check(combat.leech(a, 3) && combat.backstab(a, 5, forward, behind) && combat.frost(a, 2), "Leaving clears personal passive state");
         combat.reset();
+        check(combat.shadowStrike(a, 0, true), "Next round resets wand cooldown");
         check(combat.leech(a, 0) && combat.backstab(a, 0, forward, behind) && combat.frost(a, 0), "Each new round resets passives");
         check(!PvpCombat.canPayFury(.5) && !PvpCombat.canPayFury(2) && PvpCombat.canPayFury(2.01), "Fury cannot kill its caster or grant health at low HP");
         Vector retreat = PvpCombat.dash(forward, true), advance = PvpCombat.dash(forward, false);
