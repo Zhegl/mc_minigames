@@ -26,8 +26,10 @@ enum PvpClass {
     PALADIN("Паладин", "Железный меч, щит и лёгкая броня; лечение и очищение", "Очищение", 24),
     CRYOMANCER("Криомант", "Острый меч и 16 ледяных снежков; пополнение снежков и мороз", "Стужа", 20),
     PYROMANCER("Пиромант", "Огненные меч и лук, бесконечные стрелы; огненная вспышка", "Вспышка", 20),
-    LANCER("Всадник", "Железное копьё, запасной меч и конь на один раунд; лёгкая броня", "Пришпорить", 20);
+    LANCER("Всадник", "Железное копьё, запасной меч и конь на один раунд; лёгкая броня", "Пришпорить", 20),
+    SHADOW("Тень", "Без брони: алмазный меч, 2 зелья невидимости по 20 с и палка мрака", "Палка мрака", 20);
 
+    private static final NamespacedKey SHADOW_WAND = new NamespacedKey("potatominigames", "shadow_wand");
     private static final int ARROW_STACK = 64;
     static final int FOOD_SLOT = 8;
     record PotionSlot(PvpPotion kind, int amount, int slot) { }
@@ -54,6 +56,7 @@ enum PvpClass {
             case RANGER, ALCHEMIST, PYROMANCER -> Material.WOODEN_SWORD;
             case AERONAUT -> Material.MACE;
             case LANCER -> Material.IRON_SPEAR;
+            case SHADOW -> Material.DIAMOND_SWORD;
             default -> Material.STONE_SWORD;
         };
     }
@@ -67,6 +70,7 @@ enum PvpClass {
             case AERONAUT -> new Armor(Material.IRON_HELMET, Material.CHAINMAIL_CHESTPLATE, Material.CHAINMAIL_LEGGINGS, Material.LEATHER_BOOTS);
             case PALADIN, PYROMANCER -> new Armor(Material.IRON_HELMET, Material.CHAINMAIL_CHESTPLATE, Material.CHAINMAIL_LEGGINGS, Material.IRON_BOOTS);
             case LANCER -> new Armor(Material.CHAINMAIL_HELMET, Material.LEATHER_CHESTPLATE, Material.CHAINMAIL_LEGGINGS, Material.IRON_BOOTS);
+            case SHADOW -> new Armor(Material.AIR, Material.AIR, Material.AIR, Material.AIR);
             case CRYOMANCER -> new Armor(Material.IRON_HELMET, Material.LEATHER_CHESTPLATE, Material.IRON_LEGGINGS, Material.IRON_BOOTS);
         };
     }
@@ -74,7 +78,7 @@ enum PvpClass {
     boolean unlimitedArrows() { return this == RANGER || this == ENGINEER || this == PYROMANCER; }
     List<SupplySlot> supplies() {
         return switch (this) {
-            case GUARDIAN, ALCHEMIST, PALADIN -> List.of();
+            case GUARDIAN, ALCHEMIST, PALADIN, SHADOW -> List.of();
             case RANGER, PYROMANCER -> List.of(new SupplySlot(Material.BOW, 1, 3), new SupplySlot(Material.ARROW, ARROW_STACK, 9));
             case BERSERKER, LANCER -> List.of(new SupplySlot(Material.STONE_SWORD, 1, 3));
             case DUELIST -> List.of(new SupplySlot(Material.ENDER_PEARL, 2, 3));
@@ -88,6 +92,7 @@ enum PvpClass {
     }
     String abilityDescription() {
         return switch (this) {
+            case SHADOW -> "Удар палкой: слепота на 2 с и замедление II на 3 с; без урона, щит блокирует";
             case LANCER -> "Ускоряет твоего коня на 3 с; пешком даёт скорость I на 3 с";
             case GUARDIAN -> "Сопротивление II на 4 с, но замедляет тебя на 4 с";
             case RANGER -> "Отскок назад и скорость I на 4 с";
@@ -96,13 +101,14 @@ enum PvpClass {
             case ALCHEMIST -> "+1 урон, яд и замедление; не больше двух каждого";
             case ENGINEER -> "4 сердца щита на 6 с; +16 блоков, запас до 64";
             case AERONAUT -> "Прыжок вверх и +4 заряда ветра, запас до 8";
-            case PALADIN -> "Лечит 1,5 сердца, снимает яд, слабость, замедление и огонь; защита на 2 с";
+            case PALADIN -> "Лечит 1,5 сердца, снимает яд, слабость, замедление, слепоту и огонь; защита на 2 с";
             case CRYOMANCER -> "+8 снежков, скорость на 3 с и замедление видимой цели рядом";
             case PYROMANCER -> "Поджигает видимую цель до 8 блоков на 5 с; 2 сердца щита на 4 с";
         };
     }
     String passiveDescription() {
         return switch (this) {
+            case SHADOW -> "2 взрывных зелья невидимости по 20 с без пополнения; удары не раскрывают, предметы в руках видны";
             case LANCER -> "Конь: 8 сердец, без брони и возрождения; копьё — до 4 сердец до брони цели";
             case GUARDIAN -> "Тяжёлая броня, устойчивые сапоги и защита от стрел";
             case RANGER -> "6 спектральных стрел подсвечивают цель; обычные стрелы бесконечны";
@@ -128,6 +134,7 @@ enum PvpClass {
             case ENGINEER -> List.of(new PotionSlot(PvpPotion.SLOWNESS, 2, 4), new PotionSlot(PvpPotion.HEALING, 1, 6));
             case AERONAUT -> List.of(new PotionSlot(PvpPotion.SPEED, 1, 5), new PotionSlot(PvpPotion.HEALING, 1, 6));
             case PALADIN, LANCER -> List.of(new PotionSlot(PvpPotion.SPEED, 1, 4), new PotionSlot(PvpPotion.HEALING, 1, 6));
+            case SHADOW -> List.of(new PotionSlot(PvpPotion.INVISIBILITY, 2, 3), new PotionSlot(PvpPotion.SPEED, 1, 4), new PotionSlot(PvpPotion.HEALING, 1, 6));
             case CRYOMANCER -> List.of(new PotionSlot(PvpPotion.SLOWNESS, 1, 4), new PotionSlot(PvpPotion.HEALING, 2, 6));
             case PYROMANCER -> List.of(new PotionSlot(PvpPotion.WEAKNESS, 1, 4), new PotionSlot(PvpPotion.HEALING, 1, 6));
         };
@@ -135,10 +142,10 @@ enum PvpClass {
     void equip(Player player, NamespacedKey abilityKey) {
         var inv = player.getInventory();
         Armor armor = armor();
-        inv.setHelmet(item(armor.helmet()));
-        inv.setChestplate(item(armor.chestplate()));
-        inv.setLeggings(item(armor.leggings()));
-        inv.setBoots(item(armor.boots()));
+        inv.setHelmet(armor.helmet() == Material.AIR ? null : item(armor.helmet()));
+        inv.setChestplate(armor.chestplate() == Material.AIR ? null : item(armor.chestplate()));
+        inv.setLeggings(armor.leggings() == Material.AIR ? null : item(armor.leggings()));
+        inv.setBoots(armor.boots() == Material.AIR ? null : item(armor.boots()));
         ItemStack weapon = item(primaryWeapon());
         if (this == DUELIST || this == CRYOMANCER) enchant(weapon, Enchantment.SHARPNESS, 1);
         if (this == AERONAUT) {
@@ -194,16 +201,21 @@ enum PvpClass {
             case CRYOMANCER -> Material.PRISMARINE_CRYSTALS;
             case PYROMANCER -> Material.BLAZE_POWDER;
             case LANCER -> Material.SADDLE;
+            case SHADOW -> Material.STICK;
         });
         active.editMeta(meta -> {
             meta.displayName(Component.text(ability, NamedTextColor.GOLD));
-            meta.lore(List.of(Component.text("ПКМ • перезарядка " + cooldown + " с", NamedTextColor.GRAY),
+            meta.lore(List.of(Component.text((this == SHADOW ? "Удар по сопернику" : "ПКМ") + " • перезарядка " + cooldown + " с", NamedTextColor.GRAY),
                     Component.text(abilityDescription(), NamedTextColor.GRAY),
                     Component.text(passiveDescription(), NamedTextColor.DARK_GRAY)));
-            meta.getPersistentDataContainer().set(abilityKey, PersistentDataType.BYTE, (byte) 1);
+            meta.getPersistentDataContainer().set(this == SHADOW ? SHADOW_WAND : abilityKey, PersistentDataType.BYTE, (byte) 1);
         });
         inv.setItem(7, active);
         inv.setHeldItemSlot(0);
+    }
+    static boolean shadowWand(ItemStack item) {
+        return item != null && item.getType() == Material.STICK && item.hasItemMeta()
+                && item.getItemMeta().getPersistentDataContainer().has(SHADOW_WAND, PersistentDataType.BYTE);
     }
     /** Refill the existing stack even if moved, without overwriting another inventory slot. */
     void replenishArrows(Player player) {
@@ -231,6 +243,7 @@ enum PvpClass {
     /** Failed resource-based activations do not consume the ability cooldown. */
     boolean activate(Player player, Player opponent) {
         switch (this) {
+            case SHADOW -> { return false; } // Its perk triggers on a successful wand hit, never on right-click.
             case LANCER -> {
                 // Mounted activation is handled by the session; the same cooldown applies on foot.
                 effect(player, PotionEffectType.SPEED, 3, 0);
@@ -277,6 +290,7 @@ enum PvpClass {
                 player.removePotionEffect(PotionEffectType.POISON);
                 player.removePotionEffect(PotionEffectType.WEAKNESS);
                 player.removePotionEffect(PotionEffectType.SLOWNESS);
+                player.removePotionEffect(PotionEffectType.BLINDNESS);
                 player.setFireTicks(0);
                 effect(player, PotionEffectType.RESISTANCE, 2, 0);
             }

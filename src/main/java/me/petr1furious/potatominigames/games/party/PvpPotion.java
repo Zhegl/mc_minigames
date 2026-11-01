@@ -20,7 +20,8 @@ enum PvpPotion {
     POISON("Яд I • 5 с", true, 100, 0x59B542),
     SLOWNESS("Замедление I • 4 с", true, 80, 0x718AA8),
     WEAKNESS("Слабость I • 6 с", true, 120, 0x626262),
-    SPEED("Скорость I • 6 с", false, 120, 0x7CAFC6);
+    SPEED("Скорость I • 6 с", false, 120, 0x7CAFC6),
+    INVISIBILITY("Невидимость • 20 с", false, 400, 0x444C64);
 
     private static final NamespacedKey KEY = new NamespacedKey("potatominigames", "pvp_potion");
     final String title;
@@ -39,6 +40,7 @@ enum PvpPotion {
             case SLOWNESS -> PotionEffectType.SLOWNESS;
             case WEAKNESS -> PotionEffectType.WEAKNESS;
             case SPEED -> PotionEffectType.SPEED;
+            case INVISIBILITY -> PotionEffectType.INVISIBILITY;
         };
     }
     boolean affects(boolean caster, boolean activeFighter) { return activeFighter && (harmful ? !caster : caster); }
@@ -47,7 +49,7 @@ enum PvpPotion {
         potion.editMeta(PotionMeta.class, meta -> {
             meta.setMaxStackSize(8);
             meta.setColor(Color.fromRGB(color));
-            meta.addCustomEffect(new PotionEffect(effectType(), durationTicks, 0), true);
+            meta.addCustomEffect(new PotionEffect(effectType(), durationTicks, 0, false, this != INVISIBILITY, true), true);
             meta.displayName(Component.text(title, harmful ? NamedTextColor.RED : NamedTextColor.GREEN));
             meta.lore(List.of(Component.text(harmful ? "Брось в соперника • на себя не действует"
                     : "Брось под себя • действует только на тебя", NamedTextColor.GRAY)));
