@@ -310,6 +310,14 @@ chaos). Each is picked evenly among those not already running. Most events are a
 | Vanishing Blocks | rest of game | placed blocks disappear after 15s |
 | SUPERHOT | 30s | standing still takes your items away until you move |
 | Airdrop | — | a chest with a row of random items appears between the players, 3 to 15 blocks above the pillars |
+| Contract Ad / Реклама | 5s | a large central title advertising contract service flashes in different colours; other event titles are suppressed while the ad is visible |
+| Math / Контрольная | 10s | solve a small addition, subtraction or multiplication problem by typing the integer answer in chat; each living player who has not answered correctly takes 3 hearts of damage at timeout |
+
+Math questions appear in chat and in the action bar with a countdown. Wrong answers
+allow retries until the deadline; spectators and eliminated players cannot answer
+or receive the penalty. Both events also enter Fusion and player presets whenever
+the party or rave modifier is active. Ending the game clears the ad and cancels
+the question without dealing damage.
 
 ## Pillars arenas
 
@@ -422,6 +430,8 @@ and complete restoration, protected terrain, knockback symmetry and hit cooldown
 `checkPartyArmsRace` checks FFA weapon progression and final victory, duplicate
 death and stale-shot handling, respawn/reconnect progress, timeout standings and
 all sixteen spawn points, including the farthest-from-enemies selection.
+`checkPillarsMath` checks generated arithmetic, independent player answers, retries,
+elimination and one-shot timeout penalties.
 
 ## License
 

@@ -28,6 +28,10 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -40,10 +44,12 @@ import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
 import io.papermc.paper.math.Angle;
+import io.papermc.paper.event.player.AsyncChatEvent;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.kyori.adventure.title.Title;
 
 import me.petr1furious.potatominigames.core.game.SessionServices;
@@ -53,7 +59,7 @@ import me.petr1furious.potatominigames.core.game.SessionServices;
  * so the wait between them averages {@code eventMeanSeconds}; it is picked evenly among the events
  * not already running or announced. Swap starts immediately; others are announced five seconds ahead.
  */
-final class PillarsEvents {
+final class PillarsEvents implements Listener {
     enum Kind {
         BOATS("Boat Rain", "Boats fall from the sky: hop in!", 15),
         DISCO("Disco", "Keep moving, or get hurt, more every time", 30),
@@ -72,7 +78,9 @@ final class PillarsEvents {
         DARKNESS("Darkness", "You can barely see", 15),
         VANISHING("Vanishing Blocks", "Placed blocks vanish after 15s, until the end", -1),
         SUPERHOT("SUPERHOT", "Stand still and your items freeze", 30),
-        AIRDROP("Airdrop", "A chest of loot appears above the middle", 0);
+        AIRDROP("Airdrop", "A chest of loot appears above the middle", 0),
+        CONTRACT_AD("Реклама", "Служба по контракту: рекламная пауза на 5 секунд", 5),
+        MATH("Контрольная", "Реши пример в чате за 10 секунд или получи 3 сердца урона", 10);
 
         final String title;
         final String description;
@@ -92,6 +100,9 @@ final class PillarsEvents {
     private static final double WIND_PUSH = 0.1;
     private static final int VANISH_TICKS = 300;
     private static final int POTATO_TICKS = 400;
+    private static final double MATH_DAMAGE = 6.0;
+    private static final NamedTextColor[] AD_COLORS = {NamedTextColor.RED, NamedTextColor.YELLOW,
+            NamedTextColor.AQUA, NamedTextColor.LIGHT_PURPLE};
     private static final String[] ARROWS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
     private static final String[] COMPASS = {"south", "south-west", "west", "north-west", "north", "north-east",
             "east", "south-east"};
@@ -135,6 +146,10 @@ final class PillarsEvents {
     private int potatoEndsAt;
     private final Deque<Vanish> vanishing = new ArrayDeque<>();
     private final Map<UUID, Frozen> frozen = new HashMap<>();
+    private int adStartedAt;
+    private int mathEndsAt;
+    /** The async chat handler only snapshots this reference; all state is read on the server thread. */
+    private volatile MathChallenge mathChallenge;
 
     PillarsEvents(PillarsSession session, SessionServices services, double meanSeconds) {
         this.session = session;
@@ -144,6 +159,7 @@ final class PillarsEvents {
         this.gravityKey = new NamespacedKey(plugin, "pillars_event_gravity");
         this.scaleKey = new NamespacedKey(plugin, "pillars_event_scale");
         this.itemKey = new NamespacedKey(plugin, "pillars_event_item");
+        Bukkit.getPluginManager().registerEvents(this, plugin);
         this.ticker = Bukkit.getScheduler().runTaskTimer(plugin, this::onTick, 1L, 1L);
     }
 
@@ -174,9 +190,9 @@ final class PillarsEvents {
                 Component.text(kind.description, NamedTextColor.YELLOW),
                 Title.Times.times(Duration.ofMillis(250), Duration.ofMillis(4500), Duration.ofMillis(500)));
         for (Player player : audience()) {
-            player.showTitle(warning);
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 0.8f, 1.2f);
         }
+        showEventTitle(warning);
         services.messages().broadcast(Component.text()
                 .append(Component.text(kind.title, NamedTextColor.GOLD))
                 .append(Component.text(" in 5s: " + kind.description, NamedTextColor.GRAY))
@@ -228,6 +244,12 @@ final class PillarsEvents {
             case KNOCKBACK -> removeEventItems(Kind.KNOCKBACK);
             case FRENZY -> session.setItemSpeed(1);
             case HOT_POTATO -> endPotato(natural);
+            case CONTRACT_AD -> {
+                for (Player player : audience()) {
+                    player.clearTitle();
+                }
+            }
+            case MATH -> finishMath(natural);
             case SUPERHOT -> {
                 for (UUID id : List.copyOf(frozen.keySet())) {
                     Player player = Bukkit.getPlayer(id);
@@ -251,6 +273,7 @@ final class PillarsEvents {
             return;
         }
         closed = true;
+        HandlerList.unregisterAll(this);
         ticker.cancel();
         for (BukkitTask task : tasks) {
             task.cancel();
@@ -316,9 +339,7 @@ final class PillarsEvents {
                 String towards = COMPASS[Math.floorMod(Math.round(windYaw / 45f), 8)];
                 Title title = Title.title(Component.text("Wind", NamedTextColor.AQUA).decorate(TextDecoration.BOLD),
                         Component.text("blowing " + towards + "; sneak to hold on", NamedTextColor.WHITE));
-                for (Player player : audience()) {
-                    player.showTitle(title);
-                }
+                showEventTitle(title);
             }
             case KNOCKBACK -> {
                 for (Player player : alive) {
@@ -330,6 +351,11 @@ final class PillarsEvents {
             }
             case FRENZY -> session.setItemSpeed(3);
             case AIRDROP -> airdrop();
+            case CONTRACT_AD -> {
+                adStartedAt = tick;
+                showContractAd();
+            }
+            case MATH -> startMath(alive);
             case HOT_POTATO -> {
                 Player holder = alive.get(ThreadLocalRandom.current().nextInt(alive.size()));
                 potatoEndsAt = tick + POTATO_TICKS;
@@ -347,6 +373,12 @@ final class PillarsEvents {
         }
         List<Player> alive = session.aliveOnline();
         trackMovement(alive);
+        if (running.contains(Kind.CONTRACT_AD) && (tick - adStartedAt) % 5 == 0) {
+            showContractAd();
+        }
+        if (running.contains(Kind.MATH) && tick % 20 == 0) {
+            showMathReminder(alive);
+        }
         if (running.contains(Kind.DISCO)) {
             tickDisco(alive);
         }
@@ -371,6 +403,113 @@ final class PillarsEvents {
                 block.setType(Material.AIR);
             }
             placed.remove(block);
+        }
+    }
+
+    // Screen events. Keep the ad visible even when another event announces itself.
+
+    private void showEventTitle(Title title) {
+        if (running.contains(Kind.CONTRACT_AD)) {
+            return;
+        }
+        for (Player player : audience()) {
+            player.showTitle(title);
+        }
+    }
+
+    private void showContractAd() {
+        int frame = (tick - adStartedAt) / 5;
+        NamedTextColor color = AD_COLORS[frame % AD_COLORS.length];
+        Title title = Title.title(
+                Component.text(frame % 2 == 0 ? "★ СЛУЖБА ★" : "СЛУЖБА", color).decorate(TextDecoration.BOLD),
+                Component.text("ПО КОНТРАКТУ • РЕКЛАМНАЯ ПАУЗА", AD_COLORS[(frame + 1) % AD_COLORS.length])
+                        .decorate(TextDecoration.BOLD),
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(300), Duration.ZERO));
+        for (Player player : audience()) {
+            player.showTitle(title);
+        }
+    }
+
+    private void startMath(List<Player> alive) {
+        MathChallenge challenge = new MathChallenge(MathChallenge.Problem.random(ThreadLocalRandom.current()),
+                alive.stream().map(Player::getUniqueId).toList());
+        mathEndsAt = tick + Kind.MATH.seconds * 20;
+        mathChallenge = challenge;
+        Component question = Component.text(challenge.problem().expression() + " = ?", NamedTextColor.YELLOW)
+                .decorate(TextDecoration.BOLD);
+        showEventTitle(Title.title(question,
+                Component.text("Ответь числом в чат за 10 секунд!", NamedTextColor.WHITE),
+                Title.Times.times(Duration.ZERO, Duration.ofSeconds(3), Duration.ofMillis(250))));
+        for (Player player : alive) {
+            player.sendMessage(Component.text("Контрольная: ", NamedTextColor.GOLD).append(question)
+                    .append(Component.text(" Напиши ответ в чат за 10 секунд или потеряешь 3 сердца!",
+                            NamedTextColor.WHITE)));
+        }
+        showMathReminder(alive);
+    }
+
+    private void showMathReminder(List<Player> alive) {
+        MathChallenge challenge = mathChallenge;
+        if (challenge == null) {
+            return;
+        }
+        int seconds = Math.max(1, (mathEndsAt - tick + 19) / 20);
+        for (Player player : alive) {
+            if (challenge.isWaiting(player.getUniqueId())) {
+                player.sendActionBar(Component.text(challenge.problem().expression() + " = ? • В чат: "
+                        + seconds + " с", NamedTextColor.YELLOW));
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onChat(AsyncChatEvent event) {
+        MathChallenge expected = mathChallenge;
+        if (expected == null) {
+            return;
+        }
+        UUID playerId = event.getPlayer().getUniqueId();
+        String message = PlainTextComponentSerializer.plainText().serialize(event.message());
+        // Never inspect session collections or touch players from the asynchronous chat thread.
+        Bukkit.getScheduler().runTask(services.plugin(), () -> {
+            if (closed || mathChallenge != expected || tick >= mathEndsAt) {
+                return;
+            }
+            Player player = session.aliveOnline().stream()
+                    .filter(candidate -> candidate.getUniqueId().equals(playerId)).findFirst().orElse(null);
+            if (player == null) {
+                return;
+            }
+            switch (expected.answer(playerId, message)) {
+                case CORRECT -> player.sendMessage(Component.text("Верно! Урона за этот пример не будет.",
+                        NamedTextColor.GREEN));
+                case WRONG -> player.sendMessage(Component.text("Неверно! Попробуй ещё раз, пока есть время.",
+                        NamedTextColor.RED));
+                default -> { }
+            }
+        });
+    }
+
+    private void finishMath(boolean natural) {
+        MathChallenge challenge = mathChallenge;
+        mathChallenge = null;
+        if (challenge == null) {
+            return;
+        }
+        Set<UUID> failures = challenge.finish();
+        if (!natural) {
+            return;
+        }
+        for (Player player : session.aliveOnline()) {
+            if (closed) {
+                break;
+            }
+            if (failures.contains(player.getUniqueId())) {
+                player.sendMessage(Component.text("Время вышло! " + challenge.problem().expression() + " = "
+                        + challenge.problem().result() + ". Штраф: 3 сердца.", NamedTextColor.RED));
+                player.sendActionBar(Component.empty());
+                player.damage(MATH_DAMAGE);
+            }
         }
     }
 
@@ -739,9 +878,7 @@ final class PillarsEvents {
     private void showBanName(Component name, int stayTicks) {
         Title title = Title.title(Component.empty(), name,
                 Title.Times.times(Duration.ZERO, Duration.ofMillis(stayTicks * 50L), Duration.ofMillis(150)));
-        for (Player player : audience()) {
-            player.showTitle(title);
-        }
+        showEventTitle(title);
     }
 
     private static Material pick(Map<Material, Double> weights) {
@@ -814,6 +951,9 @@ final class PillarsEvents {
             return;
         }
         unfreeze(player);
+        if (mathChallenge != null) {
+            mathChallenge.remove(player.getUniqueId());
+        }
         if (running.contains(Kind.HOT_POTATO) && player.getUniqueId().equals(potatoHolder)) {
             passPotatoAway(player);
         }
