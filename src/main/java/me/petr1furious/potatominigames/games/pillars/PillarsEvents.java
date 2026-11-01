@@ -605,6 +605,11 @@ final class PillarsEvents implements Listener {
         }
     }
 
+    /** SUPERHOT must not return items from a previous shuffle when the player moves again. */
+    void onItemShuffle() {
+        frozen.clear();
+    }
+
     // Camera.
 
     /**

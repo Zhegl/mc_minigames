@@ -243,6 +243,17 @@ Forced logs, the crossbow and ammunition bypass the general item blacklist.
 Drop progress is per player, survives reconnects, and resets with each new game.
 This is a standalone mode, not another random Fusion modifier.
 
+## Pillars Item Shuffle
+
+In `item-shuffle` and every Fusion/preset with `shuffle`, each new set expires the
+previous items everywhere in the arena: inventories (including armour, offhand,
+cursor and crafting grids), dropped items, container contents and equipment/storage
+on entities. Boats, minecarts, hanging decorations and armour stands also disappear,
+so breaking them cannot recover an old item. Placed blocks stay, but their inventories empty.
+Unloaded chunks are cleaned when they load, and reconnecting cannot restore an
+earlier set. Ender chests are unavailable during shuffle; their persistent contents
+are left intact. SUPERHOT cannot return frozen items from a previous set.
+
 ## Pillars fusion
 
 `fusion` rolls its rules every game: chaos (random layout, chaos-speed items), shuffle (at
@@ -432,6 +443,8 @@ death and stale-shot handling, respawn/reconnect progress, timeout standings and
 all sixteen spawn points, including the farthest-from-enemies selection.
 `checkPillarsMath` checks generated arithmetic, independent player answers, retries,
 elimination and one-shot timeout penalties.
+`checkPillarsShuffle` checks dropped items and container stashes, cursor/crafting
+cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
 
 ## License
 

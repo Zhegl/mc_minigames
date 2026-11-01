@@ -131,6 +131,7 @@ final class PillarsSession implements GameSession {
     private BukkitTask actionBarTask;
     /** Random events (party, rave); null when the mode has none. */
     private PillarsEvents events;
+    private ShuffleItems shuffleItems;
     /** Item Frenzy divides the item cooldown by this. */
     private int itemSpeed = 1;
 
@@ -267,6 +268,13 @@ final class PillarsSession implements GameSession {
         setLuckyWorld(mode.luckyBlocks.get());
         if (rules.eventMeanSeconds() > 0) {
             events = new PillarsEvents(this, services, rules.eventMeanSeconds());
+        }
+        if (rules.shuffle()) {
+            shuffleItems = new ShuffleItems(world);
+            Bukkit.getPluginManager().registerEvents(shuffleItems, services.plugin());
+            for (Player player : services.participants().onlinePlayers()) {
+                shuffleItems.clearPlayerIfStale(player);
+            }
         }
         if (preset != null || mode.id.equals("fusion")) {
             announce(Component.text()
@@ -478,6 +486,12 @@ final class PillarsSession implements GameSession {
         boolean sniper = mode.id.equals("sniper_duel");
         boolean shuffle = rules.shuffle();
         int count = shuffle ? 10 : 1;
+        if (shuffle) {
+            if (events != null) {
+                events.onItemShuffle();
+            }
+            shuffleItems.nextCycle(services.participants().onlinePlayers());
+        }
         // sameItems: one draw, and one stack (potion type, enchantments) copied to everyone,
         // so nobody is luckier than the rest.
         List<ItemStack> shared = !sniper && rules.sameItems() ? create(draw(sharedGroups, count)) : null;
@@ -485,9 +499,6 @@ final class PillarsSession implements GameSession {
             Player player = pillarPlayer.player();
             if (player == null) {
                 continue;
-            }
-            if (shuffle) {
-                player.getInventory().clear();
             }
             if (sniper) {
                 player.getInventory().addItem(sniperItem(pillarPlayer));
@@ -1138,6 +1149,9 @@ final class PillarsSession implements GameSession {
         if (pillarPlayer == null || ending) {
             return;
         }
+        if (shuffleItems != null) {
+            shuffleItems.clearPlayerIfStale(player);
+        }
         // Teleports in the join event are unreliable.
         Bukkit.getScheduler().runTask(services.plugin(), () -> {
             if (!player.isOnline() || ending) {
@@ -1259,6 +1273,9 @@ final class PillarsSession implements GameSession {
         setLuckyWorld(false);
         if (events != null) {
             events.close();
+        }
+        if (shuffleItems != null) {
+            shuffleItems.close();
         }
         if (!ending) {
             // Stopped by an admin, or everyone left.
