@@ -261,7 +261,7 @@ public final class SessionManager {
 
     /** "Bingo", or "Bingo (butfast)" for a game with several modes. */
     public static Component displayName(Minigame game, String mode) {
-        if (game.modes().size() <= 1 || mode == null || mode.isEmpty()) {
+        if (!game.showModes() || mode == null || mode.isEmpty()) {
             return game.displayName();
         }
         return Component.text().append(game.displayName())
@@ -269,7 +269,7 @@ public final class SessionManager {
     }
 
     public String playCommand(Minigame game, String mode) {
-        return game.modes().size() <= 1 || mode == null || mode.isEmpty()
+        return !game.showModes() || mode == null || mode.isEmpty()
                 ? "/play " + game.id()
                 : "/play " + game.id() + " " + mode;
     }

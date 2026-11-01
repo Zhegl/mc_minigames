@@ -4,7 +4,7 @@ Server fork of [Petr1Furious/potato-minigames](https://github.com/Petr1Furious/p
 preserving the upstream Git history and the server's downstream patches.
 The original Apache-2.0 license and attribution are retained in `LICENSE` and `NOTICE`.
 
-One Paper plugin with four minigames on a shared framework, built for a server
+One Paper plugin with five game categories on a shared framework, built for a server
 anybody can join and play at any time: players queue for a game, wait in a lobby,
 and the game starts by itself. Different games run side by side.
 Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Java 25.
@@ -17,6 +17,122 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
+| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `arms_race` | Random-class PvP and sumo use round-robin BO3 tournaments. Arms Race is a simultaneous free-for-all with weapon progression and respawns. |
+
+### Party PvP
+
+Open the compass → **Вечеринка** → **pvp**, or run `/play party pvp`.
+The default queue accepts 2–12 players. Each pair plays once, in rotating tours
+(an odd roster has byes). Duels run sequentially on one arena; waiting players
+spectate. Each match is **first to two round wins**, ending 2:0 or 2:1, and awards
+**3 tournament points**. Drawn rounds are replayed without awarding a win.
+Equal tournament points are broken by wins in direct meetings among tied players.
+If first place is still tied, the contenders play extra BO3 matches in a randomly
+seeded knockout; the winner takes the title. Playoffs do not add league points.
+The final league points are saved under `/party points`; test games award nothing.
+
+Classes are random but mirrored to reduce matchup luck: round one draws two
+distinct classes, round two swaps those classes and spawn sides, and round three
+gives both players the same random class. Equipment, health, abilities and the
+arena reset before every round. All players have 20 health, unbreakable gear,
+32 wool (48 for the engineer), and an iron pickaxe. Passive health regeneration
+is disabled; healing is part of the alchemist's kit. Hunger does not decrease.
+
+| Class | Equipment and tradeoff | Active ability (right-click slot 8) |
+|---|---|---|
+| Страж / Guardian | Stone sword, full iron armour, shield | Resistance I for 4 s; 20 s cooldown |
+| Стрелок / Ranger | Stone sword, full iron armour, bow, 20 arrows | Speed II for 4 s; 18 s cooldown |
+| Берсерк / Berserker | Iron axe, chain chestplate/leggings, iron helmet/boots, 4 snowballs | Strength I for 3 s; 24 s cooldown |
+| Дуэлянт / Duelist | Iron sword, chain chestplate, remaining iron armour, 2 ender pearls | Speed I + Haste II for 5 s; 18 s cooldown |
+| Алхимик / Alchemist | Stone sword, full iron armour, one 4 s poison splash, two Healing I splashes | Regeneration II for 4 s; 24 s cooldown |
+| Инженер / Engineer | Stone sword, full iron armour, crossbow, 12 arrows, 48 wool | Absorption I (2 extra hearts) for 5 s; 24 s cooldown |
+
+The arena is a symmetric **49×49 courtyard** with short cover and clear spawn
+lanes. Its original floor, cover, walls and ceiling cannot be broken or exploded.
+Players can place wool up to five blocks above the floor and break either player's
+placed blocks. Those blocks and stray projectiles are removed between rounds.
+Crafting, item dropping and block interactions are disabled. Pearls stay inside
+the arena. A five-second countdown blocks movement, attacks, building and abilities.
+After 90 seconds the border shrinks over 30 seconds; if both players survive,
+remaining health plus absorption decides the round (an exact tie is replayed).
+
+Disconnecting or leaving withdraws a player for the rest of that tournament:
+unfinished matches are technical losses, with no points when both players withdraw.
+Rejoining allows spectating and does not restore a kit or reroll a class.
+
+Admin commands: `/party start pvp @a`, `/party test pvp` (solo arena training),
+`/party stop`. Timing settings live in `games/party.yml`: `pvp.roundSeconds`,
+`pvp.countdownSeconds`, `pvp.intermissionSeconds`. Changes apply next session.
+The class loadouts are initial balance values; live duels are needed for tuning.
+
+### Party Sumo
+
+Open the compass → **Вечеринка** → **sumo**, or run `/play party sumo`.
+Sumo uses the same 2–12 player round-robin tournament, BO3, three points per
+match, title tie-breaks, spectator handling and withdrawal rules as PvP.
+The difference is the fight: empty hands, no armour, no health damage and no
+building. Punches apply knockback, sprinting makes it stronger, and falling below
+the platform loses the round. Each player's hit immunity lasts eight server ticks;
+it resets before every round. Both falling in the same server tick replays the round.
+
+The arena is a round, 19-block-wide platform above the void, without walls or
+hidden floors. Players start eight blocks apart and swap sides for round two.
+After 45 seconds the outer ring disappears; another ring goes every three seconds
+until no platform remains. Every round restores the full platform. A five-second
+countdown prevents early movement or hits. Waiting players spectate the duel.
+
+Admin commands: `/party start sumo @a`, `/party test sumo` (solo platform training),
+`/party stop`. Settings in `games/party.yml`: `sumo.roundSeconds`,
+`sumo.countdownSeconds`, `sumo.intermissionSeconds`; changes apply next session.
+
+### Party Arms Race
+
+Open the compass → **Вечеринка** → **arms_race**, or run `/play party arms_race`.
+This mode is a **2–16 player free-for-all**, with everyone fighting at once.
+There are no duel pairings, BO3s or tournament rounds. One kill with the current
+weapon advances one step; the first player to get a kill with the final weapon wins.
+The shared chain is:
+
+1. Diamond sword
+2. Iron sword
+3. Diamond axe
+4. Stone sword
+5. Iron axe
+6. Bow
+7. Crossbow
+8. Stone axe
+9. Wooden sword
+10. Wooden axe
+11. Golden sword
+12. Golden shovel (a kill wins the game)
+
+All players wear identical unbreakable chainmail armour. Arrows are replenished
+automatically. Every successful upgrade heals two hearts, up to full health;
+passive regeneration is disabled. Bare-hand hits, bow melee attacks and projectiles
+from an earlier weapon step cannot deal damage or advance progression. Old arrows
+are removed on upgrade, death or disconnect, and one sword sweep cannot skip steps.
+Environmental deaths can credit the last valid hit within eight seconds, only if
+the attacker's current weapon step still matches that hit. Suicides give no progress.
+
+Players respawn after three seconds, **keeping their weapon step**. Respawning
+selects one of sixteen clear spawn points farthest from the nearest living enemy.
+The two-second spawn shield prevents damage and ends when the player attacks or
+shoots. Temporarily dead players wait without a spectator follow camera. Reconnecting
+preserves progress and uses the respawn delay; late joiners can only spectate.
+
+The arena is a protected 49×49 courtyard with cover; building, breaking, crafting,
+item drops and pickups are disabled. After a five-second countdown, the game lasts
+up to ten minutes. On timeout, most kills wins, then fewer deaths, then the earliest
+arrival at the current step; no kills means a draw. Disconnected players cannot win
+on timeout. If only one player remains, there is a 15-second reconnect grace period
+before they win (disabled in solo tests). If everyone leaves, the game aborts.
+Party standings award one point per qualifying kill, plus three for the winner;
+aborted and test games do not save points.
+
+Admin commands: `/party start arms_race @a`, `/party test arms_race`, `/party stop`.
+Timing settings in `games/party.yml`: `armsRace.durationSeconds`,
+`armsRace.countdownSeconds`, `armsRace.respawnSeconds`,
+`armsRace.spawnProtectionSeconds`. Changes apply next session.
 
 ## Playing: queues and the lobby
 
@@ -69,7 +185,7 @@ player is offline, they get their things back when they log in.
 
 ## Admin commands
 
-Each game's root (`/pillars`, `/bingo`, `/war`, `/chase`) has the shared subtree.
+Each game's root (`/pillars`, `/bingo`, `/war`, `/chase`, `/party`) has the shared subtree.
 Starting, stopping and joining games, changing teams, setting `config` values and
 `reload` need `potatominigames.admin`; the rest is open to everyone.
 
@@ -298,6 +414,14 @@ The 26.2 build exists for the bot-tested dev server; the servers run 26.3.
 `build` runs self-checks without adding a test framework: preset ownership, quota,
 reload and failed-write preservation, plus Sniper Duel's opening sequence and equal
 later drop categories. Run them alone with `sh ./gradlew checkPillarsPresets checkSniperDuel`.
+`checkPartyPvp` also checks round-robin schedules for 2–12 players, BO3, forfeits,
+personal-meeting ties, title contenders, random class draws, arena symmetry and
+player-block reset without a running server.
+`checkPartySumo` checks platform geometry, safe spawns, ring-outs, overtime shrink
+and complete restoration, protected terrain, knockback symmetry and hit cooldowns.
+`checkPartyArmsRace` checks FFA weapon progression and final victory, duplicate
+death and stale-shot handling, respawn/reconnect progress, timeout standings and
+all sixteen spawn points, including the farthest-from-enemies selection.
 
 ## License
 

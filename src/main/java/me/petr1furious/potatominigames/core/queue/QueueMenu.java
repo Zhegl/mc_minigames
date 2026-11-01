@@ -107,7 +107,7 @@ public final class QueueMenu implements Listener {
             openPicks(player, mine.get());
             return;
         }
-        if (available.size() > 1 && sessions.sessionOf(game).isEmpty()) {
+        if (game.showModes() && sessions.sessionOf(game).isEmpty()) {
             open(player, game);
             return;
         }
@@ -140,7 +140,7 @@ public final class QueueMenu implements Listener {
     /** Back from the first pick menu: the mode menu, or the game menu for one mode. */
     private Entry backFromPicks(QueueService.Queue queue) {
         return new Entry(viewer -> backIcon(), clicker -> {
-            if (queues.queuesOf(queue.game()).size() > 1) {
+            if (queue.game().showModes()) {
                 open(clicker, queue.game());
             } else {
                 open(clicker);
@@ -288,7 +288,7 @@ public final class QueueMenu implements Listener {
                 lore.add(plain(Component.text("Being played", NamedTextColor.YELLOW)));
                 lore.add(plain(Component.text("» Click to spectate", NamedTextColor.AQUA)));
             } else {
-                if (gameQueues.size() > 1) {
+                if (game.showModes()) {
                     for (QueueService.Queue queue : gameQueues) {
                         lore.add(plain(Component.text()
                                 .append(Component.text(" • ", NamedTextColor.DARK_GRAY))
@@ -306,7 +306,7 @@ public final class QueueMenu implements Listener {
                     pickStatus(lore, queued.get(), viewer);
                 } else {
                     lore.add(plain(mine ? Component.text("You are queued", NamedTextColor.GREEN)
-                            : Component.text(gameQueues.size() > 1 ? "» Click to pick a mode" : "» Click to join",
+                            : Component.text(game.showModes() ? "» Click to pick a mode" : "» Click to join",
                                     NamedTextColor.AQUA)));
                 }
             }

@@ -19,6 +19,7 @@ import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.generator.ChunkGenerator;
 
 import net.kyori.adventure.util.TriState;
 
@@ -61,6 +62,27 @@ public final class ThrowawayWorldService {
             }
         }
         return overworld;
+    }
+
+    /** Empty disposable world for generated arenas; uses the same crash cleanup as survival games. */
+    public World createVoid(String id) {
+        destroy(id);
+        String base = baseName(id);
+        long seed = random.nextLong();
+        seeds.put(base, seed);
+        World world = Bukkit.createWorld(new WorldCreator(base).seed(seed).generateStructures(false)
+                .generator(new ChunkGenerator() {
+                    @Override
+                    public org.bukkit.Location getFixedSpawnLocation(World world, Random random) {
+                        return new org.bukkit.Location(world, .5, 81, .5);
+                    }
+                }));
+        if (world == null) {
+            throw new IllegalStateException("Failed to create arena world " + base);
+        }
+        sets.computeIfAbsent(base, key -> new HashMap<>()).put(World.Environment.NORMAL, world);
+        worldToBase.put(base, base);
+        return world;
     }
 
     private World createDimension(String base, World.Environment environment, long seed) {
