@@ -472,9 +472,8 @@ final class DuelSession implements GameSession {
     @Override public void onBlockExplode(BlockExplodeEvent event) { event.blockList().clear(); }
     @Override public void onPlayerInteract(PlayerInteractEvent event) {
         if (sumo || !fighting(event.getPlayer())) { event.setCancelled(true); return; }
-        if (event.getClickedBlock() != null) {
-            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
-        }
+        // Block events protect the arena. Denying the clicked block here also
+        // prevents vanilla wool placement and mining player-placed blocks.
         if (event.getHand() != EquipmentSlot.HAND || !event.getAction().isRightClick() || event.getItem() == null
                 || !event.getItem().getItemMeta().getPersistentDataContainer().has(abilityKey, PersistentDataType.BYTE)) return;
         event.setCancelled(true);
