@@ -149,7 +149,8 @@ public final class PillarsGame implements Minigame, Listener {
             case "sniper_duel" -> "Pillars 1.5x apart: five logs, a plain crossbow, then arrows, fireworks or random loot";
             case "party" -> "Random events, about one a minute";
             case "rave" -> "Random events twice as often, items as fast as chaos";
-            case "fusion" -> "A random mix of chaos, shuffle, tactical, big house and party/rave";
+            case "adhd" -> "СДВГ: каждые ~2 минуты — 30 секунд шафла ×3 и рейва ×3";
+            case "fusion" -> "A random mix of chaos, shuffle, tactical, big house, ADHD and party/rave";
             default -> "Random items on pillars, last one standing wins";
         });
     }
