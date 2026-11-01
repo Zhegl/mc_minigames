@@ -27,6 +27,26 @@ public final class PartyConfig {
             .validate(n -> n >= 1 && n <= 10);
     public final Property<Integer> armsRaceProtectionSeconds = bag.define("armsRace.spawnProtectionSeconds", PropertyCodec.INT, 2)
             .validate(n -> n >= 1 && n <= 5);
+    public final Property<Integer> survivalCountdownSeconds = bag.define("survival.countdownSeconds", PropertyCodec.INT, 5)
+            .validate(n -> n >= 3 && n <= 15);
+    public final Property<Integer> tntRunSeconds = bag.define("tntRun.durationSeconds", PropertyCodec.INT, 180)
+            .validate(n -> n >= 30 && n <= 600);
+    public final Property<Integer> tntRunCollapseTicks = bag.define("tntRun.collapseTicks", PropertyCodec.INT, 10)
+            .validate(n -> n >= 3 && n <= 40);
+    public final Property<Integer> mobCountSeconds = bag.define("mobCount.countSeconds", PropertyCodec.INT, 10)
+            .validate(n -> n >= 6 && n <= 30);
+    public final Property<Integer> mobCountAnswerSeconds = bag.define("mobCount.answerSeconds", PropertyCodec.INT, 10)
+            .validate(n -> n >= 4 && n <= 20);
+    public final Property<Integer> mobCountRounds = bag.define("mobCount.rounds", PropertyCodec.INT, 12)
+            .validate(n -> n >= 2 && n <= 30);
+    public final Property<Integer> rhinoSeconds = bag.define("rhino.durationSeconds", PropertyCodec.INT, 240)
+            .validate(n -> n >= 30 && n <= 600);
+    public final Property<Integer> rhinoCount = bag.define("rhino.ravagers", PropertyCodec.INT, 2)
+            .validate(n -> n >= 1 && n <= 6);
+    public final Property<Integer> rhinoMineFuseSeconds = bag.define("rhino.mineFuseSeconds", PropertyCodec.INT, 5)
+            .validate(n -> n >= 2 && n <= 15);
+    public final Property<Integer> rhinoMineSpawnSeconds = bag.define("rhino.mineSpawnSeconds", PropertyCodec.INT, 4)
+            .validate(n -> n >= 1 && n <= 10);
 
     public PartyConfig(ConfigRegistry configs) { configs.register(bag, "games/party.yml", ""); }
 }
