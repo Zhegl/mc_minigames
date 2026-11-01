@@ -181,7 +181,7 @@ public final class GameCommands {
     /** {@code start [mode] [players] [option]}; mode suggestions remain live for player presets. */
     private LiteralArgumentBuilder<CommandSourceStack> buildStart(String name, Minigame game, boolean restart) {
         LiteralArgumentBuilder<CommandSourceStack> start = Commands.literal(name).requires(GameCommands::isAdmin);
-        if (game.modes().size() > 1) {
+        if (game.showModes()) {
             var mode = Commands.argument("mode", modeArgument(game)).suggests(Suggest.dynamic(game::modes));
             addStartTail(mode, game, true, restart);
             start.then(mode);
@@ -214,7 +214,7 @@ public final class GameCommands {
      */
     private LiteralArgumentBuilder<CommandSourceStack> buildTest(Minigame game) {
         LiteralArgumentBuilder<CommandSourceStack> test = Commands.literal("test").requires(GameCommands::isAdmin);
-        if (game.modes().size() > 1) {
+        if (game.showModes()) {
             var mode = Commands.argument("mode", modeArgument(game)).suggests(Suggest.dynamic(game::modes));
             addTestTail(mode, game, true);
             test.then(mode);
@@ -293,7 +293,7 @@ public final class GameCommands {
         if (option != null && option.values().get().stream().anyMatch(raw::equalsIgnoreCase)) {
             throw new CommandFailure("Give players before the " + option.key() + " " + raw + ": " + usage(game));
         }
-        if (firstArgument && game.modes().size() > 1) {
+        if (firstArgument && game.showModes()) {
             throw new CommandFailure("Unknown mode or player: " + raw + " (modes: "
                     + String.join(", ", game.modes()) + ")");
         }
@@ -337,7 +337,7 @@ public final class GameCommands {
 
     private static String usage(Minigame game) {
         StartOption option = game.startOption();
-        return "/" + game.id() + " start" + (game.modes().size() > 1 ? " [mode]" : "") + " [players]"
+        return "/" + game.id() + " start" + (game.showModes() ? " [mode]" : "") + " [players]"
                 + (option != null ? " [" + option.key() + "]" : "");
     }
 
@@ -369,7 +369,7 @@ public final class GameCommands {
                 sender.sendMessage(Component.text()
                         .append(Component.text("Start now: ", NamedTextColor.GRAY))
                         .append(Component.text(usage(game), NamedTextColor.GOLD))
-                        .append(Component.text(game.modes().size() > 1
+                        .append(Component.text(game.showModes()
                                 ? " (modes: " + String.join(", ", game.modes()) + ")" : "", NamedTextColor.GRAY))
                         .build());
             }

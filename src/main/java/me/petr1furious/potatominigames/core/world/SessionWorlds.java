@@ -26,6 +26,11 @@ public final class SessionWorlds {
         return throwaway.create(id, eagerDimensions);
     }
 
+    public World createVoid(String id) {
+        throwawayIds.add(id);
+        return throwaway.createVoid(id);
+    }
+
     /** Seeds of the generated worlds; empty when the session only plays on templates or shared maps. */
     public List<Long> seeds() {
         List<Long> seeds = new ArrayList<>();

@@ -210,7 +210,7 @@ public final class PlayCommand {
 
     private List<String> modeIds(String gameId) {
         Minigame game = sessions.game(gameId);
-        if (game == null || game.modes().size() <= 1) {
+        if (game == null || !game.showModes()) {
             return List.of();
         }
         return queues.queuesOf(game).stream().map(QueueService.Queue::mode).toList();

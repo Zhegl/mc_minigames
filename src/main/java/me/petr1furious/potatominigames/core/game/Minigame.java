@@ -17,7 +17,7 @@ public interface Minigame {
 
     Component displayName();
 
-    /** One queue per mode. A single mode is never shown to players. */
+    /** One queue per mode. Single modes are hidden unless showModes() is overridden. */
     default List<String> modes() {
         return List.of("default");
     }
@@ -25,6 +25,11 @@ public interface Minigame {
     /** Used by a plain {@code /<game> start}. */
     default String defaultMode() {
         return modes().getFirst();
+    }
+
+    /** Categories may expose named modes in menus and commands even with just one game. */
+    default boolean showModes() {
+        return modes().size() > 1;
     }
 
     default Material icon() {
