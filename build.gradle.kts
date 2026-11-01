@@ -67,6 +67,24 @@ val checkSniperDuel by tasks.registering(JavaExec::class) {
     mainClass.set("me.petr1furious.potatominigames.games.pillars.SniperDuelCheck")
 }
 
+val checkPillarsMath by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.MathChallengeCheck")
+}
+
+val checkPillarsShuffle by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.ShuffleItemsCheck")
+}
+
+val checkPillarsAdhd by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.AdhdModifierCheck")
+}
+
 val checkPartyPvp by tasks.registering(JavaExec::class) {
     dependsOn(checks.classesTaskName)
     classpath = checks.runtimeClasspath
@@ -98,5 +116,6 @@ val checkPvpClasses by tasks.registering(JavaExec::class) {
 }
 
 tasks.check {
-    dependsOn(checkPillarsPresets, checkSniperDuel, checkPartyPvp, checkPartySumo, checkPartyArmsRace, checkPartyRuntime, checkPvpClasses)
+    dependsOn(checkPillarsPresets, checkSniperDuel, checkPillarsMath, checkPillarsShuffle, checkPillarsAdhd,
+            checkPartyPvp, checkPartySumo, checkPartyArmsRace, checkPartyRuntime, checkPvpClasses)
 }

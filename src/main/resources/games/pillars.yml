@@ -31,6 +31,11 @@ soundEffects: true
 soundCooldownSeconds: 3
 itemSound: true
 
+# ADHD bursts: starts vary by ±25% around the mean; accelerated shuffle/rave last 30s.
+adhd:
+  meanSeconds: 120
+  durationSeconds: 30
+
 # Each mode's settings. cooldownSeconds is the time between items, timeLimit takes "30s",
 # "5min" or "1h"; layout is circular (an even ring) or random (scattered in a circle).
 # pillarMaterial overrides platformMaterial; luckyBlocks makes the pillar blocks lucky blocks
@@ -115,6 +120,15 @@ modes:
     bossBar: true
     layout: circular
     eventMeanSeconds: 30
+  adhd:
+    cooldownSeconds: 5
+    timeLimit: 8min
+    color: '#FFAA00'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    adhd: true
   fusion:
     cooldownSeconds: 5
     timeLimit: 8min

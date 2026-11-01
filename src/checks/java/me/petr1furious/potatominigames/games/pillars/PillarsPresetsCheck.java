@@ -11,7 +11,7 @@ import java.util.UUID;
 public final class PillarsPresetsCheck {
     private static final UUID ALICE = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID BOB = UUID.fromString("00000000-0000-0000-0000-000000000002");
-    private static final List<String> RESERVED = List.of("original", "fusion", "party", "rave");
+    private static final List<String> RESERVED = List.of("original", "fusion", "party", "rave", "adhd");
 
     @FunctionalInterface
     private interface Action {
@@ -24,9 +24,9 @@ public final class PillarsPresetsCheck {
             Path file = directory.resolve("data/pillars-presets.yml");
             PillarsPresets store = new PillarsPresets(file, RESERVED);
             check(!Files.exists(file), "Opening an empty store must not write data");
-            var first = store.save(ALICE, "Alice", "MiX", List.of("rave", "tactical", "chaos", "shuffle"));
+            var first = store.save(ALICE, "Alice", "MiX", List.of("adhd", "rave", "tactical", "chaos", "shuffle"));
             check(first.name().equals("mix"), "Names must normalize case");
-            check(first.modifiers().equals(List.of("chaos", "shuffle", "tactical", "rave")),
+            check(first.modifiers().equals(List.of("chaos", "shuffle", "tactical", "rave", "adhd")),
                     "Modifier selection must persist in canonical order");
             for (int i = 1; i < 5; i++) {
                 store.save(ALICE, "Alice", "alice" + i, List.of());
@@ -37,7 +37,7 @@ public final class PillarsPresetsCheck {
             check(store.find("MIX").modifiers().equals(List.of("tactical")), "Overwrite must work at the quota");
             expect(IllegalArgumentException.class, () -> store.save(BOB, "Bob", "mix", List.of("rave")));
             expect(IllegalArgumentException.class, () -> store.delete(BOB, "mix"));
-            for (String invalid : List.of("fusion", "../escape", "bad.name", "bad:name", "two words", "_bad",
+            for (String invalid : List.of("fusion", "adhd", "../escape", "bad.name", "bad:name", "two words", "_bad",
                     "a".repeat(25))) {
                 expect(IllegalArgumentException.class, () -> store.save(BOB, "Bob", invalid, List.of()));
             }
@@ -48,7 +48,7 @@ public final class PillarsPresetsCheck {
             expect(IllegalArgumentException.class,
                     () -> store.save(BOB, "Bob", "invalid", List.of("lucky")));
             store.delete(ALICE, "alice4");
-            store.save(ALICE, "Alice", "replacement", List.of("big_house"));
+            store.save(ALICE, "Alice", "replacement", List.of("big_house", "adhd"));
             PillarsPresets loaded = new PillarsPresets(file, RESERVED);
             check(loaded.all().equals(store.all()), "Owners, names and modifiers must survive reload");
             expect(IllegalArgumentException.class,
