@@ -13,7 +13,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
@@ -319,12 +319,53 @@ Forced logs, the crossbow and ammunition bypass the general item blacklist.
 Drop progress is per player, survives reconnects, and resets with each new game.
 This is a standalone mode, not another random Fusion modifier.
 
+## Pillars Item Shuffle
+
+In `item-shuffle` and every Fusion/preset with `shuffle`, each new set expires the
+previous items everywhere in the arena: inventories (including armour, offhand,
+cursor and crafting grids), dropped items, container contents and equipment/storage
+on entities. Boats, minecarts, hanging decorations and armour stands also disappear,
+so breaking them cannot recover an old item. Placed blocks stay, but their inventories empty.
+Unloaded chunks are cleaned when they load, and reconnecting cannot restore an
+earlier set. Ender chests are unavailable during shuffle; their persistent contents
+are left intact. SUPERHOT cannot return frozen items from a previous set.
+
 ## Pillars fusion
 
 `fusion` rolls its rules every game: chaos (random layout, chaos-speed items), shuffle (at
-item-shuffle's own pace, which nothing speeds up), tactical (with shuffle, everyone gets the same
-set), big_house, each with a 50% chance, and party or rave with 25% each. The values come from
+item-shuffle's own pace outside ADHD bursts), tactical (with shuffle, everyone gets the same
+set), big_house and adhd, each with a 50% chance, and party or rave with 25% each. The values come from
 those modes' settings. The roll is announced at the start and shown in the summary.
+
+## Pillars ADHD / СДВГ
+
+`/play pillars adhd` starts ordinary Pillars with intermittent **30-second bursts**.
+Burst starts vary between 90 and 150 seconds apart (120 seconds on average), with
+the same delay before the first burst. At the start, everyone's items are immediately
+replaced with a shuffle set. Sets then change **three times as fast as item-shuffle**:
+every 3⅓ seconds at the default 10-second shuffle interval. The cleanup rules above
+apply to each set; placed blocks remain, but stored items expire.
+
+During the burst, random events roll **three times as often as configured rave**
+(a 10-second mean with bundled defaults, 6⅔ seconds with the server's 20-second rave).
+An already faster base event rate stays faster. The remaining burst time appears
+in the HUD. At the end, base item drops/shuffle and event frequency resume; events
+and pending warnings created by the burst stop. Pre-existing base events continue.
+Expired item stashes stay expired even if their chunk loads after the burst.
+Ender chests are blocked for the entire ADHD-enabled match to prevent hiding items
+between bursts; their persistent contents remain intact.
+
+The `adhd` modifier can be added to fixed presets alongside any other modifier,
+and Fusion independently rolls it with a 50% chance. To enable it on an existing
+mode, including classic, use `/pillars config modes.original.adhd true` (next game).
+Burst timing lives in `games/pillars.yml`: `adhd.meanSeconds` and
+`adhd.durationSeconds`; these are read at game start. Item/event multipliers are 3.
+
+```
+/pillars preset save distracted adhd
+/pillars preset save distracted_duel tactical big_house rave adhd
+/pillars test adhd
+```
 
 ## Player Pillars presets
 
@@ -339,7 +380,7 @@ Ownership and the limit use the player's UUID, including across restarts.
 /pillars preset delete duel
 ```
 
-Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`.
+Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`.
 `party` and `rave` are mutually exclusive. With no modifiers, `save` creates plain
 Pillars with Fusion's base settings. Unlike Fusion, the selected modifiers always
 apply: there is no random roll. Their settings and precedence are the same as
@@ -386,6 +427,14 @@ chaos). Each is picked evenly among those not already running. Most events are a
 | Vanishing Blocks | rest of game | placed blocks disappear after 15s |
 | SUPERHOT | 30s | standing still takes your items away until you move |
 | Airdrop | — | a chest with a row of random items appears between the players, 3 to 15 blocks above the pillars |
+| Contract Ad / Реклама | 5s | a large central title advertising contract service flashes in different colours; other event titles are suppressed while the ad is visible |
+| Math / Контрольная | 10s | solve a small addition, subtraction or multiplication problem by typing the integer answer in chat; each living player who has not answered correctly takes 3 hearts of damage at timeout |
+
+Math questions appear in chat and in the action bar with a countdown. Wrong answers
+allow retries until the deadline; spectators and eliminated players cannot answer
+or receive the penalty. Both events also enter Fusion and player presets whenever
+the party or rave modifier is active. Ending the game clears the ad and cancels
+the question without dealing damage.
 
 ## Pillars arenas
 
@@ -490,23 +539,6 @@ The 26.2 build exists for the bot-tested dev server; the servers run 26.3.
 `build` runs self-checks without adding a test framework: preset ownership, quota,
 reload and failed-write preservation, plus Sniper Duel's opening sequence and equal
 later drop categories. Run them alone with `sh ./gradlew checkPillarsPresets checkSniperDuel`.
-`checkPartyPvp` also checks round-robin schedules for 2–12 players, BO3, forfeits,
-personal-meeting ties, title contenders, random class draws, arena symmetry and
-player-block reset without a running server.
-`checkPartySumo` checks platform geometry, safe spawns, ring-outs, overtime shrink
-and complete restoration, protected terrain, knockback symmetry and hit cooldowns.
-`checkPartyArmsRace` checks FFA weapon progression and final victory, duplicate
-death and stale-shot handling, respawn/reconnect progress, timeout standings and
-all sixteen spawn points, including the farthest-from-enemies selection.
-`checkPartyRuntime` checks fixed countdown positions, cancelled jumps, blocked
-spectator flight, exact movement-speed restoration, and targeted projectile cleanup
-and lifetime bounds, mount ownership and cleanup, the spear damage cap, and death-pause timing (including early manual respawn,
-duplicate callbacks and per-player/round cleanup).
-`checkPartyPvp` also enforces the lightweight map geometry.
-`checkPvpClasses` verifies kit slot safety, the mage's twelve-potion loadout, stock
-caps and potion targets, all 110 equally weighted opening matchups, backstab,
-lifesteal and frost cooldowns, safe dash/leap vectors, the native mace/wind-charge
-loadout, unlimited ammunition for every bow class and the Blood Fury health cost.
 
 ## License
 
