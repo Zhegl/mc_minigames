@@ -146,6 +146,29 @@ public final class ShuffleItemsCheck {
         check(foreignChest.occupied && !foreignDrop.removed,
                 "Other worlds are unaffected");
         cleanup.close();
+
+        ShuffleItems temporary = new ShuffleItems(other.world);
+        temporary.setEnabled(false);
+        PlayerState classic = new PlayerState(other.world, true);
+        temporary.clearPlayerIfStale(classic.player);
+        temporary.onChunkLoad(new ChunkLoadEvent(foreignChunk.chunk, false));
+        temporary.onEntitiesLoad(new EntitiesLoadEvent(foreignChunk.chunk, List.of(foreignDrop.entity)));
+        check(classic.inventory.occupied && foreignChest.occupied && !foreignDrop.removed,
+                "Before the first temporary shuffle, classic inventory and world items behave normally");
+        temporary.setEnabled(true);
+        temporary.nextCycle(List.of(classic.player));
+        check(!classic.inventory.occupied && !foreignChest.occupied, "A temporary burst uses the full shuffle cleanup");
+        temporary.setEnabled(false);
+        foreignChest.occupied = true;
+        temporary.onChunkLoad(new ChunkLoadEvent(foreignChunk.chunk, false));
+        check(foreignChest.occupied, "Returning to classic does not wipe current-generation items");
+        ChunkState late = other.chunk(true);
+        Store lateStash = new Store();
+        late.blocks.add(fake(Container.class, (p, m, a) -> lateStash.inventory));
+        temporary.onChunkLoad(new ChunkLoadEvent(late.chunk, false));
+        temporary.onEntitiesLoad(new EntitiesLoadEvent(late.chunk, List.of(foreignDrop.entity)));
+        check(!lateStash.occupied && foreignDrop.removed, "An expired stash loading after the burst is still discarded");
+        temporary.close();
         System.out.println("Shuffle: dropped and stashed items, crafting/cursor, entity storage, chunk reloads and reconnects verified");
     }
 

@@ -42,6 +42,7 @@ queues:
     big_house: {enabled: true, minPlayers: 2, maxPlayers: 16}
     party: {enabled: true, minPlayers: 2, maxPlayers: 16}
     rave: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    adhd: {enabled: true, minPlayers: 2, maxPlayers: 16}
     fusion: {enabled: true, minPlayers: 2, maxPlayers: 16}
   bingo:
     default: {enabled: true, minPlayers: 1, maxPlayers: 0}

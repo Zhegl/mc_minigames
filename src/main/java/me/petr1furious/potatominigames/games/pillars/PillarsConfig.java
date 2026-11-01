@@ -28,7 +28,7 @@ import me.petr1furious.potatominigames.core.config.PropertyCodec;
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
     static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky", "tactical", "big_house",
-            "sniper_duel", "party", "rave", "fusion");
+            "sniper_duel", "party", "rave", "adhd", "fusion");
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
@@ -48,6 +48,10 @@ public final class PillarsConfig {
     /** Chance that a handed-out item that can be enchanted comes enchanted, as from an enchanting table. */
     public final Property<Double> enchantChance = bag.define("enchantChance", PropertyCodec.DOUBLE, 1.0 / 3)
             .validate(value -> value >= 0 && value <= 1);
+    public final Property<Double> adhdMeanSeconds = bag.define("adhd.meanSeconds", PropertyCodec.DOUBLE, 120.0)
+            .validate(value -> Double.isFinite(value) && value >= 1);
+    public final Property<Integer> adhdDurationSeconds = bag.define("adhd.durationSeconds", PropertyCodec.INT, 30)
+            .validate(value -> value >= 1 && value <= 300);
 
     private final Map<String, Mode> modes = new LinkedHashMap<>();
 
@@ -72,6 +76,8 @@ public final class PillarsConfig {
         public final Property<Double> distanceMultiplier;
         /** Average seconds between random events (see PillarsEvents); 0 turns them off. */
         public final Property<Double> eventMeanSeconds;
+        /** Intermittent accelerated shuffle/rave, also available on otherwise ordinary modes. */
+        public final Property<Boolean> adhd;
 
         Mode(String id, PropertyBag bag, int cooldown, String timeLimit, String color, boolean actionBar,
                 boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks, boolean sameItems,
@@ -96,6 +102,7 @@ public final class PillarsConfig {
                     .validate(value -> value > 0);
             this.eventMeanSeconds = bag.define("eventMeanSeconds", PropertyCodec.DOUBLE, eventMeanSeconds)
                     .validate(value -> value >= 0);
+            this.adhd = bag.define("adhd", PropertyCodec.BOOL, id.equals("adhd"));
         }
 
         private static boolean isBlock(String value) {
@@ -146,7 +153,8 @@ public final class PillarsConfig {
         // Random events: one a minute on average; rave twice as often, with chaos-speed items.
         addMode("party", 5, "8min", "#FF77FF", false, true, "circular", "", false, false, 1.0, 60);
         addMode("rave", 3, "8min", "#FF2E97", false, true, "circular", "", false, false, 1.0, 30);
-        // A random mix of chaos, shuffle, tactical, big_house and party/rave, rolled every game.
+        addMode("adhd", 5, "8min", "#FFAA00", false, true, "circular");
+        // A random mix of chaos, shuffle, tactical, big_house, adhd and party/rave, rolled every game.
         addMode("fusion", 5, "8min", "#7DF9FF", false, true, "circular", "", false, false, 1.0, 0);
     }
 

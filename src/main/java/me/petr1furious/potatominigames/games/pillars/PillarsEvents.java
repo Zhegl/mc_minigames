@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -56,7 +57,7 @@ import me.petr1furious.potatominigames.core.game.SessionServices;
 
 /**
  * Random events of the party and rave modes. Every second an event starts with the same chance,
- * so the wait between them averages {@code eventMeanSeconds}; it is picked evenly among the events
+ * so the wait between them averages the supplied mean; it is picked evenly among the events
  * not already running or announced. Swap starts immediately; others are announced five seconds ahead.
  */
 final class PillarsEvents implements Listener {
@@ -118,14 +119,14 @@ final class PillarsEvents implements Listener {
 
     private final PillarsSession session;
     private final SessionServices services;
-    private final double chancePerSecond;
     private final NamespacedKey gravityKey;
     private final NamespacedKey scaleKey;
     private final NamespacedKey itemKey;
 
     private final Set<Kind> pending = EnumSet.noneOf(Kind.class);
     private final Set<Kind> running = EnumSet.noneOf(Kind.class);
-    private final List<BukkitTask> tasks = new ArrayList<>();
+    private final EventTasks<Kind> eventTasks = new EventTasks<>();
+    private long burstEndsAt;
     private final BukkitTask ticker;
     private int tick;
     private boolean closed;
@@ -151,10 +152,9 @@ final class PillarsEvents implements Listener {
     /** The async chat handler only snapshots this reference; all state is read on the server thread. */
     private volatile MathChallenge mathChallenge;
 
-    PillarsEvents(PillarsSession session, SessionServices services, double meanSeconds) {
+    PillarsEvents(PillarsSession session, SessionServices services) {
         this.session = session;
         this.services = services;
-        this.chancePerSecond = 1.0 / Math.max(1.0, meanSeconds);
         var plugin = services.plugin();
         this.gravityKey = new NamespacedKey(plugin, "pillars_event_gravity");
         this.scaleKey = new NamespacedKey(plugin, "pillars_event_scale");
@@ -166,8 +166,8 @@ final class PillarsEvents implements Listener {
     // Rolling and lifecycle.
 
     /** Once a second while the game runs. */
-    void onSecond() {
-        if (closed || ThreadLocalRandom.current().nextDouble() >= chancePerSecond) {
+    void onSecond(double meanSeconds) {
+        if (closed || meanSeconds <= 0 || ThreadLocalRandom.current().nextDouble() >= 1.0 / Math.max(1.0, meanSeconds)) {
             return;
         }
         List<Kind> candidates = new ArrayList<>();
@@ -180,6 +180,7 @@ final class PillarsEvents implements Listener {
             return;
         }
         Kind kind = candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
+        eventTasks.selected(kind);
         if (kind == Kind.SWAP) {
             begin(kind);
             return;
@@ -197,7 +198,19 @@ final class PillarsEvents implements Listener {
                 .append(Component.text(kind.title, NamedTextColor.GOLD))
                 .append(Component.text(" in 5s: " + kind.description, NamedTextColor.GRAY))
                 .build());
-        later(WARNING_TICKS, () -> begin(kind));
+        later(kind, WARNING_TICKS, () -> begin(kind));
+    }
+
+    void startBurst(long durationTicks) {
+        eventTasks.startBurst();
+        burstEndsAt = tick + durationTicks;
+    }
+
+    /** Cancel warnings, delayed block bans and temporary effects belonging to this burst. */
+    void stopBurst() {
+        for (Kind kind : eventTasks.stopBurst()) {
+            finish(kind, false);
+        }
     }
 
     private boolean eligible(Kind kind) {
@@ -222,12 +235,14 @@ final class PillarsEvents implements Listener {
         if (kind.seconds == 0) {
             finish(kind, true);
         } else if (kind.seconds > 0 && kind != Kind.BLOCK_BAN) {
-            later(kind.seconds * 20L, () -> finish(kind, true));
+            later(kind, kind.seconds * 20L, () -> finish(kind, true));
         }
     }
 
     /** @param natural false when the game is over, so nothing should still happen (no explosion) */
     private void finish(Kind kind, boolean natural) {
+        pending.remove(kind);
+        eventTasks.finish(kind);
         if (!running.remove(kind)) {
             return;
         }
@@ -244,6 +259,7 @@ final class PillarsEvents implements Listener {
             case KNOCKBACK -> removeEventItems(Kind.KNOCKBACK);
             case FRENZY -> session.setItemSpeed(1);
             case HOT_POTATO -> endPotato(natural);
+            case VANISHING -> vanishing.clear();
             case CONTRACT_AD -> {
                 for (Player player : audience()) {
                     player.clearTitle();
@@ -275,10 +291,7 @@ final class PillarsEvents implements Listener {
         closed = true;
         HandlerList.unregisterAll(this);
         ticker.cancel();
-        for (BukkitTask task : tasks) {
-            task.cancel();
-        }
-        tasks.clear();
+        eventTasks.close();
         pending.clear();
         for (Kind kind : List.copyOf(running)) {
             finish(kind, false);
@@ -286,8 +299,8 @@ final class PillarsEvents implements Listener {
         vanishing.clear();
     }
 
-    private void later(long delay, Runnable action) {
-        tasks.add(Bukkit.getScheduler().runTaskLater(services.plugin(), () -> {
+    private void later(Kind kind, long delay, Runnable action) {
+        eventTasks.add(kind, Bukkit.getScheduler().runTaskLater(services.plugin(), () -> {
             if (!closed) {
                 action.run();
             }
@@ -325,13 +338,13 @@ final class PillarsEvents implements Listener {
                             NamedTextColor.LIGHT_PURPLE));
                 }
             }
-            case SPOTLIGHT -> effect(alive, PotionEffectType.GLOWING, 0, kind.seconds * 20);
+            case SPOTLIGHT -> effect(alive, PotionEffectType.GLOWING, 0, effectTicks(kind, kind.seconds * 20));
             case HANGOVER -> {
-                effect(alive, PotionEffectType.NAUSEA, 2, kind.seconds * 20);
-                effect(alive, PotionEffectType.SLOWNESS, 1, kind.seconds * 20);
-                effect(alive, PotionEffectType.WITHER, 0, 20);
+                effect(alive, PotionEffectType.NAUSEA, 2, effectTicks(kind, kind.seconds * 20));
+                effect(alive, PotionEffectType.SLOWNESS, 1, effectTicks(kind, kind.seconds * 20));
+                effect(alive, PotionEffectType.WITHER, 0, effectTicks(kind, 20));
             }
-            case DARKNESS -> effect(alive, PotionEffectType.DARKNESS, 0, kind.seconds * 20);
+            case DARKNESS -> effect(alive, PotionEffectType.DARKNESS, 0, effectTicks(kind, kind.seconds * 20));
             case WIND -> {
                 windYaw = ThreadLocalRandom.current().nextFloat() * 360f;
                 double radians = Math.toRadians(windYaw);
@@ -546,7 +559,8 @@ final class PillarsEvents implements Listener {
             int hits = discoHits.merge(id, 1, Integer::sum);
             // One more heart every time.
             player.damage(2.0 * hits);
-            player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 60, 0, false, false, false));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, effectTicks(Kind.DISCO, 60), 0,
+                    false, false, false));
             player.sendActionBar(Component.text("Keep moving! (-" + hits + " ♥)", NamedTextColor.RED));
         }
     }
@@ -728,7 +742,8 @@ final class PillarsEvents implements Listener {
         potatoHolder = holder.getUniqueId();
         potatoPassedAt = tick;
         give(holder, eventItem(Material.TNT, Kind.HOT_POTATO, "Hot Potato", NamedTextColor.RED));
-        holder.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, POTATO_TICKS, 0, false, false, false));
+        holder.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, effectTicks(Kind.HOT_POTATO, POTATO_TICKS),
+                0, false, false, false));
         holder.playSound(holder.getLocation(), Sound.ENTITY_TNT_PRIMED, 1f, 1.2f);
     }
 
@@ -833,7 +848,7 @@ final class PillarsEvents implements Listener {
         Material[] last = {null};
         while (at < WARNING_TICKS) {
             int index = step;
-            later(at, () -> {
+            later(Kind.BLOCK_BAN, at, () -> {
                 Material shown = names.get(ThreadLocalRandom.current().nextInt(names.size()));
                 if (names.size() > 1 && shown == last[0]) {
                     shown = names.get((names.indexOf(shown) + 1) % names.size());
@@ -848,13 +863,13 @@ final class PillarsEvents implements Listener {
             step++;
         }
         Material chosen = pick(candidates);
-        later(WARNING_TICKS, () -> {
+        later(Kind.BLOCK_BAN, WARNING_TICKS, () -> {
             showBanName(Component.text("✖ " + pretty(chosen), NamedTextColor.RED).decorate(TextDecoration.BOLD), 45);
             for (Player player : audience()) {
                 player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_LAND, 0.6f, 1.0f);
             }
         });
-        later(WARNING_TICKS + 40, () -> {
+        later(Kind.BLOCK_BAN, WARNING_TICKS + 40, () -> {
             int removed = 0;
             for (Map.Entry<Block, Material> entry : List.copyOf(placed.entrySet())) {
                 if (entry.getValue() == chosen && entry.getKey().getType() == chosen) {
@@ -916,7 +931,7 @@ final class PillarsEvents implements Listener {
         Block block = event.getBlockPlaced();
         placed.put(block, block.getType());
         if (running.contains(Kind.SLIPPERY)) {
-            later(1L, () -> {
+            later(Kind.SLIPPERY, 1L, () -> {
                 if (block.getType() != Material.AIR) {
                     block.setType(Material.PACKED_ICE);
                     placed.put(block, Material.PACKED_ICE);
@@ -968,6 +983,39 @@ final class PillarsEvents implements Listener {
 
     private List<Player> audience() {
         return services.session().audiencePlayers();
+    }
+
+    private int effectTicks(Kind kind, int normalTicks) {
+        return eventTasks.isBurst(kind) ? (int) Math.max(0, Math.min(normalTicks, burstEndsAt - tick)) : normalTicks;
+    }
+
+    /** A warning, its effect and its callbacks belong to the same event lifetime. */
+    static final class EventTasks<K> {
+        private final Map<K, List<BukkitTask>> tasks = new HashMap<>();
+        private final Set<K> burstEvents = new HashSet<>();
+        private boolean burst;
+
+        void startBurst() { burst = true; }
+        void selected(K kind) { if (burst) burstEvents.add(kind); }
+        boolean isBurst(K kind) { return burstEvents.contains(kind); }
+        void add(K kind, BukkitTask task) { tasks.computeIfAbsent(kind, ignored -> new ArrayList<>()).add(task); }
+
+        Set<K> stopBurst() {
+            burst = false;
+            return Set.copyOf(burstEvents);
+        }
+
+        void finish(K kind) {
+            burstEvents.remove(kind);
+            List<BukkitTask> scheduled = tasks.remove(kind);
+            if (scheduled != null) scheduled.forEach(BukkitTask::cancel);
+        }
+
+        void close() {
+            for (K kind : List.copyOf(tasks.keySet())) finish(kind);
+            burstEvents.clear();
+            burst = false;
+        }
     }
 
     private static void effect(List<Player> players, PotionEffectType type, int amplifier, int ticks) {

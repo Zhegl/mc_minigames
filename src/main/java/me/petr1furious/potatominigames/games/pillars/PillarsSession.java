@@ -132,6 +132,8 @@ final class PillarsSession implements GameSession {
     /** Random events (party, rave); null when the mode has none. */
     private PillarsEvents events;
     private ShuffleItems shuffleItems;
+    private AdhdModifier adhd;
+    private BukkitTask adhdTask;
     /** Item Frenzy divides the item cooldown by this. */
     private int itemSpeed = 1;
 
@@ -170,6 +172,10 @@ final class PillarsSession implements GameSession {
                 : new Rules(mode.layout.get().equalsIgnoreCase("random"), mode.cooldownSeconds.get(),
                         mode.id.equals("item-shuffle"), mode.sameItems.get(), mode.distanceMultiplier.get(),
                         mode.eventMeanSeconds.get(), List.of());
+        if (mode.adhd.get() || rules.modifiers().contains("adhd")) {
+            adhd = new AdhdModifier(config.adhdMeanSeconds.get(), config.adhdDurationSeconds.get(),
+                    config.mode("item-shuffle").cooldownSeconds.get(), ThreadLocalRandom.current());
+        }
         List<PillarsArena> usable = game.importedArenas();
         if (usable.isEmpty()) {
             throw new CommandFailure("No pillars arenas imported. Use "
@@ -266,21 +272,28 @@ final class PillarsSession implements GameSession {
         // Set only once nothing else can fail.
         game.setActiveSession(this);
         setLuckyWorld(mode.luckyBlocks.get());
-        if (rules.eventMeanSeconds() > 0) {
-            events = new PillarsEvents(this, services, rules.eventMeanSeconds());
+        if (rules.eventMeanSeconds() > 0 || adhd != null) {
+            events = new PillarsEvents(this, services);
         }
-        if (rules.shuffle()) {
+        if (rules.shuffle() || adhd != null) {
             shuffleItems = new ShuffleItems(world);
             Bukkit.getPluginManager().registerEvents(shuffleItems, services.plugin());
             for (Player player : services.participants().onlinePlayers()) {
                 shuffleItems.clearPlayerIfStale(player);
             }
+            shuffleItems.setEnabled(rules.shuffle());
+        }
+        if (adhd != null) {
+            adhdTask = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickAdhd, 1L, 1L);
         }
         if (preset != null || mode.id.equals("fusion")) {
             announce(Component.text()
                     .append(Component.text((preset != null ? preset.name() : "Fusion") + ": ", mode.accentColor()))
                     .append(Component.text(fusionText(), NamedTextColor.WHITE))
                     .build());
+        } else if (adhd != null) {
+            announce(Component.text("СДВГ включён: периодические вспышки ускоренного шафла и рейва.",
+                    NamedTextColor.GOLD));
         }
         services.plugin().getLogger().info("Pillars (" + modeId + (rules.modifiers().isEmpty() ? ""
                 : ": " + String.join("+", rules.modifiers())) + ") started in arena " + arena.name() + " with "
@@ -432,9 +445,9 @@ final class PillarsSession implements GameSession {
             updateHud();
             return;
         }
-        if (itemCountdown <= 0) {
+        if (!adhdActive() && itemCountdown <= 0) {
             cycleItems();
-        } else if (config.soundEffects.get() && itemCountdown <= config.soundCooldownSeconds.get()) {
+        } else if (!adhdActive() && config.soundEffects.get() && itemCountdown <= config.soundCooldownSeconds.get()) {
             for (PillarPlayer pillarPlayer : alive) {
                 Player player = pillarPlayer.player();
                 if (player != null) {
@@ -442,15 +455,57 @@ final class PillarsSession implements GameSession {
                 }
             }
         }
-        itemCountdown--;
+        if (!adhdActive()) {
+            itemCountdown--;
+        }
         timeLeft--;
         if (events != null) {
-            events.onSecond();
+            events.onSecond(adhdActive()
+                    ? AdhdModifier.eventMean(rules.eventMeanSeconds(), config.mode("rave").eventMeanSeconds.get())
+                    : rules.eventMeanSeconds());
         }
         updateHud();
         if (timeLeft <= 0) {
             end(Ending.TIME_OVER, List.of());
         }
+    }
+
+    private boolean adhdActive() {
+        return adhd != null && adhd.active();
+    }
+
+    private void tickAdhd() {
+        if (ending || !started || alive.isEmpty()) {
+            return;
+        }
+        switch (adhd.tick()) {
+            case START -> {
+                shuffleItems.setEnabled(true);
+                events.startBurst(adhd.durationTicks());
+                announce(Component.text("СДВГ! " + adhd.secondsLeft()
+                        + " с: шафл ×3 и рейв ×3!", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+                Title title = Title.title(Component.text("СДВГ!", NamedTextColor.GOLD).decorate(TextDecoration.BOLD),
+                        Component.text("Шафл ×3 • Рейв ×3 • " + adhd.secondsLeft() + " с", NamedTextColor.YELLOW));
+                for (Player player : services.session().audiencePlayers()) {
+                    player.showTitle(title);
+                }
+                cycleItems();
+                updateHud();
+            }
+            case SHUFFLE -> cycleItems();
+            case END -> {
+                events.stopBurst();
+                shuffleItems.setEnabled(rules.shuffle());
+                itemCountdown = itemCooldown();
+                announce(Component.text("СДВГ закончился: возвращаются обычные правила режима.", NamedTextColor.GRAY));
+                updateHud();
+            }
+            default -> { }
+        }
+    }
+
+    private long itemSecondsLeft() {
+        return adhdActive() ? adhd.shuffleSecondsLeft() : Math.max(0, itemCountdown);
     }
 
     private void tickStartCountdown() {
@@ -483,8 +538,8 @@ final class PillarsSession implements GameSession {
     }
 
     private void cycleItems() {
-        boolean sniper = mode.id.equals("sniper_duel");
-        boolean shuffle = rules.shuffle();
+        boolean sniper = mode.id.equals("sniper_duel") && !adhdActive();
+        boolean shuffle = shuffles();
         int count = shuffle ? 10 : 1;
         if (shuffle) {
             if (events != null) {
@@ -585,14 +640,14 @@ final class PillarsSession implements GameSession {
     }
 
     /**
-     * Fusion: each of chaos, shuffle, tactical and big_house with a 50% chance, and party or rave
+     * Fusion: each of chaos, shuffle, tactical, big_house and adhd with a 50% chance, and party or rave
      * with 25% each. Values come from those modes' own settings. Chaos and rave speed items up to
      * their pace; shuffle keeps item-shuffle's, whatever else is on.
      */
     private Rules rollFusion() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         List<String> modifiers = new ArrayList<>();
-        for (String modifier : List.of("chaos", "shuffle", "tactical", "big_house")) {
+        for (String modifier : List.of("chaos", "shuffle", "tactical", "big_house", "adhd")) {
             if (random.nextBoolean()) {
                 modifiers.add(modifier);
             }
@@ -634,7 +689,7 @@ final class PillarsSession implements GameSession {
 
     /** Item Frenzy cannot speed shuffle up, so it is not rolled then. */
     boolean shuffles() {
-        return rules.shuffle();
+        return rules.shuffle() || adhdActive();
     }
 
     // For PillarsEvents.
@@ -799,7 +854,9 @@ final class PillarsSession implements GameSession {
     private void updateHud() {
         if (bossBar != null) {
             float progress = itemCountdownProgress();
-            bossBar.name(Component.text("=== " + Math.max(0, itemCountdown) + "s ===").style(keyStyle()));
+            bossBar.name(Component.text(adhdActive()
+                    ? "СДВГ: " + adhd.secondsLeft() + " с • смена через " + itemSecondsLeft() + " с"
+                    : "=== " + itemSecondsLeft() + "s ===").style(keyStyle()));
             bossBar.progress(progress);
             bossBar.color(barColor(progress));
         }
@@ -824,6 +881,9 @@ final class PillarsSession implements GameSession {
     }
 
     private float itemCountdownProgress() {
+        if (adhdActive()) {
+            return adhd.shuffleProgress();
+        }
         float cooldown = Math.max(1, itemCooldown() - 1);
         return Math.max(0f, Math.min(1f, Math.max(0, itemCountdown) / cooldown));
     }
@@ -849,9 +909,12 @@ final class PillarsSession implements GameSession {
         if (actionBarPhase > 1.0) {
             actionBarPhase -= 2.0;
         }
-        boolean now = itemCountdown <= 0;
+        boolean now = itemSecondsLeft() <= 0;
         List<TextColor> colors = now ? ITEM_NOW_COLORS : ITEM_TIME_COLORS;
-        String text = now ? "New item(s)" : "Next item in " + itemCountdown + "s";
+        String text = now ? "New item(s)" : "Next item in " + itemSecondsLeft() + "s";
+        if (adhdActive()) {
+            text = "СДВГ " + adhd.secondsLeft() + " с • " + text;
+        }
         Component bar = MiniMessage.miniMessage().deserialize("<gradient:" + colors.get(0).asHexString() + ":"
                 + colors.get(1).asHexString() + ":" + String.format(java.util.Locale.ROOT, "%.2f", actionBarPhase)
                 + ">" + text + "</gradient>");
@@ -864,6 +927,10 @@ final class PillarsSession implements GameSession {
     }
 
     String modeName() {
+        return baseModeName() + (adhdActive() ? " • СДВГ!" : "");
+    }
+
+    private String baseModeName() {
         if (preset != null) {
             return preset.name();
         }
@@ -876,6 +943,7 @@ final class PillarsSession implements GameSession {
             case "sniper_duel" -> "Sniper Duel";
             case "party" -> "Party";
             case "rave" -> "Rave";
+            case "adhd" -> "СДВГ";
             case "fusion" -> "Fusion";
             default -> "Original";
         };
@@ -1110,7 +1178,7 @@ final class PillarsSession implements GameSession {
                 + ", arena: " + arena.name(), NamedTextColor.GRAY));
         lines.add(Component.text("Time left: " + TimeFormat.words(timeLeft)
                 + (started ? "" : ", starting in " + startCountdown + "s")
-                + ", next item in " + Math.max(0, itemCountdown) + "s", NamedTextColor.GRAY));
+                + ", next item in " + itemSecondsLeft() + "s", NamedTextColor.GRAY));
         lines.add(Component.text("Item pool: " + items.size() + " item(s), total weight "
                 + items.stream().mapToLong(ItemPool.PoolItem::weight).sum(), NamedTextColor.GRAY));
         lines.add(Component.text("Item groups: " + groups.size() + " (" + String.join(", ",
@@ -1270,6 +1338,9 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onEnd(EndReason reason) {
+        if (adhdTask != null) {
+            adhdTask.cancel();
+        }
         setLuckyWorld(false);
         if (events != null) {
             events.close();
@@ -1326,6 +1397,10 @@ final class PillarsSession implements GameSession {
             lines.add(Component.empty());
             lines.add(Component.text((preset != null ? preset.name() : "Fusion") + ": " + fusionText(),
                     NamedTextColor.GRAY));
+        }
+        if (adhd != null) {
+            lines.add(Component.text("СДВГ: " + adhd.durationTicks() / 20 + " с шафла ×3 и рейва ×3 во время вспышек",
+                    NamedTextColor.GOLD));
         }
         return lines;
     }

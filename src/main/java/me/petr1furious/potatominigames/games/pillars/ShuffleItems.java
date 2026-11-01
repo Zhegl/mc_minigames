@@ -44,9 +44,15 @@ final class ShuffleItems implements Listener {
     private final Map<Long, Long> entityCycles = new HashMap<>();
     private final Map<UUID, Long> playerCycles = new HashMap<>();
     private long cycle;
+    private boolean enabled = true;
 
     ShuffleItems(World world) {
         this.world = world;
+    }
+
+    /** Before the first temporary shuffle, leave normal inventories and world loot alone. */
+    void setEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     void nextCycle(Collection<Player> players) {
@@ -66,6 +72,9 @@ final class ShuffleItems implements Listener {
 
     /** Reconnecting must not restore a set from an earlier shuffle. */
     void clearPlayerIfStale(Player player) {
+        if (!enabled && cycle == 0) {
+            return;
+        }
         if (playerCycles.getOrDefault(player.getUniqueId(), -1L) == cycle) {
             return;
         }
@@ -139,14 +148,14 @@ final class ShuffleItems implements Listener {
     // Blocks and entities load separately; neither sweep may mark the other as already clean.
     @EventHandler(priority = EventPriority.LOWEST)
     public void onChunkLoad(ChunkLoadEvent event) {
-        if (event.getWorld().equals(world)) {
+        if ((enabled || cycle > 0) && event.getWorld().equals(world)) {
             clearBlocksIfStale(event.getChunk());
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onEntitiesLoad(EntitiesLoadEvent event) {
-        if (event.getWorld().equals(world)) {
+        if ((enabled || cycle > 0) && event.getWorld().equals(world)) {
             clearEntitiesIfStale(event.getChunk(), event.getEntities());
         }
     }
