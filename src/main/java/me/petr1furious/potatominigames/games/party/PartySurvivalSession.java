@@ -46,6 +46,7 @@ import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
 import me.petr1furious.potatominigames.core.command.CommandFailure;
 import me.petr1furious.potatominigames.core.game.EndReason;
 import me.petr1furious.potatominigames.core.game.GameSession;
@@ -61,6 +62,7 @@ abstract class PartySurvivalSession implements GameSession, Listener {
     final String title;
     final Map<UUID, String> names = new LinkedHashMap<>();
     final Set<UUID> connected = new LinkedHashSet<>();
+    private final CountdownFreeze countdownFreeze = new CountdownFreeze();
     World world;
     SurvivalStandings standings;
     long tick;
@@ -121,6 +123,7 @@ abstract class PartySurvivalSession implements GameSession, Listener {
             player.setAbsorptionAmount(0);
             player.setSaturation(20);
             teleport(player, spawn(index++, names.size()));
+            countdownFreeze.freeze(player);
             player.showBossBar(bar);
         }
         say(instructions());
@@ -162,6 +165,7 @@ abstract class PartySurvivalSession implements GameSession, Listener {
         tick++;
         if (connected.isEmpty()) { services.session().endGame(EndReason.ALL_PLAYERS_LEFT); return; }
         if (!playing && tick >= countdownEnd) {
+            countdownFreeze.releaseAll();
             playing = true;
             startedAt = tick;
             announceTitle("Поехали!", title, 1);
@@ -194,6 +198,7 @@ abstract class PartySurvivalSession implements GameSession, Listener {
     }
     final void eliminate(Player player) {
         if (done || !standings.eliminate(player.getUniqueId(), tick)) return;
+        countdownFreeze.release(player.getUniqueId());
         playerOut(player);
         say(player.getName() + " выбывает! Осталось: " + standings.survivors().size());
         player.sendMessage(Component.text("Ты выбыл. Следующую игру можно начать через меню.", NamedTextColor.GRAY));
@@ -241,6 +246,7 @@ abstract class PartySurvivalSession implements GameSession, Listener {
         if (done) return;
         done = true;
         if (ticker != null) ticker.cancel();
+        countdownFreeze.releaseAll();
         HandlerList.unregisterAll(this);
         cleanup();
         if (reason == EndReason.FINISHED) for (UUID id : champions) services.award("party", id, 3);
@@ -255,6 +261,7 @@ abstract class PartySurvivalSession implements GameSession, Listener {
     @Override public final void onParticipantLeave(Player player) { disconnect(player); }
     private void disconnect(Player player) {
         if (done || standings == null) return;
+        countdownFreeze.release(player.getUniqueId());
         if (standings.eliminate(player.getUniqueId(), tick)) playerOut(player);
         connected.remove(player.getUniqueId());
     }
@@ -266,8 +273,9 @@ abstract class PartySurvivalSession implements GameSession, Listener {
     @Override public final void onParticipantJoin(Player player) { spectate(player); }
     @Override public final void onPlayerMove(PlayerMoveEvent event) {
         if (internalTeleport || done || !alive(event.getPlayer())) return;
-        if (!playing && event.hasChangedPosition()) event.setTo(event.getFrom());
+        countdownFreeze.hold(event);
     }
+    @Override public final void onPlayerJump(PlayerJumpEvent event) { countdownFreeze.onJump(event); }
     @Override public final void onPlayerTeleport(PlayerTeleportEvent event) {
         if (!internalTeleport && !done && standings != null && standings.alive(event.getPlayer().getUniqueId())) event.setCancelled(true);
     }

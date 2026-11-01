@@ -4,10 +4,11 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 
-/** An open, circular 19-block platform over the void. No walls or invisible floor. */
+/** An open, circular 23-block platform over the void. No walls or invisible floor. */
 final class SumoArena extends DuelArena {
     static final int FLOOR = 80;
-    static final int RADIUS = 9;
+    static final int RADIUS = 11;
+    static final int OVERTIME_SECONDS = 30;
     private final World world;
     private int radius = -1;
 
@@ -21,8 +22,10 @@ final class SumoArena extends DuelArena {
         return radius >= 0 && x * x + z * z <= radius * radius;
     }
     static int radiusAt(long elapsed, int roundSeconds) {
-        return elapsed < roundSeconds ? RADIUS
-                : (int) Math.max(-1, RADIUS - 1 - (elapsed - roundSeconds) / 3);
+        if (elapsed < roundSeconds) return RADIUS;
+        long overtime = Math.min(OVERTIME_SECONDS, elapsed - roundSeconds);
+        // Scale the collapse to the larger radius: leave two seconds to fall before the timeout.
+        return (int) Math.max(-1, RADIUS - 1 - overtime * (RADIUS + 1) / OVERTIME_SECONDS);
     }
     @Override void tick(long elapsed, int roundSeconds) { resize(radiusAt(elapsed, roundSeconds)); }
 

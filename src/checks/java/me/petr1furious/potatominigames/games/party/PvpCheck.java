@@ -90,7 +90,7 @@ public final class PvpCheck {
             check(kits.size() == 2 && kits.get(0) != kits.get(1), "Opening kits distinct; round two swaps them");
             drawn.addAll(kits);
         }
-        check(drawn.size() == PvpClass.values().length, "All six classes reachable");
+        check(drawn.size() == PvpClass.values().length, "All classes reachable");
         arenaChecks();
         System.out.println("Party PvP: round robin 2–12, BO3, forfeits, standings/ties, class draws, arena symmetry and block reset passed");
     }
@@ -115,6 +115,20 @@ public final class PvpCheck {
         });
         PvpArena arena = new PvpArena(world[0]);
         arena.build();
+        check(PvpArena.BORDER_SIZE == 49, "Full-height world border matches the inner arena, containing wind-charge jumps");
+        check(blocks.size() < 5000, "Courtyard construction stays below 5000 block writes");
+        for (var p : blocks.keySet()) {
+            check(p.y() >= PvpArena.FLOOR, "No redundant underground layer");
+            check(p.y() < PvpArena.FLOOR + 10, "No full-map barrier ceiling");
+        }
+        for (int x = -25; x <= 25; x++) for (int z = -25; z <= 25; z++) {
+            if (Math.abs(x) != 25 && Math.abs(z) != 25) continue;
+            for (int y = 1; y <= PvpArena.WALL_HEIGHT; y++) {
+                check(blocks.get(new PvpArena.Position(x, PvpArena.FLOOR + y, z))
+                        == (y == 1 ? Material.POLISHED_ANDESITE : Material.BARRIER), "Low rim plus continuous barrier perimeter");
+            }
+        }
+        System.out.println("PvP/Arms Race courtyard: " + blocks.size() + " blocks, open roof and barrier perimeter verified");
         for (var entry : blocks.entrySet()) {
             var p = entry.getKey();
             check(entry.getValue() == blocks.get(new PvpArena.Position(-p.x(), p.y(), -p.z())), "Arena must be rotationally symmetric");

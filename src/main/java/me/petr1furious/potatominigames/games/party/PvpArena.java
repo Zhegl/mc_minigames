@@ -13,7 +13,9 @@ import org.bukkit.entity.Projectile;
 final class PvpArena extends DuelArena {
     static final int FLOOR = 80;
     static final int HALF = 24;
+    static final int BORDER_SIZE = HALF * 2 + 1;
     static final int MAX_BUILD_Y = FLOOR + 5;
+    static final int WALL_HEIGHT = 9;
     record Position(int x, int y, int z) {
         static Position of(Block b) { return new Position(b.getX(), b.getY(), b.getZ()); }
     }
@@ -23,15 +25,13 @@ final class PvpArena extends DuelArena {
     void build() {
         for (int x = -25; x <= 25; x++) {
             for (int z = -25; z <= 25; z++) {
-                set(x, FLOOR - 1, z, Material.BEDROCK);
                 set(x, FLOOR, z, Math.abs(x) <= 2 || Math.abs(z) <= 2
                         ? Material.POLISHED_ANDESITE : Material.STONE_BRICKS);
                 if (Math.abs(x) == 25 || Math.abs(z) == 25) {
-                    for (int y = FLOOR + 1; y <= FLOOR + 9; y++) {
-                        set(x, y, z, y <= FLOOR + 3 ? Material.DEEPSLATE_BRICKS : Material.BARRIER);
+                    for (int y = FLOOR + 1; y <= FLOOR + WALL_HEIGHT; y++) {
+                        set(x, y, z, y == FLOOR + 1 ? Material.POLISHED_ANDESITE : Material.BARRIER);
                     }
                 }
-                set(x, FLOOR + 10, z, Material.BARRIER);
             }
         }
         for (int sx : new int[] {-1, 1}) {
@@ -68,6 +68,6 @@ final class PvpArena extends DuelArena {
     boolean contains(Location loc) {
         return loc.getWorld().equals(world) && loc.getX() >= -24.7 && loc.getX() <= 25.7
                 && loc.getZ() >= -24.7 && loc.getZ() <= 25.7
-                && loc.getY() >= FLOOR && loc.getY() < FLOOR + 9;
+                && loc.getY() >= FLOOR && loc.getY() < FLOOR + WALL_HEIGHT;
     }
 }

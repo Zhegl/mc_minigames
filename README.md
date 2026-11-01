@@ -35,24 +35,80 @@ Classes are random but mirrored to reduce matchup luck: round one draws two
 distinct classes, round two swaps those classes and spawn sides, and round three
 gives both players the same random class. Equipment, health, abilities and the
 arena reset before every round. All players have 20 health, unbreakable gear,
-32 wool (48 for the engineer), and an iron pickaxe. Passive health regeneration
-is disabled; healing is part of the alchemist's kit. Hunger does not decrease.
+32 wool (64 for the engineer), shears for breaking player-placed wool, and 16 steaks
+in hotbar slot 9. Normal Minecraft health regeneration and hunger are enabled during
+PvP combat: eat to keep hunger high and regenerate. Each class also has a limited
+supply of healing potions. Abilities and passives are described in the starting chat
+messages and the ability item's tooltip. Sumo still has no hunger or health damage.
 
 | Class | Equipment and tradeoff | Active ability (right-click slot 8) |
 |---|---|---|
-| Страж / Guardian | Stone sword, full iron armour, shield | Resistance I for 4 s; 20 s cooldown |
-| Стрелок / Ranger | Stone sword, full iron armour, bow, 20 arrows | Speed II for 4 s; 18 s cooldown |
-| Берсерк / Berserker | Iron axe, chain chestplate/leggings, iron helmet/boots, 4 snowballs | Strength I for 3 s; 24 s cooldown |
-| Дуэлянт / Duelist | Iron sword, chain chestplate, remaining iron armour, 2 ender pearls | Speed I + Haste II for 5 s; 18 s cooldown |
-| Алхимик / Alchemist | Stone sword, full iron armour, one 4 s poison splash, two Healing I splashes | Regeneration II for 4 s; 24 s cooldown |
-| Инженер / Engineer | Stone sword, full iron armour, crossbow, 12 arrows, 48 wool | Absorption I (2 extra hearts) for 5 s; 24 s cooldown |
+| Страж / Guardian | Stone sword, shield, iron armour with netherite boots and Projectile Protection I chestplate; 2 Healing I splashes, 1 Slowness I splash | **Bastion:** Resistance II + self Slowness I for 4 s; 22 s cooldown |
+| Стрелок / Ranger | Wooden sword, Power I bow, unlimited regular arrows and 6 spectral arrows; chain chestplate, remaining iron armour; 1 healing and 1 slowness splash | **Retreat:** backward dash and Speed I for 4 s; 16 s cooldown |
+| Берсерк / Berserker | Iron axe, backup stone sword, chain chest/leggings and iron helmet/boots; 2 speed and 1 healing splash. Melee hits heal half a heart at most once per 3 s | **Blood Fury:** costs one heart; Strength I + Speed I for 4 s; 22 s cooldown. Unavailable at one heart or less |
+| Дуэлянт / Duelist | Sharpness I iron sword, 2 pearls, chain chest/leggings and iron helmet/boots; 1 speed and 1 healing splash. Sword hits from behind add 2 base damage at most once per 5 s | **Lunge:** forward dash and Speed I for 3 s; 14 s cooldown |
+| Маг / Mage (formerly Alchemist) | Knockback I wooden ritual blade, gold helmet, purple leather robe with Protection II, chain leggings, iron boots; 12 splashes, listed below | **Magic Stock:** restores one harming, poison and slowness potion, capped at two of each; 24 s cooldown. Healing is never restored |
+| Инженер / Engineer | Stone sword, Quick Charge I + Piercing I crossbow, unlimited arrows, 64 wool; iron armour with chain leggings; 2 slowness and 1 healing splash | **Fortify:** Absorption II (4 extra hearts) for 6 s and up to 16 wool, capped at 64 carried wool; 24 s cooldown |
+| Воздушный рыцарь / Aerial Knight | Density I mace, backup stone sword, 8 wind charges; chain chest/leggings, iron helmet, leather boots with Feather Falling III; 1 speed and 1 healing splash | **Wind Leap:** upward launch and up to 4 wind charges, capped at 8 carried charges; 20 s cooldown |
+| Паладин / Paladin | Iron sword and shield, chain chest/leggings and iron helmet/boots; 1 speed and 1 healing splash | **Purify:** heals 1.5 hearts, removes poison/weakness/slowness and extinguishes fire, then Resistance I for 2 s; 24 s cooldown |
+| Криомант / Cryomancer | Sharpness I stone sword, 16 snowballs; cyan leather robe with Protection II, remaining iron armour; 1 slowness and 2 healing splashes. Snowball hits apply Slowness I for 2 s, at most once per 2 s | **Frost:** up to 8 snowballs (cap 16), Speed I for 3 s, and Slowness I for 3 s on a visible opponent within 6 blocks; 20 s cooldown |
+| Пиромант / Pyromancer | Fire Aspect I wooden sword, Flame I bow, unlimited arrows; chain chest/leggings and iron helmet/boots; 1 weakness and 1 healing splash. Fire Resistance lasts the round | **Flare:** ignites a visible opponent within 8 blocks for 5 s and grants 2 absorption hearts for 4 s; 20 s cooldown. No target means no cooldown spent |
+| Всадник / Lancer | Iron spear, backup stone sword, leather chestplate, chain helmet/leggings, iron boots; 1 speed and 1 healing splash; vulnerable horse, once per round | **Spur:** faster horse for 3 s, or Speed I for 3 s on foot; 20 s cooldown |
+
+The lancer receives a saddled horse **only when the countdown ends**. It has
+8 hearts, no armour, fixed movement speed 0.19 (0.23 during Spur), and jump strength
+0.4. Killing it leaves the rider on foot until the next round; there is no resummon
+or healing the horse with class potions/food. Only its owner can mount it, and its
+inventory is locked. Enemy arrows, melee, harmful potions and environmental damage
+can hurt it; frost snowballs and Slowness can counter mounted movement. Iron spear
+hits, including native speed-scaled charges, are capped at **8 damage before armour**
+(4 hearts); this also applies on foot and against horses. A backup stone sword,
+light armour, one speed splash and one healing splash complete the kit. Spur gives
+the rider Speed I for 3 s when used on foot, with the same 20 s cooldown. Mounts
+are removed on elimination, leaving, round reset and session shutdown.
+
+The aerial knight uses native mace smash attacks and native wind-charge boosts.
+Its leap preserves falling attacks: no Slow Falling effect is applied. Charges are
+limited per stock and replenished by the ability. The full-height world border
+aligns with the 49×49 playing area so jumping above the low barrier wall cannot
+escape the arena. Neither frost effects nor fire abilities edit terrain.
+
+The mage starts with **12 potions in six types**: 2 Harming I, 2 Poison I (5 s),
+2 Slowness I (4 s), 2 Weakness I (6 s), 3 Healing I (two hearts each), and 1 Speed I
+(6 s). Weakness and speed start in inventory slots 11 and 12; combat spells and
+healing are on the hotbar, with slot 9 reserved for food. Class potions stack up to
+eight and have distinct colours and labels.
+Helpful splashes affect only their caster, harmful splashes only the active opponent;
+spectators are excluded. Other classes use the same potion targeting rules.
+
+Mage refills cannot exceed the individual stock caps or generate healing. Activating
+Magic Stock while all three stocks are full does not consume its cooldown. Blood
+Fury cannot kill its caster. Backstab and lifesteal cooldowns reset every round,
+and class perks do not leave permanent player attributes behind. The mage retains
+the original alchemist enum entry. There are now eleven equally likely classes: each
+has a 1/11 (about 9.09%) marginal chance per player; the two opening classes are always distinct.
+
+Rangers, engineers and pyromancers start with 64 arrows; their arrow stack is replenished to 64
+every second during combat, including overtime. Moving the stack to another slot
+does not prevent replenishment. Other classes do not receive arrows.
 
 The arena is a symmetric **49×49 courtyard** with short cover and clear spawn
-lanes. Its original floor, cover, walls and ceiling cannot be broken or exploded.
+lanes. A one-block rim and eight barrier blocks above it enclose the arena; the roof
+is open. The original floor, cover and boundary cannot be broken or exploded.
 Players can place wool up to five blocks above the floor and break either player's
 placed blocks. Those blocks and stray projectiles are removed between rounds.
-Crafting, item dropping and block interactions are disabled. Pearls stay inside
-the arena. A five-second countdown blocks movement, attacks, building and abilities.
+Crafting and item dropping are disabled. Pearls stay inside the arena. A five-second
+countdown pins every participant, including waiting spectators, to their spawn:
+walking, jumping and spectator flight are disabled; looking around is allowed.
+Combat restores the original movement speeds. Attacks, building and abilities
+remain disabled during the countdown.
+Lethal PvP hits now produce the normal Minecraft death screen with the killer's
+name, plus a session-only kill message and a title for the killer. The round pauses
+for three seconds before resolving BO3 and starting intermission; same-tick mutual
+kills remain a draw. Clicking Respawn early puts the loser in spectator mode and
+never re-enters the fight. Automatic respawn also works if no button is clicked.
+Sumo ring-outs show who pushed whom and use the same three-second result pause,
+without introducing health damage or a native death in sumo.
 After 90 seconds the border shrinks over 30 seconds; if both players survive,
 remaining health plus absorption decides the round (an exact tie is replayed).
 
@@ -70,16 +126,20 @@ The class loadouts are initial balance values; live duels are needed for tuning.
 Open the compass → **Вечеринка** → **sumo**, or run `/play party sumo`.
 Sumo uses the same 2–12 player round-robin tournament, BO3, three points per
 match, title tie-breaks, spectator handling and withdrawal rules as PvP.
-The difference is the fight: empty hands, no armour, no health damage and no
-building. Punches apply knockback, sprinting makes it stronger, and falling below
-the platform loses the round. Each player's hit immunity lasts eight server ticks;
+The difference is the fight: a **Knockback I stick**, no armour, no health damage
+and no building. The stick applies stronger controlled knockback; sprinting adds
+a small boost. Empty-hand punches remain weaker. A low upward impulse and a
+horizontal speed cap prevent runaway launches from repeated hits. Falling below
+the platform loses the round. Each player's hit immunity lasts ten server ticks;
 it resets before every round. Both falling in the same server tick replays the round.
 
-The arena is a round, 19-block-wide platform above the void, without walls or
-hidden floors. Players start eight blocks apart and swap sides for round two.
-After 45 seconds the outer ring disappears; another ring goes every three seconds
-until no platform remains. Every round restores the full platform. A five-second
-countdown prevents early movement or hits. Waiting players spectate the duel.
+The arena is a round, **23-block-wide platform** above the void, without walls or
+hidden floors. The extra space balances the stronger stick. Players start eight blocks apart and swap sides for round two.
+After 45 seconds the outer ring disappears; another ring goes every two or three
+seconds. The larger platform still disappears by 28 seconds of overtime, leaving
+time for ring-outs before the 30-second overtime limit. Every round restores the full platform. A five-second
+countdown pins participants in place and blocks jumping, flight and early hits.
+Waiting players spectate the duel after the countdown.
 
 Admin commands: `/party start sumo @a`, `/party test sumo` (solo platform training),
 `/party stop`. Settings in `games/party.yml`: `sumo.roundSeconds`,
@@ -114,14 +174,21 @@ are removed on upgrade, death or disconnect, and one sword sweep cannot skip ste
 Environmental deaths can credit the last valid hit within eight seconds, only if
 the attacker's current weapon step still matches that hit. Suicides give no progress.
 
-Players respawn after three seconds, **keeping their weapon step**. Respawning
+Players see the native death screen with their killer's name and respawn after
+three seconds, **keeping their weapon step**. The configured respawn delay has a
+three-second minimum. Clicking Respawn early keeps the player waiting as a spectator
+until their timer expires. A kill message names killer and victim; the killer also
+sees a confirmation title. Final victory waits three seconds before session cleanup,
+so the final victim's death screen is visible too. Respawning
 selects one of sixteen clear spawn points farthest from the nearest living enemy.
 The two-second spawn shield prevents damage and ends when the player attacks or
 shoots. Temporarily dead players wait without a spectator follow camera. Reconnecting
 preserves progress and uses the respawn delay; late joiners can only spectate.
 
 The arena is a protected 49×49 courtyard with cover; building, breaking, crafting,
-item drops and pickups are disabled. After a five-second countdown, the game lasts
+item drops and pickups are disabled. Participants are held at their spawn during
+the five-second countdown, with walking, jumping and flight blocked until combat.
+The game lasts
 up to ten minutes. On timeout, most kills wins, then fewer deaths, then the earliest
 arrival at the current step; no kills means a draw. Disconnected players cannot win
 on timeout. If only one player remains, there is a 15-second reconnect grace period
@@ -200,6 +267,15 @@ limit, so one player can train every mechanic. Admin commands also support
 `/party start <mode> @a` and `/party stop`. Countdown is configured with
 `survival.countdownSeconds`; these initial balance values apply next session
 and are intended for live playtesting.
+
+Party void worlds use view distance 4 and simulation distance 3; spawn chunks are
+not kept loaded, and spectators cannot generate new chunks. The shared PvP/Arms
+Race courtyard has 4,461 blocks instead of 9,663: the redundant bottom layer and
+full-map barrier roof were removed, and the stone wall is now a low rim with a
+barrier boundary. During combat, physical collisions enforce the perimeter without
+per-movement teleport corrections. Arrows stuck in blocks are cleared once per
+second; all tracked arrows expire after ten seconds. Arms Race removes a shooter's
+arrows directly on upgrade/death, without scanning all world entities per kill.
 
 ## Playing: queues and the lobby
 
@@ -548,6 +624,8 @@ shuffle speed, configured rave frequency, and cancellation of burst-only event t
 `checkPartySurvival` checks TNT geometry and collapse deadlines, exact 2×2 platforms
 and two-block gaps, unique mob-count answers, landing deadlines, ravager swept
 collision/difficulty, fixed mine fuses through pickup/throw/drop, and elimination ties.
+`checkPartyRuntime` checks countdown locking, respawn/result pauses and projectile
+cleanup. `checkPvpClasses` checks class equipment, finite stock and combat abilities.
 
 ## License
 

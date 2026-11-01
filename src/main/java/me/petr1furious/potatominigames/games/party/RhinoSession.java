@@ -19,8 +19,6 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Ravager;
 import org.bukkit.entity.SplashPotion;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PotionSplashEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -258,8 +256,7 @@ final class RhinoSession extends PartySurvivalSession {
         mine.thrown.setVelocity(player.getEyeLocation().getDirection().multiply(1.05).add(new Vector(0, .12, 0)));
         player.playSound(player.getLocation(), Sound.ENTITY_SPLASH_POTION_THROW, .7f, 1);
     }
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onSplash(PotionSplashEvent event) {
+    @Override public void onPotionSplash(PotionSplashEvent event) {
         if (!event.getEntity().getWorld().equals(world)) return;
         Long id = event.getEntity().getPersistentDataContainer().get(mineKey, PersistentDataType.LONG);
         if (id == null) return;
