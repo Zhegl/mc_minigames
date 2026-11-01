@@ -103,7 +103,13 @@ val checkPartyArmsRace by tasks.registering(JavaExec::class) {
     mainClass.set("me.petr1furious.potatominigames.games.party.ArmsRaceCheck")
 }
 
+val checkPartySurvival by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.party.PartySurvivalCheck")
+}
+
 tasks.check {
     dependsOn(checkPillarsPresets, checkSniperDuel, checkPillarsMath, checkPillarsShuffle, checkPillarsAdhd,
-            checkPartyPvp, checkPartySumo, checkPartyArmsRace)
+            checkPartyPvp, checkPartySumo, checkPartyArmsRace, checkPartySurvival)
 }

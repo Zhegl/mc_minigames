@@ -17,7 +17,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
-| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `arms_race` | Random-class PvP and sumo use round-robin BO3 tournaments. Arms Race is a simultaneous free-for-all with weapon progression and respawns. |
+| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `arms_race`, `tnt_run`, `mob_count`, `rhino` | Random-class PvP and sumo use round-robin BO3 tournaments. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. |
 
 ### Party PvP
 
@@ -133,6 +133,73 @@ Admin commands: `/party start arms_race @a`, `/party test arms_race`, `/party st
 Timing settings in `games/party.yml`: `armsRace.durationSeconds`,
 `armsRace.countdownSeconds`, `armsRace.respawnSeconds`,
 `armsRace.spawnProtectionSeconds`. Changes apply next session.
+
+### Party TNT Run
+
+Join with `/play party tnt_run`, or train with `/party test tnt_run`.
+Up to sixteen players run across three circular TNT floors, six blocks apart.
+Tiles under a player's footprint turn red and disappear after half a second;
+standing still never refreshes their timer. Jumping and falling to a lower floor
+are part of the game. Every 30 seconds the collapse delay shortens, down to three
+ticks. After one minute, an outer ring of every floor disappears every 15 seconds.
+There is no hidden support floor. Falling below the third layer eliminates you.
+The default time limit is three minutes.
+
+Settings: `tntRun.durationSeconds`, `tntRun.collapseTicks` in `games/party.yml`.
+
+### Party Пересчёт / Mob Count
+
+Join with `/play party mob_count`, or train with `/party test mob_count`.
+The board has **36 platforms**, each **2×2 blocks**, with **two-block gaps**.
+Each platform has a mob head and a label. During counting, glass fills the gaps
+and harmless, stationary mobs appear across the board. Count each species:
+initially four species and ten mobs; later a fifth species joins and the total
+grows to at most sixty. Counting time starts at ten seconds and drops to six.
+
+The mobs and glass then disappear and a number appears. Each player starts the
+jump phase on their nearest safe platform and has **ten seconds** to land on any
+platform showing the species that appeared that many times. Counts are distinct,
+so exactly one species is correct. Standing on its head also counts; being in the
+air or above a gap at the deadline does not. Incorrect platforms disappear and
+the result settles for three seconds. Jumping to safety after the deadline cannot
+undo a wrong choice. Surviving platforms and glass return for the next round.
+After twelve rounds, remaining players share victory.
+
+Settings: `mobCount.countSeconds`, `mobCount.answerSeconds`, `mobCount.rounds`.
+
+### Party Носорожий переполох / Rhino
+
+Join with `/play party rhino`, or train with `/party test rhino`.
+The circular arena starts with holes and two ravagers acting as rhinos. They
+choose a random living player, glow and mark their intended line in red, then
+dash in that fixed direction. A dash knocks each player back at most once; moving
+out of the marked line dodges it. Their speed and frequency rise every 45 seconds,
+and additional ravagers join, up to six. The floor starts shrinking after 45
+seconds, losing a ring every 15 seconds down to a five-block radius.
+
+Glowing orange mine bottles spawn on the floor. Walk over one to pick it up;
+right-click to throw it like a splash potion. Carry at most one. Each mine
+explodes **five seconds after its original spawn**, including while held:
+pickup, landing, rethrowing and dropping it on elimination never restart the fuse.
+A landed mine can be picked up again. Its name/action bar shows remaining time.
+Explosions push nearby players without health damage or terrain destruction.
+More mines appear as the game progresses; the live count is capped at thirty.
+The default time limit is four minutes.
+
+Settings: `rhino.durationSeconds`, `rhino.ravagers`, `rhino.mineFuseSeconds`,
+`rhino.mineSpawnSeconds`.
+
+All three survival games accept 2–16 players, have a five-second countdown and
+use protected throwaway worlds. Health damage, PvP, building, crafting and item
+storage are disabled. Falling eliminates a player for the rest of the match;
+leaving/disconnecting also withdraws them, and reconnecting only spectates.
+The last survivor wins; simultaneous final falls draw. At a time/round limit,
+remaining players share victory. Each winner gets three Party points; aborted
+and solo test matches award nothing. Solo tests continue until falling or the
+limit, so one player can train every mechanic. Admin commands also support
+`/party start <mode> @a` and `/party stop`. Countdown is configured with
+`survival.countdownSeconds`; these initial balance values apply next session
+and are intended for live playtesting.
 
 ## Playing: queues and the lobby
 
@@ -411,6 +478,7 @@ games/bingo.yml               mode, difficulty (+ difficulty-levels table), timi
 games/bingo-board-entries.yml the crafting-cost node graph behind board generation
 games/warfare.yml             mode, arena/border, distances, lifts, noHunger, teamBeacon, maps, beacons, kit
 games/chase.yml               rounds, hunters, timings, build limits, hunterGadgets
+games/party.yml               PvP/sumo/Arms Race timings, survival countdown, TNT Run, mob counting, ravagers/mines
 gadgets.yml                   one section per gadget
 data/                         points.yml, teams.yml, inventories.yml, snapshots/, pillars-presets.yml
 ```
@@ -477,6 +545,9 @@ elimination and one-shot timeout penalties.
 cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
 `checkPillarsAdhd` checks jittered start intervals, exact burst duration and triple
 shuffle speed, configured rave frequency, and cancellation of burst-only event tasks.
+`checkPartySurvival` checks TNT geometry and collapse deadlines, exact 2×2 platforms
+and two-block gaps, unique mob-count answers, landing deadlines, ravager swept
+collision/difficulty, fixed mine fuses through pickup/throw/drop, and elimination ties.
 
 ## License
 

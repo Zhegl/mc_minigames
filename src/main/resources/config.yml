@@ -53,3 +53,10 @@ queues:
     team_beacon: {enabled: true, minPlayers: 2, maxPlayers: 0}
   chase:
     default: {enabled: true, minPlayers: 2, maxPlayers: 0}
+  party:
+    pvp: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    sumo: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    arms_race: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    tnt_run: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    mob_count: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    rhino: {enabled: true, minPlayers: 2, maxPlayers: 16}

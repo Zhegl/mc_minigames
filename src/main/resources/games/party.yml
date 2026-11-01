@@ -1,0 +1,15 @@
+# Timings are starting values for playtesting. Changes apply next session.
+survival:
+  countdownSeconds: 5
+tntRun:
+  durationSeconds: 180
+  collapseTicks: 10
+mobCount:
+  countSeconds: 10
+  answerSeconds: 10
+  rounds: 12
+rhino:
+  durationSeconds: 240
+  ravagers: 2
+  mineFuseSeconds: 5
+  mineSpawnSeconds: 4
