@@ -36,6 +36,11 @@ public interface Minigame {
         return Material.PAPER;
     }
 
+    /** Player-facing mode label; the command/queue identifier stays unchanged. */
+    default String modeTitle(String mode) { return mode; }
+
+    default Material icon(String mode) { return icon(); }
+
     /** One line for the lobby menu and {@code /play}. */
     default Component description(String mode) {
         return Component.empty();

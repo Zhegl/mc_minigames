@@ -17,7 +17,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
-| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `arms_race`, `tnt_run`, `mob_count`, `rhino` | Random-class PvP and sumo use round-robin BO3 tournaments. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. |
+| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `arms_race`, `tnt_run`, `mob_count`, `rhino`, `miners` | Random-class PvP and sumo use round-robin BO3 tournaments. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random loot and underground PvP. |
 
 ### Party PvP
 
@@ -352,6 +352,53 @@ limit, so one player can train every mechanic. Admin commands also support
 `survival.countdownSeconds`; these initial balance values apply next session
 and are intended for live playtesting.
 
+### Party Битва шахтёров / Miners
+
+Open the compass → **Вечеринка** → **Битва шахтёров**, or run `/play party miners`.
+The mode accepts **2–12 players**; `/party test miners` starts a solo training game.
+Each participant starts inside a separate **16×16×16** stone box with the same
+ore counts, shuffled independently. The starter kit is an unbreakable Efficiency III
+iron pickaxe, stone sword, leather armour, 64 cobblestone and food. Night Vision
+and Haste I last through the match. Construction is spread across ticks, then a
+five-second countdown freezes players before mining begins.
+
+Players have **two minutes** to mine privately. Ores drop **physical random loot**
+onto the ground: pick it up, choose equipment and equip armour yourself. There is
+no fixed sequence of upgrades. Ordinary/good/rare rolls have **70%/25%/5%** odds;
+combat enchantments reach level II and mining efficiency reaches V.
+
+| Ore | Blocks per private box | Rewards |
+| --- | ---: | --- |
+| Coal | 80 | Food or faster iron/diamond pickaxes |
+| Iron | 64 | Random chainmail/iron armour; rare diamond pieces |
+| Diamond | 24 | Swords, axes, bows or crossbows; every ranged drop includes arrows |
+| Lapis | 24 | Healing, speed, harming, poison, slowness or weakness splash potions |
+| Redstone | 32 | Primed TNT charges, ender pearls or wind charges |
+| Emerald | 8 | Good/rare loot from the other pools, or a golden apple |
+| Gold | 16 | A personal health bonus instead of an item: every four ores grants two maximum hearts, capped at fourteen hearts |
+
+At the end of preparation all shared partitions open and **PvP begins**. Continue
+mining, dig tunnels, build with cobblestone and use the tracking compass to locate
+the nearest surviving opponent. PvP has a **three-minute** phase followed by a
+**one-minute** shrinking border with glowing players. Increasing damage after
+the final minute prevents indefinite camping/healing. One life: the last survivor
+wins three Party points; simultaneous final deaths draw. Disconnecting withdraws
+a player and reconnecting only spectates. Solo training and aborted matches award
+no points. Deaths show the killer and a three-second death-screen pause.
+
+Preparation blocks damage, pearls and wind charges. The bedrock shell is always
+protected; TNT damages players without destroying terrain or ore rewards.
+TNT uses right-click placement or left-click throwing, with a 2.5-second fuse,
+0.3-second placement / two-second throw cooldowns and at most four active charges
+per player. Placed cobblestone cannot generate ore loot; carried cobblestone from
+mining is capped at 128. Crafting is disabled and abandoned ground stacks are
+capped at 256. Original inventories, effects and health are restored on exit.
+
+Admin commands: `/party start miners @a`, `/party test miners`, `/party stop`.
+Settings in `games/party.yml`: `miners.preparationSeconds`, `miners.combatSeconds`,
+`miners.finaleSeconds` and the shared `survival.countdownSeconds`. Values apply
+next session; balance still needs live multiplayer playtesting.
+
 Party void worlds use view distance 4 and simulation distance 3; spawn chunks are
 not kept loaded, and spectators cannot generate new chunks. The shared PvP/Arms
 Race courtyard has 4,461 blocks instead of 9,663: the redundant bottom layer and
@@ -638,7 +685,7 @@ games/bingo.yml               mode, difficulty (+ difficulty-levels table), timi
 games/bingo-board-entries.yml the crafting-cost node graph behind board generation
 games/warfare.yml             mode, arena/border, distances, lifts, noHunger, teamBeacon, maps, beacons, kit
 games/chase.yml               rounds, hunters, timings, build limits, hunterGadgets
-games/party.yml               PvP/sumo/Arms Race timings, survival countdown, TNT Run, mob counting, ravagers/mines
+games/party.yml               PvP/sumo/Arms Race timings, survival countdown, TNT Run, mob counting, ravagers/mines, Miners
 gadgets.yml                   one section per gadget
 data/                         points.yml, teams.yml, inventories.yml, snapshots/, pillars-presets.yml
 ```
@@ -710,6 +757,10 @@ and two-block gaps, unique mob-count answers, landing deadlines, ravager swept
 collision/difficulty, fixed mine fuses through pickup/throw/drop, and elimination ties.
 `checkPartyRuntime` checks countdown locking, respawn/result pauses and projectile
 cleanup. `checkPvpClasses` checks class equipment, finite stock and combat abilities.
+`checkPartyMiners` checks Party menu/queue integration, equal ore quotas for 1–12
+players, sliced construction/opening, protected shells and unused cells, single-use
+ore rewards, random loot grades and ammunition, phase timing, capped extra hearts,
+TNT spawn clearance and bounded ground-item cleanup.
 
 `checkPvpClasses` additionally verifies Shadow's finite invisibility stock, unarmoured
 loadout, on-hit wand cooldown and blocked-hit rejection, alongside all 132 distinct

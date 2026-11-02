@@ -265,7 +265,7 @@ public final class SessionManager {
             return game.displayName();
         }
         return Component.text().append(game.displayName())
-                .append(Component.text(" (" + mode + ")", NamedTextColor.GRAY)).build();
+                .append(Component.text(" (" + game.modeTitle(mode) + ")", NamedTextColor.GRAY)).build();
     }
 
     public String playCommand(Minigame game, String mode) {

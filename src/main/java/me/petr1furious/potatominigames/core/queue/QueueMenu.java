@@ -317,7 +317,7 @@ public final class QueueMenu implements Listener {
     }
 
     private ItemStack queueIcon(QueueService.Queue queue, Player viewer) {
-        ItemStack item = new ItemStack(queue.game().icon());
+        ItemStack item = new ItemStack(queue.game().icon(queue.mode()));
         Optional<ActiveSession> running = sessions.sessionOf(queue.game());
         boolean mine = queue.contains(viewer.getUniqueId());
         item.editMeta(meta -> {

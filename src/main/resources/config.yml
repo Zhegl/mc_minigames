@@ -60,3 +60,4 @@ queues:
     tnt_run: {enabled: true, minPlayers: 2, maxPlayers: 16}
     mob_count: {enabled: true, minPlayers: 2, maxPlayers: 16}
     rhino: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    miners: {enabled: true, minPlayers: 2, maxPlayers: 12}

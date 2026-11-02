@@ -13,3 +13,7 @@ rhino:
   ravagers: 2
   mineFuseSeconds: 5
   mineSpawnSeconds: 4
+miners:
+  preparationSeconds: 120
+  combatSeconds: 180
+  finaleSeconds: 60
