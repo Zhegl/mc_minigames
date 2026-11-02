@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import org.bukkit.World;
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -177,6 +178,11 @@ public final class GameplayListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onFoodLevelChange(FoodLevelChangeEvent event) {
         dispatch(event.getEntity().getWorld(), session -> session.onFoodLevelChange(event), event.getEntity());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPrePlayerAttackEntity(PrePlayerAttackEntityEvent event) {
+        dispatch(event.getPlayer().getWorld(), session -> session.onPrePlayerAttackEntity(event), event.getPlayer(), event.getAttacked());
     }
 
     @EventHandler

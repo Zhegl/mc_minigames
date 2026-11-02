@@ -5,6 +5,8 @@ import java.util.UUID;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.AbstractArrow;
+import org.bukkit.entity.Trident;
+import org.bukkit.entity.TNTPrimed;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Horse;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -18,6 +20,7 @@ public final class PartyRuntimeCheck {
         projectileChecks();
         mountChecks();
         deathPauseChecks();
+        bombChecks();
         System.out.println("Party runtime: fixed countdown anchors, jump/flight lock, speed restoration and targeted projectile expiry, mount ownership/cleanup, spear damage cap and death/early-respawn timing passed");
     }
 
@@ -81,6 +84,12 @@ public final class PartyRuntimeCheck {
         FakeArrow alreadyGone = new FakeArrow(); alreadyGone.valid = false;
         shots.track(b, alreadyGone.arrow, 210); shots.expire(211); shots.clearAll();
         check(alreadyGone.removed == 0 && second.removed == 1, "Dead references are discarded without duplicate removal");
+        FakeArrow trident = new FakeArrow(Trident.class);
+        trident.stuck = true;
+        shots.track(a, trident.arrow, 0); shots.expire(1000);
+        check(trident.removed == 0, "Embedded/old Loyalty tridents survive arrow expiry to return to their owner");
+        shots.clear(a);
+        check(trident.removed == 1, "Round/quit cleanup still removes a tracked trident exactly once");
         FakeArrow[] volley = new FakeArrow[1000];
         for (int i = 0; i < volley.length; i++) {
             volley[i] = new FakeArrow(); shots.track(i % 2 == 0 ? a : b, volley[i].arrow, 300);
@@ -178,15 +187,68 @@ public final class PartyRuntimeCheck {
     private static final class FakeArrow {
         boolean valid = true, stuck;
         int removed;
-        final AbstractArrow arrow = (AbstractArrow) Proxy.newProxyInstance(AbstractArrow.class.getClassLoader(),
-                new Class<?>[] {AbstractArrow.class}, (proxy, method, values) -> {
-                    return switch (method.getName()) {
-                        case "isValid" -> valid;
-                        case "isInBlock" -> stuck;
-                        case "remove" -> { removed++; valid = false; yield null; }
-                        default -> throw new AssertionError("Unexpected projectile call: " + method.getName());
-                    };
-                });
+        final AbstractArrow arrow;
+        FakeArrow() { this(AbstractArrow.class); }
+        FakeArrow(Class<? extends AbstractArrow> type) {
+            arrow = (AbstractArrow) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, (proxy, method, values) -> {
+                return switch (method.getName()) {
+                    case "isValid" -> valid;
+                    case "isInBlock" -> stuck;
+                    case "remove" -> { removed++; valid = false; yield null; }
+                    default -> throw new AssertionError("Unexpected projectile call: " + method.getName());
+                };
+            });
+        }
+    }
+
+    private static void bombChecks() {
+        PvpBombs bombs = new PvpBombs();
+        FakePlayer first = new FakePlayer(new UUID(0, 1), new Location(null, 0, 81, 0));
+        FakePlayer second = new FakePlayer(new UUID(0, 2), new Location(null, 4, 81, 0));
+        FakeBomb a = new FakeBomb(10), b = new FakeBomb(11), exploding = new FakeBomb(12), foreign = new FakeBomb(13);
+        PvpBombs.configure(a.entity, first.player, new Vector(0, .2, 1));
+        check(a.source == first.player && a.fuse == 50 && a.power == 2 && !a.incendiary && !a.persistent,
+                "Both placed and thrown TNT use the real owner, short fuse, reduced power, no fire and no persistence");
+        check(a.velocity.equals(new Vector(0, .2, 1)), "Configured thrown TNT retains its aimed launch velocity");
+        bombs.track(first.player, a.entity); bombs.track(second.player, b.entity); bombs.track(first.player, exploding.entity);
+        check(bombs.owner(a.entity) == first.player && bombs.owner(b.entity) == second.player, "Native TNT blasts keep separate owners in mirror matchups");
+        check(bombs.owner(foreign.entity) == null && bombs.owner(first.player) == null, "Untracked TNT and normal entities cannot impersonate a bomber's charge");
+        check(bombs.active(first.id) == 2 && bombs.active(second.id) == 1, "Active TNT is counted per owner");
+        exploding.valid = false; // Vanilla discards TNT before applying explosion damage.
+        check(bombs.owner(exploding.entity) == first.player && bombs.active(first.id) == 1,
+                "Discarding the exploding entity does not lose kill attribution or occupy a live-bomb slot");
+        bombs.eliminate(first.id);
+        check(a.removed == 1 && b.removed == 0 && bombs.owner(exploding.entity) == first.player,
+                "Death clears live bombs but preserves the current blast for same-tick trades");
+        bombs.prune();
+        check(bombs.owner(exploding.entity) == null && exploding.removed == 0, "The next tick drops finished-blast references without removing an entity twice");
+        bombs.remove(second.id); bombs.remove(second.id);
+        check(b.removed == 1 && bombs.owner(b.entity) == null, "Withdrawal removes only that owner's remaining bombs once");
+        FakeBomb last = new FakeBomb(14);
+        bombs.track(first.player, last.entity); bombs.clear(); bombs.clear();
+        check(last.removed == 1 && bombs.owner(last.entity) == null, "Round/stop cleanup cancels all remaining native TNT exactly once");
+    }
+    private static final class FakeBomb {
+        boolean valid = true, incendiary = true, persistent = true;
+        int removed, fuse;
+        float power;
+        Object source;
+        Vector velocity = new Vector();
+        final TNTPrimed entity;
+        FakeBomb(long id) {
+            entity = (TNTPrimed) Proxy.newProxyInstance(TNTPrimed.class.getClassLoader(), new Class<?>[] {TNTPrimed.class}, (proxy, method, args) -> switch (method.getName()) {
+                case "getUniqueId" -> new UUID(1, id);
+                case "isValid" -> valid;
+                case "remove" -> { removed++; valid = false; yield null; }
+                case "setSource" -> { source = args[0]; yield null; }
+                case "setFuseTicks" -> { fuse = (int) args[0]; yield null; }
+                case "setYield" -> { power = (float) args[0]; yield null; }
+                case "setIsIncendiary" -> { incendiary = (boolean) args[0]; yield null; }
+                case "setPersistent" -> { persistent = (boolean) args[0]; yield null; }
+                case "setVelocity" -> { velocity = ((Vector) args[0]).clone(); yield null; }
+                default -> throw new AssertionError("Unexpected TNT call: " + method.getName());
+            });
+        }
     }
     private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
 }

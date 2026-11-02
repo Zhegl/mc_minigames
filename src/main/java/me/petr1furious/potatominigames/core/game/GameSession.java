@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.List;
 
 import org.bukkit.entity.Player;
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -179,6 +180,9 @@ public interface GameSession {
     }
 
     default void onFoodLevelChange(FoodLevelChangeEvent event) {
+    }
+
+    default void onPrePlayerAttackEntity(PrePlayerAttackEntityEvent event) {
     }
 
     default void onPlayerInteract(PlayerInteractEvent event) {

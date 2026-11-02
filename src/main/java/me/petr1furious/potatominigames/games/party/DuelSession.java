@@ -13,6 +13,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Bukkit;
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import org.bukkit.Difficulty;
 import org.bukkit.GameMode;
 import org.bukkit.GameRules;
@@ -28,6 +29,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Snowball;
+import org.bukkit.entity.Trident;
+import org.bukkit.entity.TNTPrimed;
+import org.bukkit.FluidCollisionMode;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -53,6 +57,8 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
@@ -84,6 +90,9 @@ final class DuelSession implements GameSession {
     private final ArenaProjectiles projectiles = new ArenaProjectiles();
     private final PvpCombat combat = new PvpCombat();
     private final PvpMounts mounts = new PvpMounts();
+    private final PvpHarpoon harpoon = new PvpHarpoon();
+    private final PvpThunder thunder = new PvpThunder();
+    private final PvpBombs bombs = new PvpBombs();
     private final DeathPause deathPause = new DeathPause();
     private final Map<UUID, Hit> lastHit = new HashMap<>();
     private final Random random = new Random();
@@ -129,6 +138,9 @@ final class DuelSession implements GameSession {
         } catch (CommandFailure | RuntimeException failure) {
             countdownFreeze.releaseAll();
             mounts.clear();
+            harpoon.clear();
+            thunder.clear();
+            bombs.clear();
             throw failure;
         }
     }
@@ -182,6 +194,9 @@ final class DuelSession implements GameSession {
     }
     private void spectator(Player p) {
         mounts.remove(p.getUniqueId());
+        harpoon.remove(p.getUniqueId());
+        thunder.remove(p.getUniqueId());
+        bombs.remove(p.getUniqueId());
         if (p.isDead()) p.spigot().respawn();
         if (p.getGameMode() == GameMode.SPECTATOR) p.setSpectatorTarget(null);
         services.playerState().resetForRound(p, GameMode.SPECTATOR);
@@ -236,6 +251,9 @@ final class DuelSession implements GameSession {
         countdownFreeze.releaseAll();
         projectiles.clearAll();
         mounts.clear();
+        harpoon.clear();
+        thunder.clear();
+        bombs.clear();
         phase = Phase.COUNTDOWN;
         combat.reset();
         deathPause.clear(); lastHit.clear();
@@ -272,6 +290,8 @@ final class DuelSession implements GameSession {
             if (kit != null) {
                 p.sendMessage(text("Класс: " + kit.title + " — " + kit.description, NamedTextColor.GREEN));
                 p.sendMessage(text(kit.passiveDescription(), NamedTextColor.AQUA));
+                if (kit == PvpClass.DEMOLITIONIST) p.sendMessage(text("TNT в слоте 4: ПКМ по блоку ставит зажжённый заряд, ЛКМ бросает. Боезапас в слоте 8 пополняет 4 TNT.", NamedTextColor.GOLD));
+                if (kit == PvpClass.RANGER) p.sendMessage(text("Особые стрелы: 6 замедления I (4 с), 4 яда I (4 с), 4 слабости I (5 с), 6 спектральных. Не пополняются.", NamedTextColor.GRAY));
                 p.sendMessage(text(kit.ability + ": " + kit.abilityDescription() + " • " + kit.cooldown + " с", NamedTextColor.GOLD));
                 p.sendMessage(text((kit == PvpClass.SHADOW ? "Палка в слоте 8: ударь соперника; ПКМ её не активирует. "
                         : "Способность в слоте 8: ПКМ. ") + "Ломать можно только поставленные игроками блоки.", NamedTextColor.GRAY));
@@ -304,6 +324,8 @@ final class DuelSession implements GameSession {
                 if (p != null) {
                     p.setNoDamageTicks(0);
                     if (kits.get(id) == PvpClass.LANCER) mounts.spawn(p);
+                    if (kits.get(id) == PvpClass.THUNDERER) thunder.watch(p, services.plugin(), abilityKey,
+                            this::fighting, arena::contains, () -> Math.max(0, readyAt.getOrDefault(id, 0L) - now));
                     p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1, 1.5f);
                 }
             }
@@ -350,6 +372,9 @@ final class DuelSession implements GameSession {
         phase = Phase.BREAK; deadline = now + intermission;
         projectiles.clearAll();
         mounts.clear();
+        harpoon.clear();
+        thunder.clear();
+        bombs.clear();
         arena.reset();
         for (UUID id : fighters) { Player p = player(id); if (p != null) spectator(p); }
         if (winner == null) services.messages().broadcast(text(sumo ? "Ничья в раунде — переигровка."
@@ -366,6 +391,9 @@ final class DuelSession implements GameSession {
         countdownFreeze.releaseAll();
         projectiles.clearAll();
         mounts.clear();
+        harpoon.clear();
+        thunder.clear();
+        bombs.clear();
         boolean forfeit = !match.isComplete();
         if (forfeit) match.forfeit(winner);
         if (!playoff) tournament.record(match.pair(), winner);
@@ -396,6 +424,9 @@ final class DuelSession implements GameSession {
         countdownFreeze.releaseAll();
         projectiles.clearAll();
         mounts.clear();
+        harpoon.clear();
+        thunder.clear();
+        bombs.clear();
         combat.reset();
         deathPause.clear(); lastHit.clear();
         if (resolution != null) resolution.cancel();
@@ -454,6 +485,9 @@ final class DuelSession implements GameSession {
         countdownFreeze.release(p.getUniqueId());
         projectiles.clear(p.getUniqueId());
         mounts.remove(p.getUniqueId());
+        harpoon.remove(p.getUniqueId());
+        thunder.remove(p.getUniqueId());
+        bombs.remove(p.getUniqueId());
         combat.forget(p.getUniqueId());
         lastHit.remove(p.getUniqueId()); deathPause.forget(p.getUniqueId());
         if (phase == Phase.DONE || !names.containsKey(p.getUniqueId())) return;
@@ -470,14 +504,22 @@ final class DuelSession implements GameSession {
     @Override public void onParticipantJoin(Player p) { onParticipantRejoin(p); }
     private Player source(Entity entity) {
         if (entity instanceof Player p) return p;
+        if (entity instanceof TNTPrimed) return bombs.owner(entity);
         return entity instanceof Projectile projectile && projectile.getShooter() instanceof Player p ? p : null;
+    }
+    private boolean bombBlast(EntityDamageByEntityEvent event) {
+        return bombs.owner(event.getDamager()) != null || bombs.owner(event.getDamageSource().getDirectEntity()) != null;
+    }
+    private Player source(EntityDamageByEntityEvent event) {
+        Player owner = bombs.owner(event.getDamageSource().getDirectEntity());
+        return owner == null ? source(event.getDamager()) : owner;
     }
     private boolean validDamage(EntityDamageEvent event, Player victim) {
         if (!fighting(victim)) return false;
         if (event instanceof EntityDamageByEntityEvent hit) {
-            Player attacker = source(hit.getDamager());
-            // An already airborne projectile may trade kills in the same server tick.
-            boolean trade = attacker != null && hit.getDamager() instanceof Projectile
+            Player attacker = source(hit);
+            // Airborne projectiles and one TNT blast may trade kills in the same server tick.
+            boolean trade = attacker != null && (hit.getDamager() instanceof Projectile || bombBlast(hit))
                     && resolution != null && fighter(attacker) && eliminated.contains(attacker.getUniqueId());
             return attacker != null && (fighting(attacker) || trade);
         }
@@ -486,7 +528,7 @@ final class DuelSession implements GameSession {
     private boolean validMountDamage(EntityDamageEvent event, Player owner) {
         if (sumo || !fighting(owner)) return false;
         if (event instanceof EntityDamageByEntityEvent hit) {
-            Player attacker = source(hit.getDamager());
+            Player attacker = source(hit);
             return attacker != null && fighting(attacker) && mounts.mayDamage(event.getEntity(), attacker);
         }
         return true;
@@ -498,6 +540,8 @@ final class DuelSession implements GameSession {
         } else if (!(event.getEntity() instanceof Player p) || !validDamage(event, p)) event.setCancelled(true);
     }
     @Override public void onEntityDamage(EntityDamageEvent event) {
+        if (event instanceof EntityDamageByEntityEvent hit && bombBlast(hit))
+            event.setDamage(PvpBombs.blastDamage(event.getDamage()));
         // Cap lancer melee in either hand: swapping the spear to the offhand must not bypass the limit.
         if (!sumo && event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker
                 && kits.get(attacker.getUniqueId()) == PvpClass.LANCER) {
@@ -506,6 +550,7 @@ final class DuelSession implements GameSession {
         Player owner = mounts.owner(event.getEntity());
         if (owner != null) {
             if (!validMountDamage(event, owner)) { event.setCancelled(true); return; }
+            if (harpoonDamage(event)) return;
             if (event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker) {
                 if (kits.get(attacker.getUniqueId()) == PvpClass.SHADOW
                         && PvpClass.shadowWand(attacker.getInventory().getItemInMainHand())) { event.setDamage(0); return; }
@@ -539,6 +584,7 @@ final class DuelSession implements GameSession {
             return;
         }
         if (!validDamage(event, p)) { event.setCancelled(true); return; }
+        if (harpoonDamage(event)) return;
         if (event instanceof EntityDamageByEntityEvent hit && hit.getDamager() instanceof Player attacker && attacker != p) {
             if (kits.get(attacker.getUniqueId()) == PvpClass.SHADOW
                     && PvpClass.shadowWand(attacker.getInventory().getItemInMainHand())) {
@@ -556,7 +602,7 @@ final class DuelSession implements GameSession {
             }
         }
         if (event instanceof EntityDamageByEntityEvent damage && event.getFinalDamage() > 0) {
-            Player attacker = source(damage.getDamager());
+            Player attacker = source(damage);
             if (attacker != null && !attacker.getUniqueId().equals(p.getUniqueId()))
                 lastHit.put(p.getUniqueId(), new Hit(attacker.getUniqueId(), Bukkit.getCurrentTick()));
         }
@@ -572,9 +618,26 @@ final class DuelSession implements GameSession {
                 attacker.sendActionBar(text("Удар в спину!", NamedTextColor.GOLD));
                 attacker.playSound(attacker.getLocation(), Sound.ENTITY_PLAYER_ATTACK_CRIT, .7f, 1.2f);
             }
+            if (kit == PvpClass.THUNDERER && !thunder.resolving(attacker)
+                    && attacker.getInventory().getItemInMainHand().getType() == Material.IRON_AXE
+                    && combat.staticStrike(attacker.getUniqueId(), now, true)) {
+                p.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, PvpCombat.THUNDER_GLOW_TICKS, 0));
+                p.getWorld().spawnParticle(org.bukkit.Particle.ELECTRIC_SPARK, p.getLocation().add(0, 1, 0), 8, .2, .3, .2, 0);
+                attacker.sendActionBar(text("Статика: враг подсвечен на 3 с", NamedTextColor.AQUA));
+            }
             if (kit == PvpClass.BERSERKER && combat.leech(attacker.getUniqueId(), now)) PvpCombat.heal(attacker, 1);
         }
         // Lethal damage reaches vanilla: PlayerDeathEvent owns elimination and the death screen.
+    }
+    /** Returns true only for a duplicate spin hit; shield/armour calculation remains native. */
+    private boolean harpoonDamage(EntityDamageEvent event) {
+        if (!(event instanceof EntityDamageByEntityEvent hit) || !(hit.getDamager() instanceof Player attacker)
+                || !(event.getEntity() instanceof LivingEntity target)
+                || kits.get(attacker.getUniqueId()) != PvpClass.HARPOONER || !harpoon.active(attacker)) return false;
+        if (!harpoon.accept(attacker, target)) { event.setCancelled(true); return true; }
+        event.setDamage(PvpHarpoon.DAMAGE);
+        if (event.getFinalDamage() > 0 && target instanceof Player victim) harpoon.landed(attacker, victim);
+        return false;
     }
     private UUID recentKiller(Player victim) {
         Hit hit = lastHit.remove(victim.getUniqueId());
@@ -601,11 +664,17 @@ final class DuelSession implements GameSession {
         if (!eliminated.add(p.getUniqueId())) return;
         deathPause.begin(p.getUniqueId(), Bukkit.getCurrentTick());
         mounts.remove(p.getUniqueId());
+        harpoon.remove(p.getUniqueId());
+        thunder.remove(p.getUniqueId());
+        bombs.eliminate(p.getUniqueId());
         if (!p.isDead() && sumo) p.setGameMode(GameMode.SPECTATOR);
         if (resolution == null) resolution = Bukkit.getScheduler().runTask(services.plugin(), () -> {
             if (phase != Phase.FIGHT || !services.session().isRunning()) { resolution = null; return; }
             // One tick for simultaneous deaths, then three seconds to read the outcome.
             phase = Phase.RESULT;
+            harpoon.clear();
+            thunder.clear();
+            bombs.clear();
             UUID winner = training ? null : eliminated.contains(match.pair().first()) && eliminated.contains(match.pair().second())
                     ? null : eliminated.contains(match.pair().first()) ? match.pair().second() : match.pair().first();
             updateHud();
@@ -653,6 +722,13 @@ final class DuelSession implements GameSession {
     @Override public void onBlockExplode(BlockExplodeEvent event) { event.blockList().clear(); }
     @Override public void onPlayerInteract(PlayerInteractEvent event) {
         if (sumo || !fighting(event.getPlayer())) { event.setCancelled(true); return; }
+        if (kits.get(event.getPlayer().getUniqueId()) == PvpClass.DEMOLITIONIST && PvpBombs.isBomb(event.getItem())) {
+            event.setCancelled(true);
+            if (event.getHand() != EquipmentSlot.HAND) return;
+            if (event.getAction().isLeftClick()) throwBomb(event.getPlayer());
+            else if (event.getAction().isRightClick()) placeBomb(event);
+            return;
+        }
         // Block events protect the arena. Denying the clicked block here also
         // prevents vanilla wool placement and mining player-placed blocks.
         if (event.getHand() != EquipmentSlot.HAND || !event.getAction().isRightClick() || event.getItem() == null
@@ -664,13 +740,68 @@ final class DuelSession implements GameSession {
         PvpClass kit = kits.get(p.getUniqueId());
         Player opponent = fighters.stream().filter(id -> !id.equals(p.getUniqueId())).map(this::player)
                 .filter(other -> other != null && fighting(other)).findFirst().orElse(null);
-        if (!(kit == PvpClass.LANCER && mounts.boost(p, now)) && !kit.activate(p, opponent)) return;
+        if (kit == PvpClass.THUNDERER) {
+            PvpThunder.Aim aim = PvpThunder.aim(p);
+            if (aim == null || !arena.contains(aim.point())) {
+                p.sendActionBar(text("Наведи жезл на блок арены не дальше 48 блоков", NamedTextColor.YELLOW));
+                return;
+            }
+            if (!thunder.start(p, aim.point(), services.plugin(), this::fighting, () -> thunderTargets(p))) return;
+        } else if (kit == PvpClass.HARPOONER) {
+            if (!harpoon.start(p, services.plugin(), this::fighting)) {
+                p.sendActionBar(text("Для Тягуна нужен трезубец в инвентаре; дождись его возвращения", NamedTextColor.YELLOW));
+                return;
+            }
+        } else if (!(kit == PvpClass.LANCER && mounts.boost(p, now)) && !kit.activate(p, opponent)) return;
         if (kit == PvpClass.PYROMANCER && opponent != null)
             lastHit.put(opponent.getUniqueId(), new Hit(p.getUniqueId(), Bukkit.getCurrentTick()));
         readyAt.put(p.getUniqueId(), now + kit.cooldown);
         p.playSound(p.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 1, 1.5f);
         services.messages().broadcast(text(p.getName() + " • " + kit.ability, NamedTextColor.YELLOW));
     }
+    @Override public void onPrePlayerAttackEntity(PrePlayerAttackEntityEvent event) {
+        Player player = event.getPlayer();
+        if (sumo || kits.get(player.getUniqueId()) != PvpClass.DEMOLITIONIST
+                || !PvpBombs.isBomb(player.getInventory().getItemInMainHand())) return;
+        // Works even when vanilla would reject the punch (e.g. invulnerability frames).
+        event.setCancelled(true);
+        if (fighting(player)) throwBomb(player);
+    }
+    private void throwBomb(Player player) {
+        Location eye = player.getEyeLocation();
+        // Avoid creating a grenade on the far side of cover when standing against a wall.
+        var obstruction = world.rayTraceBlocks(eye, eye.getDirection(), .8, FluidCollisionMode.NEVER, true);
+        Location at = obstruction == null ? eye.clone().add(eye.getDirection().multiply(.5)) : eye;
+        if (arena.contains(at)) bombs.use(player, at, true, services.plugin());
+    }
+    private void placeBomb(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        if (event.getClickedBlock() == null) {
+            player.sendActionBar(text("ПКМ по блоку — установка, ЛКМ — бросок TNT", NamedTextColor.YELLOW));
+            return;
+        }
+        var block = event.getClickedBlock().getRelative(event.getBlockFace());
+        if (!arena.canPlace(block) || !block.getType().isAir()
+                || event.getClickedBlock().getLocation().distanceSquared(player.getEyeLocation()) > 36) {
+            player.sendActionBar(text("Здесь нельзя поставить TNT", NamedTextColor.RED));
+            return;
+        }
+        bombs.use(player, block.getLocation().add(.5, 0, .5), false, services.plugin());
+    }
+    private List<LivingEntity> thunderTargets(Player caster) {
+        List<LivingEntity> targets = new ArrayList<>();
+        for (UUID id : fighters) {
+            Player opponent = player(id);
+            if (opponent == null || opponent.equals(caster) || !fighting(opponent)) continue;
+            // Put the mount first: killing the rider removes their horse during damage dispatch.
+            var horse = mounts.horse(id);
+            if (horse != null) targets.add(horse);
+            targets.add(opponent);
+        }
+        return targets;
+    }
+    @Override public void onItemHeld(PlayerItemHeldEvent event) { thunder.clearPreview(event.getPlayer().getUniqueId()); }
+    @Override public void onSwapHandItems(PlayerSwapHandItemsEvent event) { thunder.clearPreview(event.getPlayer().getUniqueId()); }
     @Override public void onPlayerMove(PlayerMoveEvent event) {
         if (internalTeleport || countdownFreeze.hold(event) || !fighter(event.getPlayer())) return;
         if (sumo) {
@@ -686,13 +817,17 @@ final class DuelSession implements GameSession {
     }
     @Override public void onEntityShootBow(EntityShootBowEvent event) {
         if (sumo || !(event.getEntity() instanceof Player p) || !fighting(p)) { event.setCancelled(true); return; }
-        if (!event.isCancelled()) projectiles.track(p.getUniqueId(), event.getProjectile(), now * 20);
+        if (!event.isCancelled()) {
+            if (event.getProjectile() instanceof AbstractArrow arrow) arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+            projectiles.track(p.getUniqueId(), event.getProjectile(), now * 20);
+        }
     }
     @Override public void onProjectileLaunch(ProjectileLaunchEvent event) {
         if (!(event.getEntity().getShooter() instanceof Player shooter)) return;
-        if (sumo || !fighting(shooter)) { event.setCancelled(true); return; }
+        if (sumo || !fighting(shooter) || harpoon.active(shooter)) { event.setCancelled(true); return; }
         // Bows are tracked by onEntityShootBow; also clean up potions and pearls between rounds.
-        if (!(event.getEntity() instanceof AbstractArrow)) projectiles.track(shooter.getUniqueId(), event.getEntity(), now * 20);
+        if (!(event.getEntity() instanceof AbstractArrow) || event.getEntity() instanceof Trident)
+            projectiles.track(shooter.getUniqueId(), event.getEntity(), now * 20);
     }
     @Override public void onProjectileHit(ProjectileHitEvent event) {
         if (sumo || !(event.getEntity() instanceof Snowball)

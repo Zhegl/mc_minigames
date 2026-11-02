@@ -15,8 +15,8 @@ import net.kyori.adventure.text.Component;
 /** At most one vulnerable, owner-only mount per lancer, created only when combat starts. */
 final class PvpMounts {
     static final double HEALTH = 16;
-    static final double SPEED = .19;
-    static final double BOOST_SPEED = .23;
+    static final double SPEED = .25;
+    static final double BOOST_SPEED = .30;
     static final double JUMP = .4;
     static final double MAX_SPEAR_DAMAGE = 8;
     private static final class Mount {
@@ -57,6 +57,10 @@ final class PvpMounts {
     void track(Player owner, Horse horse) {
         remove(owner.getUniqueId());
         mounts.put(owner.getUniqueId(), new Mount(owner, horse));
+    }
+    Horse horse(UUID owner) {
+        Mount mount = mounts.get(owner);
+        return mount == null ? null : mount.horse;
     }
     Player owner(Entity entity) {
         for (Mount mount : mounts.values()) if (mount.horse.equals(entity)) return mount.owner;
