@@ -48,5 +48,12 @@ public final class PartyConfig {
     public final Property<Integer> rhinoMineSpawnSeconds = bag.define("rhino.mineSpawnSeconds", PropertyCodec.INT, 4)
             .validate(n -> n >= 1 && n <= 10);
 
+    public final Property<Integer> minersPreparationSeconds = bag.define("miners.preparationSeconds", PropertyCodec.INT, 120)
+            .validate(n -> n >= 10 && n <= 300);
+    public final Property<Integer> minersCombatSeconds = bag.define("miners.combatSeconds", PropertyCodec.INT, 180)
+            .validate(n -> n >= 30 && n <= 600);
+    public final Property<Integer> minersFinaleSeconds = bag.define("miners.finaleSeconds", PropertyCodec.INT, 60)
+            .validate(n -> n >= 15 && n <= 120);
+
     public PartyConfig(ConfigRegistry configs) { configs.register(bag, "games/party.yml", ""); }
 }
