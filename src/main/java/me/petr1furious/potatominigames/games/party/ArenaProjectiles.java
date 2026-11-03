@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Trident;
 
 /** Bound arrow lifetime and remove a shooter's projectiles without scanning the entire world. */
 final class ArenaProjectiles {
@@ -21,7 +22,9 @@ final class ArenaProjectiles {
             list.removeIf(shot -> {
                 Entity entity = shot.entity();
                 if (!entity.isValid()) return true;
-                if (tick - shot.firedAt() >= 200 || entity instanceof AbstractArrow arrow && arrow.isInBlock()) {
+                // A Loyalty trident is the player's reusable weapon: let it return naturally.
+                if (!(entity instanceof Trident)
+                        && (tick - shot.firedAt() >= 200 || entity instanceof AbstractArrow arrow && arrow.isInBlock())) {
                     entity.remove(); return true;
                 }
                 return false;
