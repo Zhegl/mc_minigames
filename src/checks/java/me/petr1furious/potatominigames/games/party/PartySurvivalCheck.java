@@ -145,32 +145,60 @@ public final class PartySurvivalCheck {
         }
         FakeWorld world = new FakeWorld();
         RhinoArena arena = new RhinoArena(world.world);
-        arena.resize(18);
+        arena.resize(18, 0);
         int holes = 0;
         for (int x = -18; x <= 18; x++) for (int z = -18; z <= 18; z++) {
-            if (RhinoArena.hole(x, z)) { check(world.at(x, 80, z) == Material.AIR, "Initial holes are real gaps"); holes++; }
+            if (RhinoArena.hole(x, z, 0)) { check(world.at(x, 80, z) == Material.AIR, "Initial holes are real gaps"); holes++; }
         }
         check(holes > 0, "Arena starts with holes");
         for (int i = 0; i < 16; i++) {
             Location spawn = arena.spawn(i, 16);
-            check(RhinoArena.solid(spawn.getBlockX(), spawn.getBlockZ(), 18), "Spawn never starts over a hole");
+            check(RhinoArena.solid(spawn.getBlockX(), spawn.getBlockZ(), 18, 0), "Spawn never starts over a hole");
         }
-        arena.resize(5);
+        int previousHoles = holes;
+        for (int stage = 1; stage <= 10; stage++) {
+            arena.resize(18, stage);
+            holes = 0;
+            for (int x = -18; x <= 18; x++) for (int z = -18; z <= 18; z++) {
+                if (RhinoArena.hole(x, z, stage - 1)) check(world.at(x, 80, z) == Material.AIR, "New stages never fill existing holes");
+                if (TntRunArena.inside(x, z, 18) && world.at(x, 80, z) == Material.AIR) holes++;
+                if (x * x + z * z <= 12) check(world.at(x, 80, z) != Material.AIR, "The central refuge stays solid");
+            }
+            check(holes > previousHoles, "More real holes open even when the radius is unchanged");
+            previousHoles = holes;
+        }
+        // Follow the live timeline too: shrinking and new holes must never restore floor.
+        FakeWorld shrinkingWorld = new FakeWorld();
+        RhinoArena shrinking = new RhinoArena(shrinkingWorld.world);
+        shrinking.resize(18, 0);
+        for (int seconds = 15; seconds <= 600; seconds += 15) {
+            Map<Position, Material> before = new HashMap<>(shrinkingWorld.blocks);
+            int radius = RhinoHazards.radius(seconds * 20L);
+            int stage = RhinoHazards.stage(seconds * 20L);
+            shrinking.resize(radius, stage);
+            before.forEach((pos, material) -> {
+                if (material == Material.AIR) check(shrinkingWorld.at(pos.x(), pos.y(), pos.z()) == Material.AIR, "Shrinking and difficulty never rebuild lost floor");
+            });
+            Location spawn = shrinking.safe(17, -17);
+            check(shrinkingWorld.at(spawn.getBlockX(), 80, spawn.getBlockZ()) != Material.AIR, "Repositioning avoids all current holes");
+        }
+        arena.resize(5, 10);
         Location safe = arena.safe(17, -17);
-        check(RhinoArena.solid(safe.getBlockX(), safe.getBlockZ(), 5), "Hazards reposition inside the current arena");
+        check(RhinoArena.solid(safe.getBlockX(), safe.getBlockZ(), 5, 10), "Hazards reposition inside the current arena");
         check(world.at(18, 80, 0) == Material.AIR, "Shrinking removes floor, not only an invisible boundary");
 
         UUID first = UUID.randomUUID(), thief = UUID.randomUUID();
-        TimedMine mine = new TimedMine(7, 0, 100);
+        TimedMine mine = new TimedMine(7, 0, 160);
         check(mine.pickup(first, 10), "A ground mine is pickable");
         check(!mine.pickup(thief, 11) && !mine.throwBy(thief, 12), "Another player cannot duplicate or throw a carried mine");
         check(mine.throwBy(first, 20) && !mine.throwBy(first, 21), "Throw once, preserving the original fuse");
         check(mine.land(30) && mine.pickup(thief, 40), "A landed mine can be picked up again");
         mine.drop();
-        check(mine.state() == TimedMine.State.GROUND && mine.carrier() == null && mine.expiresAt == 100, "Elimination drops the same mine without resetting it");
-        check(mine.pickup(first, 90) && !mine.expire(99), "A held mine keeps counting down");
-        check(!mine.throwBy(first, 100) && mine.expire(100), "It explodes exactly five seconds from spawn, including in a hand");
-        check(!mine.expire(101) && !mine.pickup(thief, 101) && !mine.land(101), "Explosions are one-shot and cannot rearm a spent mine");
+        check(mine.state() == TimedMine.State.GROUND && mine.carrier() == null && mine.expiresAt == 160, "Elimination drops the same mine without resetting it");
+        check(!mine.expire(100), "The mine survives the former five-second deadline");
+        check(mine.pickup(first, 150) && !mine.expire(159), "A held mine keeps counting down");
+        check(!mine.throwBy(first, 160) && mine.expire(160), "It explodes exactly eight seconds from spawn, including in a hand");
+        check(!mine.expire(161) && !mine.pickup(thief, 161) && !mine.land(161), "Explosions are one-shot and cannot rearm a spent mine");
     }
     private record Position(int x, int y, int z) { }
     private static final class FakeWorld {

@@ -322,15 +322,17 @@ Settings: `mobCount.countSeconds`, `mobCount.answerSeconds`, `mobCount.rounds`.
 
 Join with `/play party rhino`, or train with `/party test rhino`.
 The circular arena starts with holes and two ravagers acting as rhinos. They
-choose a random living player, glow and mark their intended line in red, then
-dash in that fixed direction. A dash knocks each player back at most once; moving
-out of the marked line dodges it. Their speed and frequency rise every 45 seconds,
+choose a random living player, glow before charging, then dash in that fixed
+direction without drawing a route on the floor. A dash knocks each player back
+at most once. Their speed and frequency rise every 45 seconds,
 and additional ravagers join, up to six. The floor starts shrinking after 45
-seconds, losing a ring every 15 seconds down to a five-block radius.
+seconds, losing a ring every 15 seconds down to a five-block radius. Every 45
+seconds more holes open in the remaining floor, including after shrinking stops;
+existing holes stay open and the central refuge remains solid.
 
 Glowing orange mine bottles spawn on the floor. Walk over one to pick it up;
 right-click to throw it like a splash potion. Carry at most one. Each mine
-explodes **five seconds after its original spawn**, including while held:
+explodes **eight seconds after its original spawn** by default, including while held:
 pickup, landing, rethrowing and dropping it on elimination never restart the fuse.
 A landed mine can be picked up again. Its name/action bar shows remaining time.
 Explosions push nearby players without health damage or terrain destruction.
@@ -339,6 +341,8 @@ The default time limit is four minutes.
 
 Settings: `rhino.durationSeconds`, `rhino.ravagers`, `rhino.mineFuseSeconds`,
 `rhino.mineSpawnSeconds`.
+On an existing server with the old saved fuse, run `/party config rhino.mineFuseSeconds 8`
+to use the new timing from the next session.
 
 All three survival games accept 2–16 players, have a five-second countdown and
 use protected throwaway worlds. Health damage, PvP, building, crafting and item
