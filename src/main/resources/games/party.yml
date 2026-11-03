@@ -11,5 +11,5 @@ mobCount:
 rhino:
   durationSeconds: 240
   ravagers: 2
-  mineFuseSeconds: 5
+  mineFuseSeconds: 8
   mineSpawnSeconds: 4

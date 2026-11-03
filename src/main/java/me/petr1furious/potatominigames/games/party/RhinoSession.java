@@ -69,14 +69,14 @@ final class RhinoSession extends PartySurvivalSession {
     }
     @Override void buildArena() {
         arena = new RhinoArena(world);
-        arena.resize(radius);
+        arena.resize(radius, 0);
         world.setSpawnLocation(0, RhinoArena.FLOOR + 1, 0);
     }
     @Override Location spawn(int index, int count) { return arena.spawn(index, count); }
     @Override Location viewpoint() { return new Location(world, .5, RhinoArena.FLOOR + 15, .5, 0, 70); }
     @Override double outHeight() { return RhinoArena.FLOOR - 4; }
     @Override int durationSeconds() { return duration; }
-    @Override String instructions() { return "Носорожий переполох: разоритель светится перед рывком — уходи с линии! Подбери мину и брось ПКМ. Она взорвётся через " + fuseSeconds + " секунд от появления, даже в руках. Урон — только отбрасывание; падение означает вылет."; }
+    @Override String instructions() { return "Носорожий переполох: разоритель светится перед рывком — уклоняйся! Арена сужается, дыр становится больше. Подбери мину и брось ПКМ. Она взорвётся через " + fuseSeconds + " секунд от появления, даже в руках. Урон — только отбрасывание; падение означает вылет."; }
     @Override void beginPlay() {
         for (int i = 0; i < initialRhinos; i++) addRhino(i);
         nextMine = 20;
@@ -93,9 +93,9 @@ final class RhinoSession extends PartySurvivalSession {
     @Override void playTick(long elapsed) {
         int stage = RhinoHazards.stage(elapsed);
         int nextRadius = RhinoHazards.radius(elapsed);
+        arena.resize(nextRadius, stage);
         if (radius != nextRadius) {
             radius = nextRadius;
-            arena.resize(radius);
             say("Арена сужается! Радиус: " + radius);
         }
         int desired = Math.min(6, initialRhinos + stage / 2);
@@ -128,15 +128,9 @@ final class RhinoSession extends PartySurvivalSession {
             rhino.entity.setRotation((float) Math.toDegrees(Math.atan2(-rhino.direction.getX(), rhino.direction.getZ())), 0);
             world.playSound(from, Sound.ENTITY_RAVAGER_ROAR, .7f, 1.3f);
         }
-        if (rhino.phase == Charge.WINDUP) {
-            if (elapsed >= rhino.until) { rhino.phase = Charge.DASH; rhino.entity.setGlowing(false); }
-            else if (elapsed % 4 == 0) {
-                for (int i = 2; i < radius * 2; i += 2) {
-                    Location mark = from.clone().add(rhino.direction.clone().multiply(i)).add(0, .15, 0);
-                    if (mark.getX() * mark.getX() + mark.getZ() * mark.getZ() <= radius * radius)
-                        world.spawnParticle(Particle.DUST, mark, 1, new Particle.DustOptions(Color.RED, 1.2f));
-                }
-            }
+        if (rhino.phase == Charge.WINDUP && elapsed >= rhino.until) {
+            rhino.phase = Charge.DASH;
+            rhino.entity.setGlowing(false);
         }
         if (rhino.phase != Charge.DASH) return;
         double speed = RhinoHazards.speed(stage);

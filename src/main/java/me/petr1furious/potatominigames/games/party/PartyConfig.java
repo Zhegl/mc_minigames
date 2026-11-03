@@ -43,7 +43,7 @@ public final class PartyConfig {
             .validate(n -> n >= 30 && n <= 600);
     public final Property<Integer> rhinoCount = bag.define("rhino.ravagers", PropertyCodec.INT, 2)
             .validate(n -> n >= 1 && n <= 6);
-    public final Property<Integer> rhinoMineFuseSeconds = bag.define("rhino.mineFuseSeconds", PropertyCodec.INT, 5)
+    public final Property<Integer> rhinoMineFuseSeconds = bag.define("rhino.mineFuseSeconds", PropertyCodec.INT, 8)
             .validate(n -> n >= 2 && n <= 15);
     public final Property<Integer> rhinoMineSpawnSeconds = bag.define("rhino.mineSpawnSeconds", PropertyCodec.INT, 4)
             .validate(n -> n >= 1 && n <= 10);

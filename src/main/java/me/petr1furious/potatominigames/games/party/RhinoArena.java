@@ -8,23 +8,29 @@ final class RhinoArena {
     static final int FLOOR = 80, RADIUS = 18;
     private final World world;
     private int radius = -1;
+    private int stage = -1;
     RhinoArena(World world) { this.world = world; }
-    static boolean hole(int x, int z) { return x * x + z * z > 12 && x * x + z * z < 14 * 14 && Math.floorMod(x * 31 + z * 17, 37) == 0; }
-    static boolean solid(int x, int z, int radius) { return TntRunArena.inside(x, z, radius) && !hole(x, z); }
-    void resize(int next) {
-        if (radius == next) return;
+    // Each stage adds gaps to the existing pattern, leaving the central refuge intact.
+    static boolean hole(int x, int z, int stage) {
+        return x * x + z * z > 12 && x * x + z * z < 14 * 14
+                && Math.floorMod(x * 31 + z * 17, 37) <= Math.clamp(stage, 0, 10);
+    }
+    static boolean solid(int x, int z, int radius, int stage) { return TntRunArena.inside(x, z, radius) && !hole(x, z, stage); }
+    void resize(int next, int nextStage) {
+        if (radius == next && stage == nextStage) return;
         for (int x = -RADIUS; x <= RADIUS; x++) for (int z = -RADIUS; z <= RADIUS; z++) {
-            world.getBlockAt(x, FLOOR, z).setType(!solid(x, z, next) ? Material.AIR
+            world.getBlockAt(x, FLOOR, z).setType(!solid(x, z, next, nextStage) ? Material.AIR
                     : !TntRunArena.inside(x, z, next - 1) ? Material.POLISHED_BLACKSTONE : Material.SMOOTH_STONE, false);
         }
         radius = next;
+        stage = nextStage;
     }
     Location safe(double x, double z) {
         int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
         for (int ring = 0; ring <= RADIUS * 2; ring++) {
             for (int dx = -ring; dx <= ring; dx++) for (int dz = -ring; dz <= ring; dz++) {
                 if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
-                if (solid(bx + dx, bz + dz, radius)) return new Location(world, bx + dx + .5, FLOOR + 1, bz + dz + .5);
+                if (solid(bx + dx, bz + dz, radius, stage)) return new Location(world, bx + dx + .5, FLOOR + 1, bz + dz + .5);
             }
         }
         return new Location(world, .5, FLOOR + 1, .5);
