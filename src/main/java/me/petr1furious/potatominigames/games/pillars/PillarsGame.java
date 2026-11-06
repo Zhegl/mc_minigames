@@ -133,6 +133,9 @@ public final class PillarsGame implements Minigame, Listener {
         return Material.BEDROCK;
     }
 
+    @Override public String modeTitle(String mode) { return mode.equals("perks") ? "Перки" : mode; }
+    @Override public Material icon(String mode) { return mode.equals("perks") ? Material.FEATHER : icon(); }
+
     @Override
     public Component description(String mode) {
         PillarsPresets.Preset preset = presets.find(mode);
@@ -150,7 +153,8 @@ public final class PillarsGame implements Minigame, Listener {
             case "party" -> "Random events, about one a minute";
             case "rave" -> "Random events twice as often, items as fast as chaos";
             case "adhd" -> "СДВГ: каждые ~2 минуты — 30 секунд шафла ×3 и рейва ×3";
-            case "fusion" -> "A random mix of chaos, shuffle, tactical, big house, ADHD and party/rave";
+            case "perks" -> "Перки: 16 особых предметов в случайной выдаче, включая редкие легендарные";
+            case "fusion" -> "A random mix of chaos, shuffle, tactical, big house, ADHD, perks and party/rave";
             default -> "Random items on pillars, last one standing wins";
         });
     }
@@ -277,6 +281,15 @@ public final class PillarsGame implements Minigame, Listener {
                                                 && preset.owner().equals(player.getUniqueId()))
                                         .map(PillarsPresets.Preset::name).toList()).getSuggestions(ctx, builder))
                                 .executes(ctx -> run(ctx, this::deletePreset)))));
+
+        root.then(Commands.literal("perk")
+                .requires(PillarsGame::isAdmin)
+                .then(Commands.argument("type", StringArgumentType.word())
+                        .suggests(Suggest.strings(java.util.Arrays.stream(PerkType.values()).map(PerkType::id).toList()))
+                        .executes(ctx -> run(ctx, c -> {
+                            if (!requireSession().givePerk(requirePlayer(c), c.getArgument("type", String.class)))
+                                throw new CommandFailure("Запусти pillars perks и выбери доступный перк после отсчёта.");
+                        }))));
 
         root.then(Commands.literal("respawn")
                 .requires(PillarsGame::isAdmin)

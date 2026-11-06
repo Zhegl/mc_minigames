@@ -36,6 +36,10 @@ adhd:
   meanSeconds: 120
   durationSeconds: 30
 
+# Chance per ordinary item draw to receive a perk instead. Legendary perk weight is 1 versus 4.
+perks:
+  dropChance: 0.20
+
 # Each mode's settings. cooldownSeconds is the time between items, timeLimit takes "30s",
 # "5min" or "1h"; layout is circular (an even ring) or random (scattered in a circle).
 # pillarMaterial overrides platformMaterial; luckyBlocks makes the pillar blocks lucky blocks
@@ -129,6 +133,15 @@ modes:
     bossBar: true
     layout: circular
     adhd: true
+  perks:
+    cooldownSeconds: 5
+    timeLimit: 5min
+    color: '#D477FF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    perks: true
   fusion:
     cooldownSeconds: 5
     timeLimit: 8min

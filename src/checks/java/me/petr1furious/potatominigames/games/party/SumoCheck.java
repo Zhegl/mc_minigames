@@ -15,7 +15,7 @@ public final class SumoCheck {
     public static void main(String[] args) {
         platformChecks();
         combatChecks();
-        System.out.println("Party Sumo: larger platform, safe spawns, ring-outs, complete overtime/reset, stronger Knockback I impulses and bounded hit windows passed");
+        System.out.println("Party Sumo: original 19-block platform, safe spawns, ring-outs, complete overtime/reset, stronger Knockback I impulses and bounded hit windows passed");
     }
 
     private static void platformChecks() {
@@ -34,11 +34,11 @@ public final class SumoCheck {
         SumoArena arena = new SumoArena(world[0]);
         arena.build();
         Map<PvpArena.Position, Material> initial = new HashMap<>(blocks);
-        check(!initial.isEmpty(), "Platform generated");
+        check(initial.size() == 253, "Original radius-nine platform has exactly 253 floor blocks");
         for (var entry : initial.entrySet()) {
             var p = entry.getKey();
             check(p.y() == SumoArena.FLOOR, "Only one floor layer, with no hidden floor or walls");
-            check(SumoArena.onPlatform(p.x(), p.z(), SumoArena.RADIUS), "Platform stays circular after expansion");
+            check(SumoArena.onPlatform(p.x(), p.z(), SumoArena.RADIUS), "Platform stays circular");
             check(initial.get(new PvpArena.Position(-p.x(), p.y(), -p.z())) == entry.getValue(), "Symmetric playing surface");
         }
         check(!blocks.containsKey(new PvpArena.Position(SumoArena.RADIUS, SumoArena.FLOOR, SumoArena.RADIUS)), "No square corner ledges");
@@ -46,8 +46,8 @@ public final class SumoCheck {
             Location spawn = arena.spawn(east);
             check(initial.containsKey(new PvpArena.Position(spawn.getBlockX(), SumoArena.FLOOR, spawn.getBlockZ())), "Spawn above solid platform");
             check(!arena.isOut(spawn), "Spawn not a ring-out");
-            check(spawn.toVector().subtract(arena.center().toVector()).length() <= SumoArena.RADIUS - 7,
-                    "Both spawns retain seven blocks of radial recovery space");
+            check(spawn.toVector().subtract(arena.center().toVector()).length() <= SumoArena.RADIUS - 5,
+                    "Both original spawns retain five blocks of radial recovery space");
         }
         check(!arena.isOut(new Location(world[0], SumoArena.RADIUS + 2, 81, 0)), "Running off edge is not a loss until falling below platform");
         check(arena.isOut(new Location(world[0], SumoArena.RADIUS + 2, 79.4, 0)), "Falling below platform is a loss");
@@ -65,8 +65,8 @@ public final class SumoCheck {
             }
             previous = radius;
         }
-        check(SumoArena.radiusAt(45 + SumoArena.OVERTIME_SECONDS - 2, 45) == -1,
-                "Expanded platform vanishes with two seconds left for players to fall before timeout");
+        check(SumoArena.radiusAt(45 + SumoArena.OVERTIME_SECONDS - 3, 45) == -1,
+                "Original platform vanishes with three seconds left for players to fall before timeout");
         check(blocks.values().stream().allMatch(m -> m == Material.AIR), "Overtime ultimately removes all camping space");
         arena.reset();
         check(blocks.equals(initial), "Every round restores the entire original platform and its colours");
