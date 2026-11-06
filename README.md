@@ -13,7 +13,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `perks`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
@@ -217,10 +217,10 @@ horizontal speed cap prevent runaway launches from repeated hits. Falling below
 the platform loses the round. Each player's hit immunity lasts ten server ticks;
 it resets before every round. Both falling in the same server tick replays the round.
 
-The arena is a round, **23-block-wide platform** above the void, without walls or
-hidden floors. The extra space balances the stronger stick. Players start eight blocks apart and swap sides for round two.
-After 45 seconds the outer ring disappears; another ring goes every two or three
-seconds. The larger platform still disappears by 28 seconds of overtime, leaving
+The arena is a round, **19-block-wide platform** above the void, without walls or
+hidden floors. Players start eight blocks apart and swap sides for round two.
+After 45 seconds the outer ring disappears; another ring goes every three
+seconds. The platform disappears by 27 seconds of overtime, leaving
 time for ring-outs before the 30-second overtime limit. Every round restores the full platform. A five-second
 countdown pins participants in place and blocks jumping, flight and early hits.
 Waiting players spectate the duel after the countdown.
@@ -536,7 +536,7 @@ are left intact. SUPERHOT cannot return frozen items from a previous set.
 
 `fusion` rolls its rules every game: chaos (random layout, chaos-speed items), shuffle (at
 item-shuffle's own pace outside ADHD bursts), tactical (with shuffle, everyone gets the same
-set), big_house and adhd, each with a 50% chance, and party or rave with 25% each. The values come from
+set), big_house and adhd, each with a 50% chance, perks with a 50% chance, and party or rave with 25% each. The values come from
 those modes' settings. The roll is announced at the start and shown in the summary.
 
 ## Pillars ADHD / СДВГ
@@ -582,7 +582,7 @@ Ownership and the limit use the player's UUID, including across restarts.
 /pillars preset delete duel
 ```
 
-Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`.
+Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`, `perks`.
 `party` and `rave` are mutually exclusive. With no modifiers, `save` creates plain
 Pillars with Fusion's base settings. Unlike Fusion, the selected modifiers always
 apply: there is no random roll. Their settings and precedence are the same as
@@ -601,6 +601,58 @@ without reloading commands. Other games and the built-in Pillars modes are uncha
 Presets live in `data/pillars-presets.yml` inside the plugin's data folder.
 Writes are atomic; a failed write leaves the previous presets intact.
 
+
+## Pillars perks
+
+Join through the Pillars mode menu or `/play pillars perks`; administrators can use
+`/pillars start perks @a` or `/pillars test perks`. The mode uses ordinary Pillars
+rules and item timing. The `perks` modifier can also be saved in presets, e.g.
+`/pillars preset save tricks chaos perks`, and has a 50% independent chance in Fusion.
+Enable it on another built-in mode with `/pillars config modes.<mode>.perks true`.
+Sniper Duel keeps its five logs and sixth crossbow; perks can replace later drops.
+
+Each item draw has a **20%** chance to become a special perk instead. Configure
+`perks.dropChance` in `games/pillars.yml` for the next session. The fourteen ordinary
+perks have weight 4 each; the two legendary weapons have weight 1 each. Each
+legendary therefore has a **0.345%** chance per item draw at the default setting,
+four times rarer than each ordinary perk. Tactical presets share perk kinds and
+ordinary item rolls, with separate item instances/charges per player.
+
+Every perk has enchantment glint, a Russian name, instructions and remaining charges.
+Active items use the main hand; normal items with the same material have no perk.
+
+| Item | Perk and controls |
+| --- | --- |
+| Feather / Спасатель | Right-click for a 3×3 slime platform just below you, expiring after 10 seconds. One use. |
+| Quartz block / Кубик шулера | Right-click to replace the entire latest reward, including its stack or bow/ammo bundle. Three uses. The whole unchanged reward must still be in your inventory; spent, placed, modified, stored or missing parts prevent a reroll. Receiving a new cube retains the preceding reroll target. |
+| Fishing rod / Воровской крюк | Hit an opponent with the hook to transfer their complete main-hand stack, preserving metadata and remaining charges. One successful theft; an empty hand or miss costs no charge. |
+| Ghast tear / Призрак | Right-click for exactly four seconds of spectator flight/phasing. Normal play then resumes in a clear position nearby. Following players and leaving the arena bounds are blocked. One use. |
+| Iron boots / Якорь | Wear to cancel knockback from three damaging enemy hits, then break. Health damage remains; removing/repairing the boots cannot refill charges. |
+| Rabbit foot / Воздушный шаг | Carry in your inventory and press jump again while airborne. Three extra jumps, usable together or on separate falls; landing does not refill them. |
+| Clock / Отмотка | Right-click to return to the position from 60 ticks ago. Requires three seconds of recorded history and a clear destination. Health, items and charges are never rolled back. One use. |
+| Brick / Карманный домик | Right-click for a wooden house only 3×3 externally: one-player interior, two blocks of headroom, door, windows and torch. Existing blocks are preserved; a blocked footprint refuses the cast. One use. |
+| Blue ice / Ледяной луч | Right-click a ray up to 32 blocks. A hit encases the opponent in protected ice for four seconds; they cannot move, attack, use items or take damage. One attempt, including misses. |
+| Legendary bow / До свидания | Punch 100, one arrow included. The bow breaks after its single shot, including a miss. |
+| Legendary crossbow / TNT-почта | Right-click to throw primed TNT; three shots, two-second fuse. No ordinary ammunition required. |
+| Leather boots / Плотник | First equip starts a five-second timer: permanent planks appear underfoot, including over the void. Removing, stealing or re-equipping never restarts the timer. Afterwards the boots retain ordinary leather protection. |
+| Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for six seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
+| Sheep egg / Камикадзе | Right-click to summon a sheep carrying primed TNT. It chases the nearest active opponent, can leap gaps, and explodes after five seconds. The caster is never its target, but explosions can still hurt the caster. One use. |
+| Ink sac / Дымовая завеса | Right-click for a smoke cloud with a four-block radius lasting five seconds. Enemies inside are blinded; the caster is unaffected. One use. |
+| Fire charge / Фаербол | Right-click to throw an explosive fireball along your view. One use. |
+
+Special effects, entities, history and pending block leases are scoped to the match
+and cleaned on stop. Temporary terrain never overwrites existing blocks or deletes
+a player's replacements when expiring. Freeze blocks resist breaking, melting,
+pistons and explosions. Charge/timer metadata follows dropped or stolen items.
+Shuffle replaces perk inventory along with ordinary inventory; already running
+timed effects keep their original deadlines. Spectator mode is restored on exit,
+disconnect and stop; reconnecting never grants extra charges.
+
+For live testing, admins in a running perks match can use `/pillars perk <type>`:
+`save`, `reroll`, `steal`, `ghost`, `anchor`, `jump`, `rewind`, `house`, `freeze`,
+`bow`, `crossbow`, `planks`, `break`, `sheep`, `smoke`, `fireball` (tab completion).
+This grants the item to the command sender after the countdown. Multiplayer
+balance and client interactions still require live playtesting.
 
 ## Pillars events (party, rave)
 
@@ -754,6 +806,9 @@ all sixteen spawn points, including the farthest-from-enemies selection.
 elimination and one-shot timeout penalties.
 `checkPillarsShuffle` checks dropped items and container stashes, cursor/crafting
 cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
+`checkPillarsPerks` checks all sixteen weighted outcomes and rarity, exact rewind/channel timing,
+whole-reward counts, real temporary block writes/restoration and cage leases, tiny house
+geometry and queue/preset integration.
 `checkPillarsAdhd` checks jittered start intervals, exact burst duration and triple
 shuffle speed, configured rave frequency, and cancellation of burst-only event tasks.
 `checkPartySurvival` checks TNT geometry and collapse deadlines, exact 2×2 platforms

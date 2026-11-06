@@ -344,7 +344,7 @@ final class DuelSession implements GameSession {
             if (elapsed >= roundLength && !suddenDeath) {
                 suddenDeath = true;
                 if (!sumo) services.arena().applyBorder(world, arena.center(), PvpArena.BORDER_SIZE, 7, 30);
-                services.messages().broadcast(text(sumo ? "Овертайм! Края платформы исчезают каждые 2–3 секунды."
+                services.messages().broadcast(text(sumo ? "Овертайм! Края платформы исчезают каждые 3 секунды."
                         : "Овертайм! Граница сужается, через 30 секунд сравним оставшееся здоровье.", NamedTextColor.RED));
             }
             if (elapsed >= roundLength + 30) {

@@ -132,6 +132,7 @@ final class PillarsSession implements GameSession {
     /** Random events (party, rave); null when the mode has none. */
     private PillarsEvents events;
     private ShuffleItems shuffleItems;
+    private PillarsPerks perks;
     private AdhdModifier adhd;
     private BukkitTask adhdTask;
     /** Item Frenzy divides the item cooldown by this. */
@@ -165,6 +166,20 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onStart() throws CommandFailure {
+        try { start(); }
+        catch (CommandFailure | RuntimeException error) {
+            if (perks != null) perks.close();
+            if (events != null) events.close();
+            if (shuffleItems != null) shuffleItems.close();
+            if (adhdTask != null) adhdTask.cancel();
+            if (actionBarTask != null) actionBarTask.cancel();
+            setLuckyWorld(false);
+            game.clearActiveSession(this);
+            throw error;
+        }
+    }
+
+    private void start() throws CommandFailure {
         if (!game.modes().contains(modeId)) {
             throw new CommandFailure("Unknown Pillars mode or preset: " + modeId);
         }
@@ -286,11 +301,17 @@ final class PillarsSession implements GameSession {
         if (adhd != null) {
             adhdTask = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickAdhd, 1L, 1L);
         }
+        if (mode.perks.get() || rules.modifiers().contains("perks")) {
+            perks = new PillarsPerks(this, services, world, config.perkChance.get(),
+                    () -> create(draw(new ItemPool.GroupState(groups), 1)));
+        }
         if (preset != null || mode.id.equals("fusion")) {
             announce(Component.text()
                     .append(Component.text((preset != null ? preset.name() : "Fusion") + ": ", mode.accentColor()))
                     .append(Component.text(fusionText(), NamedTextColor.WHITE))
                     .build());
+        } else if (perks != null) {
+            announce(Component.text("Перки включены: особые предметы с блеском в обычной выдаче. Управление указано на предметах.", NamedTextColor.LIGHT_PURPLE));
         } else if (adhd != null) {
             announce(Component.text("СДВГ включён: периодические вспышки ускоренного шафла и рейва.",
                     NamedTextColor.GOLD));
@@ -549,17 +570,23 @@ final class PillarsSession implements GameSession {
         }
         // sameItems: one draw, and one stack (potion type, enchantments) copied to everyone,
         // so nobody is luckier than the rest.
-        List<ItemStack> shared = !sniper && rules.sameItems() ? create(draw(sharedGroups, count)) : null;
+        List<ItemStack> shared = !sniper && rules.sameItems() ? perkDraw(create(draw(sharedGroups, count))) : null;
         for (PillarPlayer pillarPlayer : alive) {
             Player player = pillarPlayer.player();
             if (player == null) {
                 continue;
             }
             if (sniper) {
-                player.getInventory().addItem(sniperItem(pillarPlayer));
-                playItemSound(player);
+                ItemStack next = sniperItem(pillarPlayer);
+                if (perks != null) {
+                    List<ItemStack> drop = List.of(next);
+                    giveItems(player, pillarPlayer.sniperDrops > 6 ? perkDraw(drop) : drop);
+                } else {
+                    player.getInventory().addItem(next);
+                    playItemSound(player);
+                }
             } else {
-                giveItems(player, shared != null ? shared : create(draw(pillarPlayer.groups, count)));
+                giveItems(player, shared != null ? shared : perkDraw(create(draw(pillarPlayer.groups, count))));
             }
         }
         itemCountdown = itemCooldown();
@@ -640,14 +667,14 @@ final class PillarsSession implements GameSession {
     }
 
     /**
-     * Fusion: each of chaos, shuffle, tactical, big_house and adhd with a 50% chance, and party or rave
+     * Fusion: each of chaos, shuffle, tactical, big_house, adhd and perks with a 50% chance, and party or rave
      * with 25% each. Values come from those modes' own settings. Chaos and rave speed items up to
      * their pace; shuffle keeps item-shuffle's, whatever else is on.
      */
     private Rules rollFusion() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         List<String> modifiers = new ArrayList<>();
-        for (String modifier : List.of("chaos", "shuffle", "tactical", "big_house", "adhd")) {
+        for (String modifier : List.of("chaos", "shuffle", "tactical", "big_house", "adhd", "perks")) {
             if (random.nextBoolean()) {
                 modifiers.add(modifier);
             }
@@ -696,6 +723,10 @@ final class PillarsSession implements GameSession {
 
     /** Alive and online. */
     List<Player> aliveOnline() {
+        return perkPlayers().stream().filter(p -> perks == null || !perks.isGhost(p)).toList();
+    }
+
+    List<Player> perkPlayers() {
         List<Player> result = new ArrayList<>();
         for (PillarPlayer pillarPlayer : alive) {
             Player player = pillarPlayer.player();
@@ -833,9 +864,12 @@ final class PillarsSession implements GameSession {
         return drawn;
     }
 
+    private List<ItemStack> perkDraw(List<ItemStack> stacks) { return perks == null ? stacks : perks.roll(stacks); }
+
     /** Copies, so players never share one stack. */
     private void giveItems(Player player, List<ItemStack> stacks) {
-        for (ItemStack stack : stacks) {
+        if (perks != null) perks.grant(player, stacks);
+        else for (ItemStack stack : stacks) {
             player.getInventory().addItem(stack.clone());
         }
         playItemSound(player);
@@ -944,6 +978,7 @@ final class PillarsSession implements GameSession {
             case "party" -> "Party";
             case "rave" -> "Rave";
             case "adhd" -> "СДВГ";
+            case "perks" -> "Перки";
             case "fusion" -> "Fusion";
             default -> "Original";
         };
@@ -987,6 +1022,10 @@ final class PillarsSession implements GameSession {
         if (pillarPlayer == null || !alive.contains(pillarPlayer) || ending) {
             return;
         }
+        if (perks != null) {
+            perks.hold(event);
+            if (perks.immuneToVoid(event.getPlayer())) return;
+        }
         if (!started) {
             // Hold horizontal movement only, so players above the pillar settle onto it.
             if (event.getFrom().getX() != event.getTo().getX() || event.getFrom().getZ() != event.getTo().getZ()) {
@@ -1008,6 +1047,7 @@ final class PillarsSession implements GameSession {
             return;
         }
         Player player = pillarPlayer.player();
+        if (perks != null && player != null) perks.playerGone(player);
         // Offline players had lastLocation set on quit.
         if (player != null) {
             pillarPlayer.lastLocation = player.getLocation().clone();
@@ -1196,6 +1236,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onParticipantQuit(Player player) {
+        if (perks != null) perks.disconnected(player);
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         if (pillarPlayer == null || ending || !alive.contains(pillarPlayer)) {
             return;
@@ -1230,6 +1271,9 @@ final class PillarsSession implements GameSession {
                 placeEliminated(pillarPlayer);
                 return;
             }
+            if (perks != null && !perks.isGhost(player) && player.getGameMode() == GameMode.SPECTATOR) {
+                player.setGameMode(GameMode.SURVIVAL); player.setAllowFlight(false); player.setFlying(false);
+            }
             player.setInvulnerable(!started);
             if (bossBar != null) {
                 player.showBossBar(bossBar);
@@ -1248,6 +1292,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onParticipantLeave(Player player) {
+        if (perks != null) perks.playerGone(player);
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         player.setInvulnerable(false);
         if (bossBar != null) {
@@ -1282,6 +1327,16 @@ final class PillarsSession implements GameSession {
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         return pillarPlayer != null && alive.contains(pillarPlayer);
     }
+
+    double deathHeight() { return config.deathHeight(); }
+
+    boolean givePerk(Player player, String type) {
+        if (perks == null) return false;
+        try { return perks.give(player, PerkType.valueOf(type.toUpperCase(java.util.Locale.ROOT))); }
+        catch (IllegalArgumentException error) { return false; }
+    }
+
+    @Override public boolean mayFollowPlayers(Player viewer) { return !isInGame(viewer); }
 
     @Override
     public Location spectatorLocation(Player viewer) {
@@ -1338,6 +1393,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onEnd(EndReason reason) {
+        if (perks != null) perks.close();
         if (adhdTask != null) {
             adhdTask.cancel();
         }
