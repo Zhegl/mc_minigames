@@ -18,7 +18,7 @@ enum PerkType {
     BOW(Material.BOW, "До свидания", 1, true, "Один выстрел • Откидывание 100 • стрела в комплекте"),
     CROSSBOW(Material.CROSSBOW, "TNT-почта", 3, true, "ПКМ • бросок TNT, фитиль 2 с • 3 выстрела"),
     PLANKS(Material.LEATHER_BOOTS, "Плотник", 1, false, "Надень • доски под ногами 5 с", "Таймер запускается один раз, переодевание не помогает"),
-    BREAK(Material.BLAZE_ROD, "Дезинтегратор", 1, false, "Держи ПКМ и прицел на блоке 12 с • ломает даже бедрок"),
+    BREAK(Material.BLAZE_ROD, "Дезинтегратор", 1, false, "Держи ПКМ и прицел на блоке 3 с • ломает даже бедрок"),
     SHEEP(Material.SHEEP_SPAWN_EGG, "Камикадзе", 1, false, "ПКМ • овца с TNT преследует ближайшего соперника"),
     SMOKE(Material.INK_SAC, "Дымовая завеса", 1, false, "ПКМ • дым на 5 с, слепота только соперникам"),
     FIREBALL(Material.FIRE_CHARGE, "Фаербол", 1, false, "ПКМ • бросить взрывающийся огненный шар"),

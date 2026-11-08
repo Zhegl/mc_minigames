@@ -8,7 +8,7 @@ import java.util.random.RandomGenerator;
 /** Tick-based rules shared by the runtime and serverless checks. */
 final class PerkRules {
     static final int PLATFORM_TICKS = 200, GHOST_TICKS = 54, FREEZE_TICKS = 80,
-            PLANK_TICKS = 100, SMOKE_TICKS = 100, BREAK_TICKS = 240, REWIND_TICKS = 60;
+            PLANK_TICKS = 100, SMOKE_TICKS = 100, BREAK_TICKS = 60, REWIND_TICKS = 60;
     static final int ATOMIC_FUSE_TICKS = 80;
     static final float ATOMIC_POWER = 4f * 4;
     static final int BLESSING_TICKS = 60 * 20, GRAVITY_TICKS = 3 * 20,

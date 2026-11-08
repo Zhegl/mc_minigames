@@ -640,7 +640,7 @@ Active items use the main hand; normal items with the same material have no perk
 | Legendary bow / До свидания | Punch 100, one arrow included. The bow breaks after its single shot, including a miss. |
 | Legendary crossbow / TNT-почта | Right-click to throw primed TNT; three shots, two-second fuse. No ordinary ammunition required. |
 | Leather boots / Плотник | First equip starts a five-second timer: permanent planks appear underfoot, including over the void. Removing, stealing or re-equipping never restarts the timer. Afterwards the boots retain ordinary leather protection. |
-| Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for twelve seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
+| Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for three seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
 | Sheep egg / Камикадзе | Right-click to summon a sheep carrying primed TNT. It chases the nearest active opponent, can leap gaps, and explodes after five seconds. The caster is never its target, but explosions can still hurt the caster. One use. |
 | Ink sac / Дымовая завеса | Right-click for a smoke cloud with a four-block radius lasting five seconds. Enemies inside are blinded; the caster is unaffected. One use. |
 | Fire charge / Фаербол | Right-click to throw an explosive fireball along your view. One use. |

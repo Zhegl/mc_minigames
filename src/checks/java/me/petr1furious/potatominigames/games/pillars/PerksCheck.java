@@ -159,15 +159,15 @@ public final class PerksCheck {
     }
     private static void channel() {
         var channel = new PerkRules.Channel<String>();
-        for (int tick = 100; tick < 340; tick++) check(!channel.tick("bedrock", tick, true), "A held block cannot break before twelve full seconds");
-        check(channel.tick("bedrock", 340, true), "The same uninterrupted target completes at twelve seconds");
+        for (int tick = 100; tick < 160; tick++) check(!channel.tick("bedrock", tick, true), "A held block cannot break before three full seconds");
+        check(channel.tick("bedrock", 160, true), "The same uninterrupted target completes at three seconds");
         channel.clear(); channel.tick("bedrock", 1000, true);
-        check(!channel.tick("bedrock", 1239, false), "Releasing the button just before completion cancels the cast");
-        check(!channel.tick("bedrock", 1240, true) && !channel.tick("bedrock", 1479, true), "Resuming cannot reuse earlier progress");
-        check(channel.tick("bedrock", 1480, true), "A fresh complete channel succeeds");
-        check(!channel.tick("other", 1481, true), "Switching blocks resets progress");
-        check(!channel.tick(null, 1540, true), "Looking into air resets progress");
-        check(!channel.tick("other", 1640, true), "Time spent looking into air does not count");
+        check(!channel.tick("bedrock", 1059, false), "Releasing the button just before completion cancels the cast");
+        check(!channel.tick("bedrock", 1060, true) && !channel.tick("bedrock", 1119, true), "Resuming cannot reuse earlier progress");
+        check(channel.tick("bedrock", 1120, true), "A fresh complete channel succeeds");
+        check(!channel.tick("other", 1121, true), "Switching blocks resets progress");
+        check(!channel.tick(null, 1180, true), "Looking into air resets progress");
+        check(!channel.tick("other", 1280, true), "Time spent looking into air does not count");
     }
     private static void reroll() {
         check(PerkRules.complete(new int[] {32}, new int[] {32}), "A full unspent stack can be replaced");
