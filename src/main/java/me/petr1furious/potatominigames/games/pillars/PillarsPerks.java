@@ -360,7 +360,8 @@ final class PillarsPerks implements Listener, AutoCloseable {
             target.setType(Material.AIR, false); terrain.changed(target);
             channels.remove(p.getUniqueId()); p.clearActiveItem(); consumeHand(p, c.serial());
             world.playSound(target.getLocation(), Sound.BLOCK_GLASS_BREAK, 1, .6f);
-        } else if (held && tick % 10 == 0) message(p, "Дезинтегратор: " + String.format(java.util.Locale.ROOT, "%.1f", c.timer().elapsed(tick) / 20.0) + "/6 с");
+        } else if (held && tick % 10 == 0) message(p, "Дезинтегратор: " + String.format(java.util.Locale.ROOT,
+                "%.1f/%.1f с", c.timer().elapsed(tick) / 20.0, PerkRules.BREAK_TICKS / 20.0));
         if (!held) channels.remove(p.getUniqueId());
     }
     private void ghost(Player p) {

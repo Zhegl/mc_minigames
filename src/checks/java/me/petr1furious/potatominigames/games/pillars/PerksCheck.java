@@ -154,20 +154,20 @@ public final class PerksCheck {
             check(history.size() <= 63, "History remains bounded during a long match");
         }
         check(PerkRules.PLATFORM_TICKS == 200 && PerkRules.PLANK_TICKS == 100, "Platform lasts ten seconds and plank boots five");
-        check(PerkRules.GHOST_TICKS == 80 && PerkRules.FREEZE_TICKS == 80 && PerkRules.SMOKE_TICKS == 100,
-                "Spectator/freeze last four seconds; smoke lasts five");
+        check(PerkRules.GHOST_TICKS == 54 && PerkRules.FREEZE_TICKS == 80 && PerkRules.SMOKE_TICKS == 100,
+                "Spectator lasts 2.7 seconds; freeze stays four seconds and smoke five");
     }
     private static void channel() {
         var channel = new PerkRules.Channel<String>();
-        for (int tick = 100; tick < 220; tick++) check(!channel.tick("bedrock", tick, true), "A held block cannot break before six full seconds");
-        check(channel.tick("bedrock", 220, true), "The same uninterrupted target completes at six seconds");
+        for (int tick = 100; tick < 340; tick++) check(!channel.tick("bedrock", tick, true), "A held block cannot break before twelve full seconds");
+        check(channel.tick("bedrock", 340, true), "The same uninterrupted target completes at twelve seconds");
         channel.clear(); channel.tick("bedrock", 1000, true);
-        check(!channel.tick("bedrock", 1119, false), "Releasing the button just before completion cancels the cast");
-        check(!channel.tick("bedrock", 1120, true) && !channel.tick("bedrock", 1239, true), "Resuming cannot reuse earlier progress");
-        check(channel.tick("bedrock", 1240, true), "A fresh complete channel succeeds");
-        check(!channel.tick("other", 1241, true), "Switching blocks resets progress");
-        check(!channel.tick(null, 1300, true), "Looking into air resets progress");
-        check(!channel.tick("other", 1400, true), "Time spent looking into air does not count");
+        check(!channel.tick("bedrock", 1239, false), "Releasing the button just before completion cancels the cast");
+        check(!channel.tick("bedrock", 1240, true) && !channel.tick("bedrock", 1479, true), "Resuming cannot reuse earlier progress");
+        check(channel.tick("bedrock", 1480, true), "A fresh complete channel succeeds");
+        check(!channel.tick("other", 1481, true), "Switching blocks resets progress");
+        check(!channel.tick(null, 1540, true), "Looking into air resets progress");
+        check(!channel.tick("other", 1640, true), "Time spent looking into air does not count");
     }
     private static void reroll() {
         check(PerkRules.complete(new int[] {32}, new int[] {32}), "A full unspent stack can be replaced");

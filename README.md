@@ -631,7 +631,7 @@ Active items use the main hand; normal items with the same material have no perk
 | Feather / Спасатель | Right-click for a 3×3 slime platform just below you, expiring after 10 seconds. One use. |
 | Quartz block / Кубик шулера | Right-click to replace the entire latest reward, including its stack or bow/ammo bundle. Three uses. The whole unchanged reward must still be in your inventory; spent, placed, modified, stored or missing parts prevent a reroll. Receiving a new cube retains the preceding reroll target. |
 | Fishing rod / Воровской крюк | Hit an opponent with the hook to transfer their complete main-hand stack, preserving metadata and remaining charges. One successful theft; an empty hand or miss costs no charge. |
-| Ghast tear / Призрак | Right-click for exactly four seconds of spectator flight/phasing. Normal play then resumes in a clear position nearby. Following players and leaving the arena bounds are blocked. One use. |
+| Ghast tear / Призрак | Right-click for 2.7 seconds of spectator flight/phasing. Normal play then resumes in a clear position nearby. Following players and leaving the arena bounds are blocked. One use. |
 | Iron boots / Якорь | Wear to cancel knockback from three damaging enemy hits, then break. Health damage remains; removing/repairing the boots cannot refill charges. |
 | Rabbit foot / Воздушный шаг | Carry in your inventory and press jump again while airborne. Three extra jumps, usable together or on separate falls; landing does not refill them. |
 | Clock / Отмотка | Right-click to return to the position from 60 ticks ago. Requires three seconds of recorded history and a clear destination. Health, items and charges are never rolled back. One use. |
@@ -640,7 +640,7 @@ Active items use the main hand; normal items with the same material have no perk
 | Legendary bow / До свидания | Punch 100, one arrow included. The bow breaks after its single shot, including a miss. |
 | Legendary crossbow / TNT-почта | Right-click to throw primed TNT; three shots, two-second fuse. No ordinary ammunition required. |
 | Leather boots / Плотник | First equip starts a five-second timer: permanent planks appear underfoot, including over the void. Removing, stealing or re-equipping never restarts the timer. Afterwards the boots retain ordinary leather protection. |
-| Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for six seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
+| Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for twelve seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
 | Sheep egg / Камикадзе | Right-click to summon a sheep carrying primed TNT. It chases the nearest active opponent, can leap gaps, and explodes after five seconds. The caster is never its target, but explosions can still hurt the caster. One use. |
 | Ink sac / Дымовая завеса | Right-click for a smoke cloud with a four-block radius lasting five seconds. Enemies inside are blinded; the caster is unaffected. One use. |
 | Fire charge / Фаербол | Right-click to throw an explosive fireball along your view. One use. |
