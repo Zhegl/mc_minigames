@@ -66,7 +66,8 @@ final class PerkItems {
             meta.displayName(Component.text((type.legendary ? "★ " : "") + type.title, color).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
             for (String line : type.instructions) lore.add(Component.text(line, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.text("Заряды: " + charges(item), NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.text(type == PerkType.GRAVITY ? "Многоразовый" : "Заряды: " + charges(item), NamedTextColor.YELLOW)
+                    .decoration(TextDecoration.ITALIC, false));
             if (type == PerkType.PLANKS && number(item, STARTED, 0) != 0)
                 lore.add(Component.text("Уже активированы • повторно не запустить", NamedTextColor.RED));
             meta.lore(lore);
@@ -74,5 +75,13 @@ final class PerkItems {
     }
     static List<ItemStack> bundle(PerkType type) {
         return type == PerkType.BOW ? List.of(create(type), new ItemStack(org.bukkit.Material.ARROW)) : List.of(create(type));
+    }
+    static ItemStack cursedPumpkin() {
+        ItemStack item = new ItemStack(org.bukkit.Material.CARVED_PUMPKIN);
+        item.editMeta(meta -> {
+            meta.displayName(Component.text("Проклятая тыква", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
+            meta.addEnchant(Enchantment.BINDING_CURSE, 1, true);
+        });
+        return item;
     }
 }

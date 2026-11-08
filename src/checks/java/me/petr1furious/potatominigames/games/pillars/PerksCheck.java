@@ -21,14 +21,14 @@ import org.bukkit.configuration.file.YamlConfiguration;
 /** Exercises the production weighted pool, timers, provenance counts and actual temporary block writes. */
 public final class PerksCheck {
     public static void main(String[] args) throws Exception {
-        catalogue(); history(); channel(); reroll(); terrain(); integration();
-        System.out.println("Pillars perks: 16 reachable weighted items, bounded rewind history, uninterrupted six-second channel, complete reroll counts, non-destructive temporary terrain/cage expiry, tiny house and queue/preset integration passed");
+        catalogue(); atomicBomb(); decoys(); shapes(); gravity(); phantoms(); history(); channel(); reroll(); terrain(); transmute(); illusions(); integration();
+        System.out.println("Pillars perks: 25 weighted items, atomic TNT, enemy-triggered decoys with owner/terrain immunity and capped damage, shuffled 3x3 anvil rain, complete connected transmutation, personal gravity cooldown, opponent-only phantom sounds/timing, bounded rewind/channel/reroll rules, temporary terrain and queue/preset integration passed");
     }
     private static void catalogue() {
-        check(PerkType.values().length == 16, "All sixteen agreed perks are present");
+        check(PerkType.values().length == 25, "All twenty-five perks are present");
         Map<PerkType, Integer> counts = new HashMap<>();
         for (int roll = 0; roll < PerkType.totalWeight(); roll++) counts.merge(PerkType.atWeight(roll), 1, Integer::sum);
-        check(counts.size() == 16 && PerkType.totalWeight() == 58, "No unreachable outcomes or gaps in the weighted draw");
+        check(counts.size() == 25 && PerkType.totalWeight() == 94, "No unreachable outcomes or gaps in the weighted draw");
         check(Arrays.stream(PerkType.values()).filter(t -> t.legendary).count() == 2, "Exactly the bow and TNT crossbow are legendary");
         for (PerkType type : PerkType.values()) {
             check(counts.get(type) == (type.legendary ? 1 : 4), "Each legendary is four times rarer than each ordinary perk");
@@ -36,7 +36,113 @@ public final class PerksCheck {
         }
         check(PerkType.REROLL.charges == 3 && PerkType.ANCHOR.charges == 3 && PerkType.JUMP.charges == 3, "Three-use items retain exactly three charges");
         check(PerkType.BOW.charges == 1 && PerkType.FREEZE.charges == 1, "One-shot bow and one-attempt ice ray are finite");
-        check(Arrays.stream(PerkType.values()).map(t -> t.material).distinct().count() == 16, "All sixteen perk icons are distinct");
+        check(Arrays.stream(PerkType.values()).map(t -> t.material).distinct().count() == 25, "All twenty-five perk icons are distinct");
+        check(PerkType.PUMPKIN.charges == 1 && PerkType.PUMPKIN.material == Material.CARVED_PUMPKIN,
+                "The throwable pumpkin is a finite, distinct perk");
+        check(PerkType.ATOMIC_BOMB.charges == 1 && PerkType.ATOMIC_BOMB.material == Material.TNT,
+                "Atomic bombs use one TNT item per charge");
+        check(PerkType.FAKE_BLOCK.charges == 4, "One fake-block item builds exactly four blocks");
+        check(PerkRules.BLESSING_TICKS == 1200, "Blessing lasts a full minute");
+        check(PerkType.PILLS.charges == 1 && PerkType.PILLS.material == Material.SUGAR, "Pills use one charge and their own icon");
+        check(PerkType.DECOY.charges == 1 && PerkType.DECOY.material == Material.ZOMBIE_SPAWN_EGG, "One decoy egg summons one copy");
+    }
+    private static void decoys() {
+        UUID ownerId = new UUID(0, 1), enemyId = new UUID(0, 2);
+        var trigger = new PerkRules.DecoyTrigger(ownerId);
+        check(!trigger.hit(ownerId, true), "The owner's melee or projectile hits never trigger their decoy");
+        check(!trigger.hit(null, true) && !trigger.hit(enemyId, false), "Environmental damage and blast chains cannot trigger a decoy");
+        check(trigger.hit(enemyId, true) && !trigger.hit(enemyId, true), "The first opponent hit triggers exactly one blast");
+        for (double damage : new double[] {0, 1, 4, 10, 100})
+            check(PerkRules.decoyDamage(damage) <= 4 && PerkRules.decoyDamage(damage) <= damage,
+                    "Decoy damage is capped at two hearts and never increases a weaker hit");
+        var owner = (org.bukkit.entity.Player) Proxy.newProxyInstance(org.bukkit.entity.Player.class.getClassLoader(),
+                new Class<?>[] {org.bukkit.entity.Player.class}, (p, m, a) -> { throw new AssertionError(m.getName()); });
+        Object[][] blast = {null};
+        World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[] {World.class}, (p, m, a) -> {
+            if (!m.getName().equals("createExplosion")) throw new AssertionError(m.getName());
+            blast[0] = a.clone(); return true;
+        });
+        Location at = new Location(world, .5, 200, .5);
+        check(PerkOrdnance.burstDecoy(world, at, owner), "The decoy creates a native explosion");
+        check(blast[0].length == 6 && blast[0][0] == owner && blast[0][1] == at, "Blast source preserves owner attribution");
+        check(blast[0][2].equals(1.5f), "Decoy power stays well below ordinary TNT");
+        check(blast[0][3].equals(false) && blast[0][4].equals(false) && blast[0][5].equals(true),
+                "The blast starts no fires, breaks no blocks and excludes its owner from damage");
+    }
+    private static void phantoms() {
+        UUID user = new UUID(0, 1), a = new UUID(0, 2), b = new UUID(0, 3);
+        var random = new java.util.Random(17);
+        var selected = new HashSet<UUID>();
+        for (int i = 0; i < 200; i++) {
+            UUID victim = PerkRules.randomOpponent(List.of(a, user, b), user, random);
+            check(victim != null && !victim.equals(user), "Pills never select the user");
+            selected.add(victim);
+        }
+        check(selected.equals(java.util.Set.of(a, b)), "Every eligible opponent is reachable");
+        check(PerkRules.randomOpponent(List.of(user), user, random) == null
+                && PerkRules.randomOpponent(List.<UUID>of(), user, random) == null, "No opponent means no effect and no spent charge");
+        for (int seed = 0; seed < 50; seed++) {
+            random = new java.util.Random(seed);
+            var noises = new PerkRules.PhantomNoises(50, random);
+            long last = 50; int heard = 0;
+            for (long now = 50; now < 1250; now++) {
+                check(!noises.expired(now), "The sound effect lasts the full minute");
+                if (!noises.due(now, random)) continue;
+                check(now - last >= 80 && now - last <= 120, "Each phantom sound is four to six seconds after the previous one");
+                check(!noises.due(now, random), "A sound cannot fire twice in the same tick");
+                last = now; heard++;
+            }
+            check(heard >= 9 && heard <= 14, "The effect stays periodic rather than silent or spammy");
+            check(noises.expired(1250) && !noises.due(1250, random) && !noises.due(5000, random), "No sounds play at or after the sixty-second expiry");
+        }
+        var delayed = new PerkRules.PhantomNoises(0, random);
+        check(delayed.due(1000, random) && !delayed.due(1001, random), "A paused player hears no burst of overdue sounds on resuming");
+    }
+    private static void shapes() {
+        var center = new PerkShapes.Cell(12, 220, -8);
+        var expected = new HashSet<PerkShapes.Cell>();
+        for (int x = 11; x <= 13; x++) for (int z = -9; z <= -7; z++) expected.add(new PerkShapes.Cell(x, 220, z));
+        var orders = new HashSet<List<PerkShapes.Cell>>();
+        for (int seed = 0; seed < 50; seed++) {
+            var rain = PerkShapes.anvilRain(center.x(), center.y(), center.z(), new java.util.Random(seed));
+            check(rain.size() == 9 && new HashSet<>(rain).equals(expected), "Nine unique anvils cover exactly the targeted 3x3 square");
+            orders.add(rain);
+        }
+        check(orders.size() > 1, "Anvil order is shuffled rather than always following rows");
+        var connected = java.util.Set.of(center, new PerkShapes.Cell(13, 220, -8), new PerkShapes.Cell(13, 221, -8));
+        var diagonal = new PerkShapes.Cell(14, 222, -7);
+        var blocks = new HashSet<>(connected); blocks.add(diagonal);
+        check(new HashSet<>(PerkShapes.connected(center, blocks::contains, 3)).equals(connected),
+                "Flood fill includes vertical/side neighbours but not diagonal-only contact");
+        check(PerkShapes.connected(center, blocks::contains, 2) == null, "Oversize structures fail without returning a partial prefix");
+        check(PerkShapes.connected(new PerkShapes.Cell(50, 50, 50), blocks::contains, 3).isEmpty(), "An empty target has no connected blocks");
+    }
+    private static void gravity() {
+        var cycle = new PerkRules.GravityCycle();
+        var other = new PerkRules.GravityCycle();
+        check(cycle.start(100) && cycle.active(100) && cycle.active(159), "Gravity reverses immediately for all sixty ticks");
+        check(!cycle.active(160) && !cycle.start(160), "Normal gravity returns before cooldown ends");
+        check(cycle.remaining(160) == 300 && !cycle.start(459), "A full fifteen-second cooldown follows the effect");
+        check(other.start(160), "One player's cooldown does not block a different player");
+        check(cycle.start(460) && cycle.active(519) && !cycle.active(520), "The reusable item activates again at the exact deadline");
+    }
+    private static void atomicBomb() {
+        var owner = (org.bukkit.entity.Player) Proxy.newProxyInstance(org.bukkit.entity.Player.class.getClassLoader(),
+                new Class<?>[] {org.bukkit.entity.Player.class}, (p, m, a) -> { throw new AssertionError(m.getName()); });
+        Map<String, Object> properties = new HashMap<>();
+        var bomb = (org.bukkit.entity.TNTPrimed) Proxy.newProxyInstance(org.bukkit.entity.TNTPrimed.class.getClassLoader(),
+                new Class<?>[] {org.bukkit.entity.TNTPrimed.class}, (p, m, a) -> {
+                    switch (m.getName()) {
+                        case "setSource", "setFuseTicks", "setYield", "setIsIncendiary" -> properties.put(m.getName(), a[0]);
+                        default -> throw new AssertionError(m.getName());
+                    }
+                    return null;
+                });
+        PerkOrdnance.armAtomic(bomb, owner);
+        check(properties.get("setSource") == owner, "Atomic TNT retains its owner for kill credit");
+        check(properties.get("setFuseTicks").equals(80), "Atomic TNT has the ordinary four-second fuse");
+        check(properties.get("setYield").equals(16f), "Atomic power is four times vanilla TNT's power of four");
+        check(properties.get("setIsIncendiary").equals(false), "Atomic explosions do not start fires");
     }
     private static void history() {
         var history = new PerkRules.History<Integer>();
@@ -125,16 +231,81 @@ public final class PerksCheck {
             Files.deleteIfExists(path);
         } finally { Files.deleteIfExists(dir); }
     }
+    private static void transmute() {
+        FakeWorld f = new FakeWorld(); PerkTerrain terrain = new PerkTerrain(f.world);
+        f.set(0, 200, 0, Material.BEDROCK); f.set(1, 200, 0, Material.OAK_PLANKS); f.set(1, 201, 0, Material.GLASS);
+        f.set(2, 202, 1, Material.STONE);
+        check(terrain.transmute(f.block(0, 200, 0), 0, new java.util.Random(7)) == 3, "Mixed connected materials all participate in transmutation");
+        check(f.get(0, 200, 0) == f.get(1, 200, 0) && f.get(1, 200, 0) == f.get(1, 201, 0),
+                "The whole component becomes one shared random material");
+        check(f.get(2, 202, 1) == Material.STONE, "Diagonal and disconnected blocks remain unchanged");
+        FakeWorld huge = new FakeWorld(); PerkTerrain hugeTerrain = new PerkTerrain(huge.world);
+        for (int x = 0; x <= PerkRules.CONNECTED_LIMIT; x++) huge.set(x, 200, 0, Material.STONE);
+        int before = huge.writes;
+        check(hugeTerrain.transmute(huge.block(0, 200, 0), 0, new java.util.Random(1)) == -1 && huge.writes == before,
+                "Oversize components refuse atomically without spending blocks or partially changing the structure");
+    }
+    private static void illusions() {
+        FakeWorld f = new FakeWorld();
+        f.set(0, 200, 0, Material.BEDROCK);
+        UUID owner = new UUID(0, 10);
+        var player = (org.bukkit.entity.Player) Proxy.newProxyInstance(org.bukkit.entity.Player.class.getClassLoader(),
+                new Class<?>[] {org.bukkit.entity.Player.class}, (p, m, a) -> switch (m.getName()) {
+                    case "getUniqueId" -> owner;
+                    case "getEyeLocation" -> new Location(f.world, .5, 202, -2.5, 0, 18.434948f);
+                    case "rayTraceBlocks" -> new org.bukkit.util.RayTraceResult(new org.bukkit.util.Vector(.5, 201, .5),
+                            f.block(0, 200, 0), org.bukkit.block.BlockFace.UP);
+                    default -> throw new AssertionError(m.getName());
+                });
+        PerkIllusions illusions = new PerkIllusions(f.world, f.data(Material.OAK_PLANKS));
+        int before = f.writes;
+        check(illusions.place(player) && illusions.place(player), "Fake blocks can extend from another fake's visible face");
+        check(f.displays.size() == 2 && f.displays.get(0).at.getBlockZ() == 0 && f.displays.get(1).at.getBlockZ() == -1,
+                "The nearer illusion takes priority over a real block behind it");
+        check(f.writes == before && f.get(0, 201, 0) == Material.AIR && f.get(0, 201, -1) == Material.AIR,
+                "Rendering fake blocks never creates server or client collision blocks");
+        check(illusions.breakAt(player) && !f.displays.get(1).valid, "A left click removes the nearest fake without block drops");
+        illusions.playerGone(owner);
+        check(f.displays.stream().noneMatch(d -> d.valid) && f.writes == before, "Leaving removes all the owner's visuals without touching terrain");
+        check(illusions.place(player), "Removing visuals frees their positions");
+        f.set(0, 201, 0, Material.STONE);
+        illusions.tick();
+        check(!f.displays.getLast().valid && f.get(0, 201, 0) == Material.STONE, "Real construction replaces a fake without getting removed later");
+        illusions.close(); illusions.close();
+    }
+    private static final class FakeDisplay {
+        final Location at;
+        boolean valid = true;
+        FakeDisplay(Location at) { this.at = at; }
+        final org.bukkit.entity.BlockDisplay entity = (org.bukkit.entity.BlockDisplay) Proxy.newProxyInstance(
+                org.bukkit.entity.BlockDisplay.class.getClassLoader(), new Class<?>[] {org.bukkit.entity.BlockDisplay.class}, (p, m, a) -> switch (m.getName()) {
+                    case "isValid" -> valid;
+                    case "remove" -> { valid = false; yield null; }
+                    case "setBlock", "setPersistent", "setInvulnerable", "setViewRange" -> null;
+                    default -> throw new AssertionError(m.getName());
+                });
+    }
     private static final class FakeWorld {
         final Map<PerkTerrain.Pos, Material> blocks = new HashMap<>(); int writes;
+        final java.util.List<FakeDisplay> displays = new java.util.ArrayList<>();
         final WorldBorder border = (WorldBorder) Proxy.newProxyInstance(WorldBorder.class.getClassLoader(), new Class<?>[] {WorldBorder.class},
                 (p, m, a) -> { if (m.getName().equals("isInside")) return true; throw new AssertionError(m.getName()); });
         final World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[] {World.class}, (p, m, a) -> switch (m.getName()) {
             case "getBlockAt" -> block((int) a[0], (int) a[1], (int) a[2]);
             case "getMinHeight" -> -64; case "getMaxHeight" -> 320; case "getWorldBorder" -> border;
+            case "isChunkLoaded" -> true;
+            case "spawn" -> spawn((Location) a[0], (Class<?>) a[1], a[2]);
+            case "playSound" -> null;
             case "equals" -> p == a[0]; case "hashCode" -> System.identityHashCode(p);
             default -> throw new AssertionError("Unexpected world operation: " + m.getName());
         });
+        @SuppressWarnings("unchecked")
+        Object spawn(Location at, Class<?> type, Object initializer) {
+            check(type == org.bukkit.entity.BlockDisplay.class, "Illusions only spawn non-colliding display entities");
+            FakeDisplay display = new FakeDisplay(at); displays.add(display);
+            ((java.util.function.Consumer<org.bukkit.entity.BlockDisplay>) initializer).accept(display.entity);
+            return display.entity;
+        }
         void set(int x, int y, int z, Material material) { blocks.put(new PerkTerrain.Pos(x, y, z), material); writes++; }
         Material get(int x, int y, int z) { return blocks.getOrDefault(new PerkTerrain.Pos(x, y, z), Material.AIR); }
         BlockData data(Material material) {
@@ -147,8 +318,10 @@ public final class PerksCheck {
         Block block(int x, int y, int z) {
             return (Block) Proxy.newProxyInstance(Block.class.getClassLoader(), new Class<?>[] {Block.class}, (p, m, a) -> switch (m.getName()) {
                 case "getX" -> x; case "getY" -> y; case "getZ" -> z; case "getWorld" -> world;
+                case "getRelative" -> { var face = (org.bukkit.block.BlockFace) a[0]; yield block(x + face.getModX(), y + face.getModY(), z + face.getModZ()); }
                 case "getType" -> get(x, y, z); case "getLocation" -> new Location(world, x, y, z);
                 case "getBlockData" -> data(get(x, y, z));
+                case "isLiquid" -> false; case "getState" -> null;
                 case "setType" -> { check(a.length == 2 && !(boolean) a[1], "Perk block writes do not enable physics"); set(x, y, z, (Material) a[0]); yield null; }
                 case "setBlockData" -> { check(a.length == 2 && !(boolean) a[1], "Restoring terrain does not enable physics"); set(x, y, z, ((BlockData) a[0]).getMaterial()); yield null; }
                 default -> throw new AssertionError("Unexpected block operation: " + m.getName());

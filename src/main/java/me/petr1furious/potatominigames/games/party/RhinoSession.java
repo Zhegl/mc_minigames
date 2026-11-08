@@ -38,6 +38,7 @@ final class RhinoSession extends PartySurvivalSession {
         final Set<UUID> hit = new HashSet<>();
         Charge phase = Charge.IDLE;
         long until;
+        UUID target;
         Vector direction = new Vector(1, 0, 0);
         double travelled;
         Rhino(Ravager entity, long until) { this.entity = entity; this.until = until; }
@@ -83,12 +84,30 @@ final class RhinoSession extends PartySurvivalSession {
     }
     private void addRhino(int index) {
         double angle = index * 2.399963229728653;
-        Location location = arena.safe(Math.cos(angle) * (radius - 4), Math.sin(angle) * (radius - 4));
+        Location location = arena.spread(arena.safe(Math.cos(angle) * (radius - 4), Math.sin(angle) * (radius - 4)),
+                otherRhinoLocations(null));
         Ravager entity = world.spawn(location, Ravager.class);
         entity.setAI(false); entity.setAware(false); entity.setGravity(false); entity.setInvulnerable(true);
         entity.setCollidable(false); entity.setSilent(true); entity.setPersistent(true); entity.setRemoveWhenFarAway(false);
         entity.customName(text("Носорог"));
-        rhinos.add(new Rhino(entity, elapsed() + 40L + index * 30L));
+        rhinos.add(new Rhino(entity, elapsed() + 20L + index * 20L));
+    }
+    private List<Location> otherRhinoLocations(Rhino excluded) {
+        List<Location> locations = new ArrayList<>();
+        for (Rhino other : rhinos) {
+            if (other != excluded && other.entity.isValid()) locations.add(other.entity.getLocation());
+        }
+        return locations;
+    }
+    private Player chooseTarget(Rhino rhino, List<Player> players) {
+        List<UUID> assigned = new ArrayList<>();
+        for (Rhino other : rhinos) {
+            if (other != rhino && other.entity.isValid() && other.target != null) assigned.add(other.target);
+        }
+        int index = RhinoHazards.targetIndex(players.stream().map(Player::getUniqueId).toList(), assigned, random);
+        Player target = players.get(index);
+        rhino.target = target.getUniqueId();
+        return target;
     }
     @Override void playTick(long elapsed) {
         int stage = RhinoHazards.stage(elapsed);
@@ -112,12 +131,16 @@ final class RhinoSession extends PartySurvivalSession {
         if (!rhino.entity.isValid() || players.isEmpty()) return;
         Location from = rhino.entity.getLocation();
         double distanceFromCenter = from.getX() * from.getX() + from.getZ() * from.getZ();
-        if (rhino.phase != Charge.DASH && distanceFromCenter > (radius - 2) * (radius - 2)) {
+        if (rhino.phase == Charge.IDLE) {
+            Location resting = arena.spread(from, otherRhinoLocations(rhino));
+            if (resting.distanceSquared(from) > 1e-6) rhino.entity.teleport(resting);
+            from = resting;
+        } else if (rhino.phase != Charge.DASH && distanceFromCenter > (radius - 2) * (radius - 2)) {
             from = arena.safe(from.getX() * .5, from.getZ() * .5);
             rhino.entity.teleport(from);
         }
         if (rhino.phase == Charge.IDLE && elapsed >= rhino.until) {
-            Player target = players.get(random.nextInt(players.size()));
+            Player target = chooseTarget(rhino, players);
             Vector direction = target.getLocation().toVector().subtract(from.toVector()).setY(0);
             if (direction.lengthSquared() < 1e-6) direction = new Vector(1, 0, 0);
             rhino.direction = direction.normalize();

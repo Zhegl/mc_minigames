@@ -11,8 +11,9 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.type.Door;
+import org.bukkit.inventory.InventoryHolder;
 
-/** Writes only into air; temporary blocks restore only if nobody has replaced them. */
+/** Temporary structures preserve existing blocks; transmutation preflights the complete component. */
 final class PerkTerrain {
     record Pos(int x, int y, int z) { static Pos of(Block b) { return new Pos(b.getX(), b.getY(), b.getZ()); } }
     private record Lease(Block block, BlockData original, BlockData placed, long until, boolean locked) { }
@@ -21,7 +22,7 @@ final class PerkTerrain {
     PerkTerrain(World world) { this.world = world; }
     boolean locked(Block b, long tick) { Lease l = leases.get(Pos.of(b)); return l != null && l.locked() && tick < l.until(); }
     void changed(Block b) { leases.remove(Pos.of(b)); }
-    private boolean air(Block b) { return b.getType() == Material.AIR || b.getType() == Material.CAVE_AIR || b.getType() == Material.VOID_AIR; }
+    static boolean air(Block b) { return b.getType() == Material.AIR || b.getType() == Material.CAVE_AIR || b.getType() == Material.VOID_AIR; }
     boolean put(Block b, Material material, long until, boolean locked) {
         if (b.getY() < world.getMinHeight() || b.getY() >= world.getMaxHeight() || !world.getWorldBorder().isInside(b.getLocation())) return false;
         Pos pos = Pos.of(b);
@@ -90,6 +91,33 @@ final class PerkTerrain {
     void tick(long tick) {
         var it = leases.values().iterator();
         while (it.hasNext()) { Lease lease = it.next(); if (tick >= lease.until()) { restore(lease); it.remove(); } }
+    }
+    int transmute(Block start, long tick, java.util.random.RandomGenerator random) {
+        boolean[] unloaded = {false};
+        var cells = PerkShapes.connected(new PerkShapes.Cell(start.getX(), start.getY(), start.getZ()), c -> {
+            if (c.y() < world.getMinHeight() || c.y() >= world.getMaxHeight()) return false;
+            if (!world.isChunkLoaded(c.x() >> 4, c.z() >> 4)) { unloaded[0] = true; return false; }
+            Block b = world.getBlockAt(c.x(), c.y(), c.z());
+            return !air(b) && !b.isLiquid() && !locked(b, tick) && world.getWorldBorder().isInside(b.getLocation());
+        }, PerkRules.CONNECTED_LIMIT);
+        if (cells == null || unloaded[0]) return -1;
+        Material[] palette = {Material.STONE, Material.COBBLESTONE, Material.OAK_PLANKS, Material.GLASS,
+                Material.SLIME_BLOCK, Material.HONEY_BLOCK, Material.MOSS_BLOCK, Material.OBSIDIAN, Material.DIAMOND_BLOCK};
+        Material original = start.getType();
+        boolean uniform = cells.stream().allMatch(c -> world.getBlockAt(c.x(), c.y(), c.z()).getType() == original);
+        var choices = java.util.Arrays.stream(palette).filter(m -> !uniform || m != original).toList();
+        Material material = choices.get(random.nextInt(choices.size()));
+        for (var c : cells) {
+            Block b = world.getBlockAt(c.x(), c.y(), c.z());
+            // Preserve stored loot before replacing container blocks.
+            if (b.getState() instanceof InventoryHolder holder) {
+                for (var item : holder.getInventory().getContents())
+                    if (item != null && !item.getType().isAir()) world.dropItem(b.getLocation().add(.5, .5, .5), item.clone());
+                holder.getInventory().clear();
+            }
+            changed(b); b.setType(material, false);
+        }
+        return cells.size();
     }
     private void restore(Lease l) { if (l.block().getBlockData().equals(l.placed())) l.block().setBlockData(l.original(), false); }
     void close() { for (Lease l : leases.values()) restore(l); leases.clear(); }

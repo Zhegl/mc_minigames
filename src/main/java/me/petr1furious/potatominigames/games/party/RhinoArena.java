@@ -1,5 +1,6 @@
 package me.petr1furious.potatominigames.games.party;
 
+import java.util.List;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -38,5 +39,36 @@ final class RhinoArena {
     Location spawn(int index, int count) {
         double angle = index * Math.PI * 2 / Math.max(1, count);
         return safe(Math.cos(angle) * 12, Math.sin(angle) * 12);
+    }
+    // Separate resting rhinos on solid floor, including when the arena is small.
+    Location spread(Location preferred, List<Location> occupied) {
+        double inner = Math.max(1, radius - 2);
+        boolean safe = preferred.getX() * preferred.getX() + preferred.getZ() * preferred.getZ() <= inner * inner
+                && solid(preferred.getBlockX(), preferred.getBlockZ(), radius, stage);
+        double originalGap = clearance(preferred, occupied);
+        if (safe && originalGap >= 3 * 3) return preferred;
+        Location best = null;
+        double bestGap = -1, bestDistance = Double.POSITIVE_INFINITY;
+        for (int x = -radius; x <= radius; x++) for (int z = -radius; z <= radius; z++) {
+            if ((x + .5) * (x + .5) + (z + .5) * (z + .5) > inner * inner
+                    || !solid(x, z, radius, stage)) continue;
+            Location candidate = new Location(world, x + .5, FLOOR + 1, z + .5);
+            double gap = Math.min(3.5 * 3.5, clearance(candidate, occupied));
+            double distance = candidate.distanceSquared(preferred);
+            if (gap > bestGap || (gap == bestGap && distance < bestDistance)) {
+                best = candidate; bestGap = gap; bestDistance = distance;
+            }
+        }
+        // Avoid shuffling endlessly if the remaining floor cannot offer more room.
+        if (safe && bestGap <= originalGap + .25) return preferred;
+        return best == null ? this.safe(0, 0) : best;
+    }
+    private static double clearance(Location location, List<Location> occupied) {
+        double gap = Double.POSITIVE_INFINITY;
+        for (Location other : occupied) {
+            double dx = location.getX() - other.getX(), dz = location.getZ() - other.getZ();
+            gap = Math.min(gap, dx * dx + dz * dz);
+        }
+        return gap;
     }
 }

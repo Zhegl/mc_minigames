@@ -322,9 +322,14 @@ Settings: `mobCount.countSeconds`, `mobCount.answerSeconds`, `mobCount.rounds`.
 
 Join with `/play party rhino`, or train with `/party test rhino`.
 The circular arena starts with holes and two ravagers acting as rhinos. They
-choose a random living player, glow before charging, then dash in that fixed
+choose among the least-targeted living players, glow before charging, then dash in that fixed
 direction without drawing a route on the floor. A dash knocks each player back
-at most once. Their speed and frequency rise every 45 seconds,
+at most once. The first rhino starts its windup after one second, with the others
+staggered one second apart. Initial dash speed is 0.65 blocks per tick, with a
+6.5-second recovery between charges. While resting, crowded rhinos reposition onto
+free solid floor; charging rhinos keep their announced direction. Targets stay
+distinct when enough players are alive, and are shared evenly otherwise.
+Their speed and frequency rise every 45 seconds,
 and additional ravagers join, up to six. The floor starts shrinking after 45
 seconds, losing a ring every 15 seconds down to a five-block radius. Every 45
 seconds more holes open in the remaining floor, including after shrinking stops;
@@ -612,9 +617,9 @@ Enable it on another built-in mode with `/pillars config modes.<mode>.perks true
 Sniper Duel keeps its five logs and sixth crossbow; perks can replace later drops.
 
 Each item draw has a **20%** chance to become a special perk instead. Configure
-`perks.dropChance` in `games/pillars.yml` for the next session. The fourteen ordinary
+`perks.dropChance` in `games/pillars.yml` for the next session. The twenty-three ordinary
 perks have weight 4 each; the two legendary weapons have weight 1 each. Each
-legendary therefore has a **0.345%** chance per item draw at the default setting,
+legendary therefore has a **0.213%** chance per item draw at the default setting,
 four times rarer than each ordinary perk. Tactical presets share perk kinds and
 ordinary item rolls, with separate item instances/charges per player.
 
@@ -639,6 +644,15 @@ Active items use the main hand; normal items with the same material have no perk
 | Sheep egg / Камикадзе | Right-click to summon a sheep carrying primed TNT. It chases the nearest active opponent, can leap gaps, and explodes after five seconds. The caster is never its target, but explosions can still hurt the caster. One use. |
 | Ink sac / Дымовая завеса | Right-click for a smoke cloud with a four-block radius lasting five seconds. Enemies inside are blinded; the caster is unaffected. One use. |
 | Fire charge / Фаербол | Right-click to throw an explosive fireball along your view. One use. |
+| Carved pumpkin / Проклятая тыква | Right-click to throw a pumpkin straight along your view. A direct hit puts a carved pumpkin with Curse of Binding on an active opponent's head. Their previous helmet goes into their inventory, or drops at their feet if full. The projectile disappears on impact without exploding. One throw, including misses. |
+| TNT / Атомная бомба | Right-click a block to place already primed TNT in the adjacent free cell. Four-second fuse; native explosion power 16 instead of ordinary TNT's 4, increasing blast range fourfold. It damages players and terrain, including its owner, while respecting protected perk terrain. One use. |
+| Stick / Тяжёлый прогноз | Aim at a block up to 192 blocks away and right-click. After one second, nine damaging anvils fall from 24 blocks above the target in shuffled order, three ticks apart: one per cell of a 3×3 square. They land as ordinary anvils without dropping items if placement fails. One use. |
+| Amethyst shard / Алхимик | Right-click a block within six blocks. All touching blocks, connected through faces rather than diagonals, turn into one randomly selected material. Containers release their contents; protected ice and liquids are excluded. Includes bedrock. Components larger than 4096 blocks or reaching unloaded chunks are refused before any changes, preserving the charge. One use. |
+| Nether star / Благословение | Right-click for 60 seconds of Fire Resistance, Resistance I, Strength II, Regeneration II and Absorption IV. One use. |
+| Eye of ender / Перевёртыш | Right-click to reverse only your own gravity for three seconds, then recharge for fifteen seconds. Reusable; copies and item transfers cannot bypass the user's cooldown. Normal gravity is restored on expiry, elimination, disconnect and stop. |
+| Oak planks / Блок-обманка | Four right-click placements. Looks like ordinary planks to everyone, but the world remains air and players fall straight through. Build within six blocks, including extending from another fake block's visible face. Left-click a fake to remove it without drops. Real construction replaces the visual; remaining visuals disappear when their builder leaves or the match stops. |
+| Sugar / Подозрительные таблетки | Right-click to affect one random active opponent, never yourself. For 60 seconds only that player hears phantom footsteps, landings, attacks, arrows or a TNT fuse from random positions nearby, at four-to-six-second intervals. No damage or actual entities. Reapplication refreshes one schedule instead of stacking; death, disconnect and match end clear it. No eligible opponent preserves the charge. One use. |
+| Zombie egg / Двойник | Right-click a nearby block to summon a stationary mannequin with your skin, name, armour and held items. Opponent melee/projectile hits trigger one small explosion: power 1.5, damage capped at two hearts before armour, no fire or terrain damage, owner immune. Owner hits and environmental damage never trigger it. Copied gear cannot be removed and never drops. One egg; at most two active copies per owner, lasting 60 seconds or until owner exit/match end. |
 
 Special effects, entities, history and pending block leases are scoped to the match
 and cleaned on stop. Temporary terrain never overwrites existing blocks or deletes
@@ -650,7 +664,8 @@ disconnect and stop; reconnecting never grants extra charges.
 
 For live testing, admins in a running perks match can use `/pillars perk <type>`:
 `save`, `reroll`, `steal`, `ghost`, `anchor`, `jump`, `rewind`, `house`, `freeze`,
-`bow`, `crossbow`, `planks`, `break`, `sheep`, `smoke`, `fireball` (tab completion).
+`bow`, `crossbow`, `planks`, `break`, `sheep`, `smoke`, `fireball`, `pumpkin`,
+`atomic_bomb`, `anvil_rain`, `transmute`, `blessing`, `gravity`, `fake_block`, `pills`, `decoy` (tab completion).
 This grants the item to the command sender after the countdown. Multiplayer
 balance and client interactions still require live playtesting.
 
@@ -806,7 +821,10 @@ all sixteen spawn points, including the farthest-from-enemies selection.
 elimination and one-shot timeout penalties.
 `checkPillarsShuffle` checks dropped items and container stashes, cursor/crafting
 cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
-`checkPillarsPerks` checks all sixteen weighted outcomes and rarity, exact rewind/channel timing,
+`checkPillarsPerks` checks all twenty-five weighted outcomes and rarity, atomic TNT power/fuse/owner,
+decoy enemy-only one-shot triggers, damage cap and owner/terrain immunity,
+shuffled 3×3 anvil plans, face-connected and atomic transmutation, gravity duration/cooldown,
+fake-block placement/chaining/removal without terrain writes, opponent-only phantom selection and sound timing/expiry, exact rewind/channel timing,
 whole-reward counts, real temporary block writes/restoration and cage leases, tiny house
 geometry and queue/preset integration.
 `checkPillarsAdhd` checks jittered start intervals, exact burst duration and triple

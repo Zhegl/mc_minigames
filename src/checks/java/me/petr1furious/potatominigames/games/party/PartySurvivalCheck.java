@@ -22,6 +22,7 @@ public final class PartySurvivalCheck {
         tnt();
         counting();
         rhinosAndMines();
+        RhinoTargetingCheck.main(args);
         System.out.println("Party survival: TNT layers/collapse, count-platform geometry/unique answers, ravager swept hits, fixed mine fuses and elimination standings verified");
     }
     private static void standings() {
@@ -186,6 +187,32 @@ public final class PartySurvivalCheck {
         Location safe = arena.safe(17, -17);
         check(RhinoArena.solid(safe.getBlockX(), safe.getBlockZ(), 5, 10), "Hazards reposition inside the current arena");
         check(world.at(18, 80, 0) == Material.AIR, "Shrinking removes floor, not only an invisible boundary");
+        for (int testRadius : new int[] {18, 10, 5}) {
+            arena.resize(testRadius, 10);
+            Location crowded = arena.safe(0, 0);
+            Location separated = arena.spread(crowded, List.of(crowded));
+            check(separated.distanceSquared(crowded) >= 3 * 3,
+                    "Stacked resting rhinos separate even in the final arena");
+            check(RhinoArena.solid(separated.getBlockX(), separated.getBlockZ(), testRadius, 10),
+                    "Separation avoids holes and removed floor");
+            check(separated.getX() * separated.getX() + separated.getZ() * separated.getZ()
+                    <= (testRadius - 2) * (testRadius - 2), "Resting rhinos stay away from the rim");
+            check(arena.spread(separated, List.of(crowded)).equals(separated),
+                    "A separated rhino stays put instead of shuffling every tick");
+            List<Location> herd = new ArrayList<>(java.util.Collections.nCopies(6, crowded));
+            for (int tick = 0; tick < 20; tick++) for (int i = 0; i < herd.size(); i++) {
+                List<Location> others = new ArrayList<>(herd);
+                others.remove(i);
+                herd.set(i, arena.spread(herd.get(i), others));
+            }
+            for (int i = 0; i < herd.size(); i++) {
+                List<Location> others = new ArrayList<>(herd);
+                others.remove(i);
+                check(arena.spread(herd.get(i), others).equals(herd.get(i)), "A crowded herd settles without jitter");
+                for (Location other : others) check(herd.get(i).distanceSquared(other) >= 4,
+                        "All six rhinos can separate even in the final arena");
+            }
+        }
 
         UUID first = UUID.randomUUID(), thief = UUID.randomUUID();
         TimedMine mine = new TimedMine(7, 0, 160);
