@@ -16,6 +16,7 @@ final class ParkourCourse {
     static final int WIDTH = 27, PITCH = 28, BOTTOM = 0, TOP = 256;
     static final int BUILD_BOTTOM = 8, BUILD_TOP = 248;
     static final int CLUTCH_SUPPORT_HEIGHT = 3;
+    static final int HONEY_CATCH_HEIGHT = 6;
     static final int CHECKPOINT_DEPTH = 7, WATER_RUNUP = 12;
     static final int FLIGHT_ROCKET_POWER = 2;
     // White quartz and gold/emerald are reserved for actual checkpoint islands.
@@ -89,9 +90,9 @@ final class ParkourCourse {
         WATER_ELEVATOR("water_elevator", 2, 20, kit(Material.WATER_BUCKET, 1)),
         POWDER_SNOW_DROP("powder_snow_drop", 3, -40, kit(Material.POWDER_SNOW_BUCKET, 1)),
         WIND_CHARGE_DROP("wind_charge_drop", 3, -44, kit(Material.WIND_CHARGE, 3)),
-        HONEY_TRAVERSE("honey_traverse", 14, -24, List.of()),
+        HONEY_TRAVERSE("honey_traverse", 4, -36, List.of()),
         BOAT_WATER("boat_water", 32, 0, kit(Material.OAK_BOAT, 1)),
-        BOAT_ICE("boat_ice", 58, 0, kit(Material.OAK_BOAT, 1)),
+        BOAT_ICE("boat_ice", 80, 0, kit(Material.OAK_BOAT, 1)),
         WIND_HOPS("wind_hops", 14, 6, kit(Material.WIND_CHARGE, 4));
 
         final String id;

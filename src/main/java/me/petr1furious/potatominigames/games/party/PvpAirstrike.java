@@ -1,12 +1,5 @@
 package me.petr1furious.potatominigames.games.party;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.LongSupplier;
-import java.util.function.Predicate;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -19,10 +12,18 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.LongSupplier;
+import java.util.function.Predicate;
+
 /** A locked, warned 7x7 drop zone with nine weaker TNT, separate from normal carried charges. */
 final class PvpAirstrike {
-    static final int WARNING_TICKS = 20, ROW_INTERVAL = 4, FUSE = 30, COUNT = 9;
-    static final double HALF_SIZE = 3.5, HEIGHT = 6, MAX_DAMAGE = 6;
+    static final int WARNING_TICKS = 10, ROW_INTERVAL = 4, FUSE = 18, COUNT = 9;
+    static final double HALF_SIZE = 3.5, HEIGHT = 6, MAX_DAMAGE = 9;
     static final float POWER = 1.5f;
     static final class Waves {
         private final int started;
@@ -95,13 +96,13 @@ final class PvpAirstrike {
     }
     private static void mark(Location point, Player viewer) {
         for (int side = 0; side < 4; side++) for (int step = 0; step < 8; step++) {
-            double offset = -HALF_SIZE + step * (HALF_SIZE * 2 / 8);
-            double x = side == 0 ? -HALF_SIZE : side == 2 ? HALF_SIZE : offset;
-            double z = side == 1 ? -HALF_SIZE : side == 3 ? HALF_SIZE : offset;
-            Location at = point.clone().add(x, .15, z);
-            if (viewer == null) point.getWorld().spawnParticle(Particle.FLAME, at, 1, 0, 0, 0, 0, null, true);
-            else viewer.spawnParticle(Particle.FLAME, at, 1, 0, 0, 0, 0, null, true);
-        }
+                double offset = -HALF_SIZE + step * (HALF_SIZE * 2 / 8);
+                double x = side == 0 ? -HALF_SIZE : side == 2 ? HALF_SIZE : offset;
+                double z = side == 1 ? -HALF_SIZE : side == 3 ? HALF_SIZE : offset;
+                Location at = point.clone().add(x, .15, z);
+                if (viewer == null) point.getWorld().spawnParticle(Particle.FLAME, at, 1, 0, 0, 0, 0, null, true);
+                else viewer.spawnParticle(Particle.FLAME, at, 1, 0, 0, 0, 0, null, true);
+            }
     }
     void clearPreview(UUID id) { preview.clearPreview(id); }
     private void cancelCast(UUID id) {

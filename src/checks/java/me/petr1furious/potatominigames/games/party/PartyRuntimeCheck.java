@@ -1,17 +1,25 @@
 package me.petr1furious.potatominigames.games.party;
 
-import java.lang.reflect.Proxy;
-import java.util.UUID;
+import com.destroystokyo.paper.event.player.PlayerJumpEvent;
+
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.AbstractArrow;
-import org.bukkit.entity.Trident;
-import org.bukkit.entity.TNTPrimed;
-import org.bukkit.entity.Player;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Horse;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.TNTPrimed;
+import org.bukkit.entity.Trident;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
-import com.destroystokyo.paper.event.player.PlayerJumpEvent;
+
+import java.lang.reflect.Proxy;
+import java.util.List;
+import java.util.UUID;
 
 /** Regression checks for fixed countdown anchors and bounded projectile cleanup. */
 public final class PartyRuntimeCheck {
@@ -21,6 +29,7 @@ public final class PartyRuntimeCheck {
         mountChecks();
         deathPauseChecks();
         bombChecks();
+        impactChecks();
         System.out.println("Party runtime: fixed countdown anchors, jump/flight lock, speed restoration and targeted projectile expiry, mount ownership/cleanup and death/early-respawn timing passed");
     }
 
@@ -202,7 +211,12 @@ public final class PartyRuntimeCheck {
         FakePlayer second = new FakePlayer(new UUID(0, 2), new Location(null, 4, 81, 0));
         FakeBomb a = new FakeBomb(10), b = new FakeBomb(11), exploding = new FakeBomb(12), foreign = new FakeBomb(13);
         PvpBombs.configure(a.entity, first.player, new Vector(0, .2, 1));
-        check(a.source == first.player && a.fuse == 50 && a.power == 2 && !a.incendiary && !a.persistent,
+        check(
+                a.source == first.player
+                        && a.fuse == 30
+                        && a.power == 2
+                        && !a.incendiary
+                        && !a.persistent,
                 "Both placed and thrown TNT use the real owner, short fuse, reduced power, no fire and no persistence");
         check(a.velocity.equals(new Vector(0, .2, 1)), "Configured thrown TNT retains its aimed launch velocity");
         bombs.track(first.player, a.entity); bombs.track(second.player, b.entity); bombs.track(first.player, exploding.entity);
@@ -224,14 +238,24 @@ public final class PartyRuntimeCheck {
         check(last.removed == 1 && bombs.owner(last.entity) == null, "Round/stop cleanup cancels all remaining native TNT exactly once");
         FakeBomb normal = new FakeBomb(20), rain = new FakeBomb(21);
         PvpAirstrike.configure(rain.entity, first.player);
-        check(rain.source == first.player && rain.fuse == 30 && rain.power == 1.5f && !rain.incendiary && !rain.persistent
-                && rain.velocity.getY() < 0, "Airstrike TNT keeps ownership and falls with the weaker short-fuse configuration");
+        check(
+                rain.source == first.player
+                        && rain.fuse == 18
+                        && rain.power == 1.5f
+                        && !rain.incendiary
+                        && !rain.persistent
+                        && rain.velocity.getY() < 0,
+                "Airstrike TNT keeps ownership and falls with the weaker short-fuse configuration");
         bombs.track(first.player, normal.entity); bombs.trackAirstrike(first.player, rain.entity);
         check(bombs.active(first.id) == 1 && bombs.activeAirstrike(first.id) == 1, "Airstrike TNT does not consume the four manual-charge slots");
-        check(bombs.blastDamage(normal.entity, 100) == 10 && bombs.blastDamage(rain.entity, 100) == 6,
+        check(
+                bombs.blastDamage(normal.entity, 100) == 16
+                        && bombs.blastDamage(rain.entity, 100) == 9,
                 "Normal and airstrike blasts use their own damage caps");
         rain.valid = false;
-        check(bombs.owner(rain.entity) == first.player && bombs.blastDamage(rain.entity, 100) == 6,
+        check(
+                bombs.owner(rain.entity) == first.player
+                        && bombs.blastDamage(rain.entity, 100) == 9,
                 "Discarding a detonating airstrike retains both kill credit and its damage cap");
         bombs.eliminate(first.id);
         check(normal.removed == 1 && bombs.owner(rain.entity) == first.player, "Death removes live charges but retains a currently resolving airstrike blast");
@@ -241,26 +265,204 @@ public final class PartyRuntimeCheck {
         bombs.trackAirstrike(first.player, reset.entity); bombs.clear();
         check(reset.removed == 1 && bombs.activeAirstrike(first.id) == 0, "Round/stop cleanup removes airstrike entities too");
     }
+
+    private static void impactChecks() {
+        BoundingBox box = new BoundingBox(.7, 81, -.3, 1.3, 82.8, .3);
+        Entity target =
+                (Entity)
+                        Proxy.newProxyInstance(
+                                Entity.class.getClassLoader(),
+                                new Class<?>[] {Entity.class},
+                                (proxy, method, args) ->
+                                        switch (method.getName()) {
+                                            case "getBoundingBox" -> box.clone();
+                                            default -> throw new AssertionError(method.getName());
+                                        });
+        Block wall =
+                (Block)
+                        Proxy.newProxyInstance(
+                                Block.class.getClassLoader(),
+                                new Class<?>[] {Block.class},
+                                (proxy, method, args) -> {
+                                    throw new AssertionError(method.getName());
+                                });
+        boolean[] blocked = {false};
+        World world =
+                (World)
+                        Proxy.newProxyInstance(
+                                World.class.getClassLoader(),
+                                new Class<?>[] {World.class},
+                                (proxy, method, args) ->
+                                        switch (method.getName()) {
+                                            case "equals" -> proxy == args[0];
+                                            case "rayTrace" -> {
+                                                Vector from = ((Location) args[0]).toVector(),
+                                                        direction = (Vector) args[1];
+                                                if (blocked[0])
+                                                    yield new RayTraceResult(
+                                                            from.add(
+                                                                    direction.clone().multiply(.1)),
+                                                            wall,
+                                                            BlockFace.WEST);
+                                                @SuppressWarnings("unchecked")
+                                                var predicate =
+                                                        (java.util.function.Predicate<Entity>)
+                                                                args[6];
+                                                if (!predicate.test(target)) yield null;
+                                                RayTraceResult hit =
+                                                        box.clone()
+                                                                .expand((double) args[5])
+                                                                .rayTrace(
+                                                                        from,
+                                                                        direction,
+                                                                        (double) args[2]);
+                                                yield hit == null
+                                                        ? null
+                                                        : new RayTraceResult(
+                                                                hit.getHitPosition(), target);
+                                            }
+                                            case "getNearbyEntities" -> {
+                                                @SuppressWarnings("unchecked")
+                                                var predicate =
+                                                        (java.util.function.Predicate<Entity>)
+                                                                args[4];
+                                                yield predicate.test(target)
+                                                        ? List.of(target)
+                                                        : List.of();
+                                            }
+                                            default -> throw new AssertionError(method.getName());
+                                        });
+        FakePlayer owner = new FakePlayer(new UUID(0, 5), new Location(world, -2, 81, 0));
+        PvpBombs bombs = new PvpBombs((p, entity) -> entity == target);
+        FakeBomb hit = new FakeBomb(100);
+        hit.at = new Location(world, 0, 81, 0);
+        PvpBombs.configure(hit.entity, owner.player, new Vector(1, 0, 0));
+        bombs.track(owner.player, hit.entity, true);
+        hit.at.setX(2); // The whole target was crossed between scheduler ticks.
+        bombs.tick();
+        check(
+                hit.fuse == 0
+                        && !hit.gravity
+                        && hit.velocity.lengthSquared() == 0
+                        && hit.at.getX() < .7
+                        && Math.abs(hit.at.getY() - 81) < .00001
+                        && bombs.owner(hit.entity) == owner.player,
+                "swept direct contact detonates the same owned TNT at the hit without extra"
+                    + " damage");
+        bombs.tick();
+        check(hit.teleports == 1, "an impact-armed TNT cannot be detonated twice by the monitor");
+        FakeBomb covered = new FakeBomb(101);
+        covered.at = new Location(world, 0, 81, 0);
+        PvpBombs.configure(covered.entity, owner.player, new Vector(1, 0, 0));
+        bombs.track(owner.player, covered.entity, true);
+        covered.at.setX(2);
+        blocked[0] = true;
+        bombs.tick();
+        check(
+                covered.fuse == PvpBombs.FUSE,
+                "cover stops the direct-contact ray before an opponent");
+        blocked[0] = false;
+        FakeBomb miss = new FakeBomb(102);
+        miss.at = new Location(world, 0, 81, 3);
+        PvpBombs.configure(miss.entity, owner.player, new Vector(1, 0, 0));
+        bombs.track(owner.player, miss.entity, true);
+        miss.at.setX(2);
+        bombs.tick();
+        check(miss.fuse == PvpBombs.FUSE, "a nearby miss retains its ordinary short fuse");
+        FakeBomb placed = new FakeBomb(103), rain = new FakeBomb(104), overlap = new FakeBomb(105);
+        for (FakeBomb bomb : List.of(placed, rain, overlap)) {
+            bomb.at = new Location(world, 1, 81, 0);
+            PvpBombs.configure(bomb.entity, owner.player, new Vector());
+        }
+        bombs.track(owner.player, placed.entity);
+        bombs.trackAirstrike(owner.player, rain.entity);
+        bombs.track(owner.player, overlap.entity, true);
+        bombs.tick();
+        check(
+                placed.fuse == PvpBombs.FUSE && rain.fuse == PvpBombs.FUSE && overlap.fuse == 0,
+                "only thrown TNT gains point-overlap contact detonation, never placed or airstrike"
+                    + " charges");
+        PvpBombs miners = PvpBombs.miners();
+        FakeBomb mining = new FakeBomb(106);
+        mining.at = new Location(world, 1, 81, 0);
+        mining.fuse = PvpBombs.MINERS_FUSE;
+        miners.track(owner.player, mining.entity, true);
+        miners.tick();
+        check(
+                mining.fuse == 50
+                        && miners.blastDamage(mining.entity, 5) == 5
+                        && miners.blastDamage(mining.entity, 100) == 10,
+                "Miners retains its old fuse, damage and lack of contact detonation");
+        miners.clear();
+        bombs.clear();
+    }
+
     private static final class FakeBomb {
         boolean valid = true, incendiary = true, persistent = true;
         int removed, fuse;
         float power;
         Object source;
+        boolean gravity = true;
+        int teleports;
+        Location at = new Location(null, 0, 81, 0);
         Vector velocity = new Vector();
         final TNTPrimed entity;
         FakeBomb(long id) {
-            entity = (TNTPrimed) Proxy.newProxyInstance(TNTPrimed.class.getClassLoader(), new Class<?>[] {TNTPrimed.class}, (proxy, method, args) -> switch (method.getName()) {
-                case "getUniqueId" -> new UUID(1, id);
-                case "isValid" -> valid;
-                case "remove" -> { removed++; valid = false; yield null; }
-                case "setSource" -> { source = args[0]; yield null; }
-                case "setFuseTicks" -> { fuse = (int) args[0]; yield null; }
-                case "setYield" -> { power = (float) args[0]; yield null; }
-                case "setIsIncendiary" -> { incendiary = (boolean) args[0]; yield null; }
-                case "setPersistent" -> { persistent = (boolean) args[0]; yield null; }
-                case "setVelocity" -> { velocity = ((Vector) args[0]).clone(); yield null; }
-                default -> throw new AssertionError("Unexpected TNT call: " + method.getName());
-            });
+            entity =
+                    (TNTPrimed)
+                            Proxy.newProxyInstance(
+                                    TNTPrimed.class.getClassLoader(),
+                                    new Class<?>[] {TNTPrimed.class},
+                                    (proxy, method, args) ->
+                                            switch (method.getName()) {
+                                                case "getUniqueId" -> new UUID(1, id);
+                                                case "getLocation" -> at.clone();
+                                                case "getHeight" -> .98;
+                                                case "getFuseTicks" -> fuse;
+                                                case "setGravity" -> {
+                                                    gravity = (boolean) args[0];
+                                                    yield null;
+                                                }
+                                                case "teleport" -> {
+                                                    at = ((Location) args[0]).clone();
+                                                    teleports++;
+                                                    yield true;
+                                                }
+                                                case "isValid" -> valid;
+                                                case "remove" -> {
+                                                    removed++;
+                                                    valid = false;
+                                                    yield null;
+                                                }
+                                                case "setSource" -> {
+                                                    source = args[0];
+                                                    yield null;
+                                                }
+                                                case "setFuseTicks" -> {
+                                                    fuse = (int) args[0];
+                                                    yield null;
+                                                }
+                                                case "setYield" -> {
+                                                    power = (float) args[0];
+                                                    yield null;
+                                                }
+                                                case "setIsIncendiary" -> {
+                                                    incendiary = (boolean) args[0];
+                                                    yield null;
+                                                }
+                                                case "setPersistent" -> {
+                                                    persistent = (boolean) args[0];
+                                                    yield null;
+                                                }
+                                                case "setVelocity" -> {
+                                                    velocity = ((Vector) args[0]).clone();
+                                                    yield null;
+                                                }
+                                                default ->
+                                                        throw new AssertionError(
+                                                                "Unexpected TNT call: "
+                                                                        + method.getName());
+                                            });
         }
     }
     private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }

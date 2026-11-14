@@ -52,6 +52,7 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -84,6 +85,7 @@ import java.util.UUID;
 
 final class DuelSession implements PartyRoundSession {
     private enum Phase {
+        SELECTING,
         COUNTDOWN,
         FIGHT,
         RESULT,
@@ -101,6 +103,9 @@ final class DuelSession implements PartyRoundSession {
     private final PartyConfig config;
     private final boolean sumo;
     private final boolean freeForAll;
+    private final boolean chooseKits;
+    private final PvpKitMenu kitMenu = new PvpKitMenu();
+    private PvpKitChoices kitChoices;
     private final Component title;
     private final Set<UUID> fighters = new HashSet<>();
     private final SumoCombat sumoCombat = new SumoCombat();
@@ -112,7 +117,7 @@ final class DuelSession implements PartyRoundSession {
     private final PvpThunder thunder = new PvpThunder();
     private final PvpAirstrike airstrike = new PvpAirstrike();
     private final PvpShadowArmor shadowArmor = new PvpShadowArmor(this::fighting);
-    private final PvpBombs bombs = new PvpBombs();
+    private final PvpBombs bombs = new PvpBombs(this::bombImpactTarget);
     private final DeathPause deathPause = new DeathPause();
     private final Map<UUID, Hit> lastHit = new HashMap<>();
     private final Random random = new Random();
@@ -157,19 +162,57 @@ final class DuelSession implements PartyRoundSession {
     }
 
     DuelSession(
+            SessionServices services,
+            PartyConfig config,
+            boolean sumo,
+            boolean freeForAll,
+            boolean chooseKits) {
+        this(
+                services,
+                config,
+                sumo,
+                PartyRoundContext.standalone(services),
+                freeForAll,
+                chooseKits);
+    }
+
+    DuelSession(
             SessionServices services, PartyConfig config, boolean sumo, PartyRoundContext context) {
         this(services, config, sumo, context, false);
     }
 
     private DuelSession(SessionServices services, PartyConfig config, boolean sumo,
             PartyRoundContext context, boolean freeForAll) {
+        this(services, config, sumo, context, freeForAll, false);
+    }
+
+    private DuelSession(
+            SessionServices services,
+            PartyConfig config,
+            boolean sumo,
+            PartyRoundContext context,
+            boolean freeForAll,
+            boolean chooseKits) {
+        if (chooseKits && (sumo || !freeForAll))
+            throw new IllegalArgumentException("Kit selection requires group PvP");
         this.context = context;
+        this.chooseKits = chooseKits;
         this.freeForAll = freeForAll;
         this.ffa = context.embedded() || freeForAll;
         this.services = context.services();
         this.config = config;
         this.sumo = sumo;
-        title = I18n.tr(freeForAll ? sumo ? "party.rounds.mode.sumo_ffa" : "party.rounds.mode.pvp_ffa" : sumo ? "party.duels.sumo.title" : "party.duels.pvp.title");
+        title =
+                I18n.tr(
+                        chooseKits
+                                ? "party.rounds.mode.pvp_select"
+                                : freeForAll
+                                        ? sumo
+                                                ? "party.rounds.mode.sumo_ffa"
+                                                : "party.rounds.mode.pvp_ffa"
+                                        : sumo
+                                                ? "party.duels.sumo.title"
+                                                : "party.duels.pvp.title");
     }
 
     @Override
@@ -177,6 +220,7 @@ final class DuelSession implements PartyRoundSession {
         try {
             start();
         } catch (CommandFailure | RuntimeException failure) {
+            if (chooseKits) for (Player p : services.participants().onlinePlayers()) kitMenu.close(p);
             countdownFreeze.releaseAll();
             mounts.clear();
             harpoon.clear();
@@ -251,7 +295,20 @@ final class DuelSession implements PartyRoundSession {
         services.messages()
                 .broadcast(
                         text(freeForAll ? "ffa.rules" : ffa ? "tournament.ffa_rules" : "tournament.bo3_rules", NamedTextColor.GOLD, title));
-        services.messages().broadcast(text(sumo ? "sumo.rules" : selectedKits != null ? "pvp.selected_round_rules" : "pvp.round_rules", NamedTextColor.GRAY));
+        if (chooseKits)
+            services.messages()
+                    .broadcast(
+                            text("pvp.choice.rules", NamedTextColor.GRAY, PvpKitChoices.SECONDS));
+        else
+            services.messages()
+                    .broadcast(
+                            text(
+                                    sumo
+                                            ? "sumo.rules"
+                                            : selectedKits != null
+                                                    ? "pvp.selected_round_rules"
+                                                    : "pvp.round_rules",
+                                    NamedTextColor.GRAY));
         if (ffa) prepareRound();
         else if (training) {
             services.messages()
@@ -288,6 +345,13 @@ final class DuelSession implements PartyRoundSession {
                 && !eliminated.contains(p.getUniqueId())
                 && p.getGameMode() == GameMode.SURVIVAL
                 && !p.isDead();
+    }
+
+    private boolean bombImpactTarget(Player owner, Entity entity) {
+        Player target = entity instanceof Player p ? p : mounts.owner(entity);
+        return target != null
+                && !target.getUniqueId().equals(owner.getUniqueId())
+                && fighting(target);
     }
 
     private void teleport(Player p, Location to) {
@@ -392,11 +456,11 @@ final class DuelSession implements PartyRoundSession {
         airstrike.clear();
         shadowArmor.clear();
         bombs.clear();
-        phase = Phase.COUNTDOWN;
+        phase = chooseKits ? Phase.SELECTING : Phase.COUNTDOWN;
         combat.reset();
         deathPause.clear();
         lastHit.clear();
-        deadline = now + countdown;
+        deadline = now + (chooseKits ? PvpKitChoices.SECONDS : countdown);
         suddenDeath = false;
         eliminated.clear();
         readyAt.clear();
@@ -409,9 +473,8 @@ final class DuelSession implements PartyRoundSession {
         for (Player p : services.participants().onlinePlayers()) spectator(p);
         if (ffa) {
             fighters.addAll(names.keySet());
-            if (!sumo)
-                for (UUID id : fighters)
-                    kits.put(id, PvpClass.random(random));
+            if (!sumo && !chooseKits)
+                for (UUID id : fighters) kits.put(id, PvpClass.random(random));
         } else if (training) {
             UUID id = names.keySet().iterator().next();
             fighters.add(id);
@@ -449,30 +512,63 @@ final class DuelSession implements PartyRoundSession {
                     ffa
                             ? arena.spawn(spawnIndex++, spawnOrder.size())
                             : arena.spawn(east));
-            if (kit != null) {
-                p.sendMessage(
-                        text("pvp.class_details", NamedTextColor.GREEN, kit.title, kit.description));
-                p.sendMessage(text(kit.passiveDescription(), NamedTextColor.AQUA));
-                if (kit == PvpClass.DEMOLITIONIST)
-                    p.sendMessage(
-                            text("pvp.tnt_help", NamedTextColor.GOLD));
-                if (kit == PvpClass.RANGER)
-                    p.sendMessage(
-                            text("pvp.arrow_help", NamedTextColor.GRAY));
-                p.sendMessage(
-                        text("pvp.ability_details", NamedTextColor.GOLD,
-                                kit.ability, kit.abilityDescription(), kit.cooldown));
-                p.sendMessage(
-                        text(kit == PvpClass.SHADOW ? "pvp.shadow_controls" : "pvp.ability_controls",
-                                NamedTextColor.GRAY));
-            } else
-                p.sendMessage(
-                        text("sumo.kit_help", NamedTextColor.GREEN));
+            if (kit != null) explainKit(p, kit);
+            else if (sumo) p.sendMessage(text("sumo.kit_help", NamedTextColor.GREEN));
         }
         for (Player player : services.participants().onlinePlayers())
             countdownFreeze.freeze(player);
+        if (chooseKits) {
+            kitChoices =
+                    new PvpKitChoices(fighters.stream().filter(id -> player(id) != null).toList());
+            for (UUID id : fighters) {
+                Player p = player(id);
+                if (p != null) {
+                    p.getInventory().setItem(4, kitMenu.opener(p));
+                    p.getInventory().setHeldItemSlot(4);
+                    kitMenu.open(p, null);
+                }
+            }
+        }
         updateHud();
-        if (ffa && countdown == 0) onSecondTick(now);
+        if (ffa && !chooseKits && countdown == 0) onSecondTick(now);
+    }
+
+    private void explainKit(Player p, PvpClass kit) {
+        p.sendMessage(text("pvp.class_details", NamedTextColor.GREEN, kit.title, kit.description));
+        p.sendMessage(text(kit.passiveDescription(), NamedTextColor.AQUA));
+        if (kit == PvpClass.DEMOLITIONIST) p.sendMessage(text("pvp.tnt_help", NamedTextColor.GOLD));
+        if (kit == PvpClass.RANGER) p.sendMessage(text("pvp.arrow_help", NamedTextColor.GRAY));
+        p.sendMessage(
+                text(
+                        "pvp.ability_details",
+                        NamedTextColor.GOLD,
+                        kit.ability,
+                        kit.abilityDescription(),
+                        kit.cooldown));
+        p.sendMessage(
+                text(
+                        kit == PvpClass.SHADOW ? "pvp.shadow_controls" : "pvp.ability_controls",
+                        NamedTextColor.GRAY));
+    }
+
+    private void startSelectedCountdown() {
+        if (phase != Phase.SELECTING || context.ended()) return;
+        kits.putAll(kitChoices.finish(random));
+        phase = Phase.COUNTDOWN;
+        deadline = now + countdown;
+        for (UUID id : fighters) {
+            Player p = player(id);
+            if (p == null) continue;
+            p.closeInventory();
+            p.setItemOnCursor(null);
+            p.getInventory().clear();
+            PvpClass kit = kits.get(id);
+            if (kit != null) {
+                kit.equip(p, abilityKey);
+                explainKit(p, kit);
+            }
+        }
+        updateHud();
     }
 
     @Override
@@ -497,6 +593,11 @@ final class DuelSession implements PartyRoundSession {
             completeMatch(player(a) == null ? player(b) == null ? null : b : a);
             deadline = now + 1;
             updateHud();
+            return;
+        }
+        if (phase == Phase.SELECTING) {
+            if (kitChoices.ready() || now >= deadline) startSelectedCountdown();
+            else updateHud();
             return;
         }
         if (phase == Phase.COUNTDOWN)
@@ -671,6 +772,7 @@ final class DuelSession implements PartyRoundSession {
 
     @Override
     public void onEnd(EndReason reason) {
+        if (chooseKits) for (Player p : services.participants().onlinePlayers()) kitMenu.close(p);
         context.hideBars();
         recoveries.values().forEach(BukkitTask::cancel);
         recoveries.clear();
@@ -717,24 +819,53 @@ final class DuelSession implements PartyRoundSession {
                                         roundLength + (suddenDeath ? 30 : 0) - (now - fightStarted))
                                 : Math.max(0, deadline - now);
         Component barTitle =
-                phase == Phase.COUNTDOWN
-                        ? text("hud.fight_countdown", NamedTextColor.GOLD, remaining)
-                        : phase == Phase.BREAK
-                                ? text("hud.round_countdown", NamedTextColor.GOLD, remaining)
-                                : phase == Phase.RESULT
-                                        ? text(ffa ? "hud.fight_over" : "hud.round_over", NamedTextColor.GOLD, remaining)
-                                        : ffa && suddenDeath ? text("hud.ffa_overtime", NamedTextColor.GOLD)
-                                        : suddenDeath ? text("hud.overtime", NamedTextColor.GOLD, TimeFormat.clock(remaining))
-                                        : text("hud.timer", NamedTextColor.GOLD, title, TimeFormat.clock(remaining));
+                phase == Phase.SELECTING
+                        ? text(
+                                "pvp.choice.hud",
+                                NamedTextColor.GOLD,
+                                kitChoices.picked(),
+                                kitChoices.size(),
+                                remaining)
+                        : phase == Phase.COUNTDOWN
+                                ? text("hud.fight_countdown", NamedTextColor.GOLD, remaining)
+                                : phase == Phase.BREAK
+                                        ? text(
+                                                "hud.round_countdown",
+                                                NamedTextColor.GOLD,
+                                                remaining)
+                                        : phase == Phase.RESULT
+                                                ? text(
+                                                        ffa ? "hud.fight_over" : "hud.round_over",
+                                                        NamedTextColor.GOLD,
+                                                        remaining)
+                                                : ffa && suddenDeath
+                                                        ? text(
+                                                                "hud.ffa_overtime",
+                                                                NamedTextColor.GOLD)
+                                                        : suddenDeath
+                                                                ? text(
+                                                                        "hud.overtime",
+                                                                        NamedTextColor.GOLD,
+                                                                        TimeFormat.clock(remaining))
+                                                                : text(
+                                                                        "hud.timer",
+                                                                        NamedTextColor.GOLD,
+                                                                        title,
+                                                                        TimeFormat.clock(
+                                                                                remaining));
         bar.name(barTitle);
-        bar.progress(ffa && phase == Phase.FIGHT ? (float) standings.survivors().size() / names.size() :
-                Math.clamp(
-                        (float) remaining
-                                / (phase == Phase.FIGHT
-                                        ? suddenDeath ? 30 : roundLength
-                                        : Math.max(1, countdown)),
-                        0,
-                        1));
+        bar.progress(
+                ffa && phase == Phase.FIGHT
+                        ? (float) standings.survivors().size() / names.size()
+                        : Math.clamp(
+                                (float) remaining
+                                        / (phase == Phase.FIGHT
+                                                ? suddenDeath ? 30 : roundLength
+                                                : phase == Phase.SELECTING
+                                                        ? PvpKitChoices.SECONDS
+                                                        : Math.max(1, countdown)),
+                                0,
+                                1));
         List<Component> lines = new ArrayList<>();
         if (ffa) {
             lines.add(text("hud.remaining", NamedTextColor.AQUA, standings.survivors().size(), names.size()));
@@ -783,7 +914,7 @@ final class DuelSession implements PartyRoundSession {
 
     @Override
     public boolean mayFollowPlayers(Player player) {
-        return phase != Phase.COUNTDOWN && !isInGame(player);
+        return phase != Phase.COUNTDOWN && phase != Phase.SELECTING && !isInGame(player);
     }
 
     @Override
@@ -802,6 +933,8 @@ final class DuelSession implements PartyRoundSession {
     }
 
     private void withdraw(Player p) {
+        if (chooseKits) kitMenu.close(p);
+        if (phase == Phase.SELECTING && kitChoices != null) kitChoices.withdraw(p.getUniqueId());
         BukkitTask recovery = recoveries.remove(p.getUniqueId());
         if (recovery != null) recovery.cancel();
         context.withdraw(p.getUniqueId());
@@ -834,7 +967,7 @@ final class DuelSession implements PartyRoundSession {
         // Reconnecting does not reroll a kit or erase a forfeit.
         withdrawn.add(p.getUniqueId());
         spectator(p);
-        if (phase == Phase.COUNTDOWN) countdownFreeze.freeze(p);
+        if (phase == Phase.COUNTDOWN || phase == Phase.SELECTING) countdownFreeze.freeze(p);
         p.sendMessage(
                 text(ffa ? "ffa.spectating" : "tournament.spectating", NamedTextColor.YELLOW));
     }
@@ -1205,24 +1338,49 @@ final class DuelSession implements PartyRoundSession {
 
     private void scheduleFfaResolution() {
         if (resolution != null || phase == Phase.DONE || phase == Phase.RESULT) return;
-        resolution = Bukkit.getScheduler().runTaskLater(services.plugin(), () -> {
-            resolution = null;
-            if (phase == Phase.DONE || context.ended() || !services.session().isRunning()) return;
-            for (UUID id : eliminated) projectiles.clear(id);
-            boolean test = freeForAll ? training : services.isTest();
-            if (!standings.decided(test, Bukkit.getCurrentTick())) {
-                if (!test && standings.survivors().size() == 1) scheduleFfaResolution();
-                return;
-            }
-            phase = Phase.RESULT;
-            ffaResultUntil = (long) Bukkit.getCurrentTick() + DeathPause.TICKS;
-            harpoon.clear(); thunder.clear(); airstrike.clear(); shadowArmor.clear(); bombs.clear();
-            updateHud();
-            resolution = Bukkit.getScheduler().runTaskLater(services.plugin(), () -> {
-                resolution = null;
-                if (phase == Phase.RESULT && !context.ended() && services.session().isRunning()) finishFfa();
-            }, DeathPause.TICKS);
-        }, 2);
+        resolution =
+                Bukkit.getScheduler()
+                        .runTaskLater(
+                                services.plugin(),
+                                () -> {
+                                    resolution = null;
+                                    if (phase == Phase.DONE
+                                            || context.ended()
+                                            || !services.session().isRunning()) return;
+                                    for (UUID id : eliminated) projectiles.clear(id);
+                                    boolean test = freeForAll ? training : services.isTest();
+                                    if (!standings.decided(test, Bukkit.getCurrentTick())) {
+                                        if (!test && standings.survivors().size() == 1)
+                                            scheduleFfaResolution();
+                                        return;
+                                    }
+                                    if (chooseKits)
+                                        for (Player p : services.participants().onlinePlayers())
+                                            kitMenu.close(p);
+                                    phase = Phase.RESULT;
+                                    ffaResultUntil =
+                                            (long) Bukkit.getCurrentTick() + DeathPause.TICKS;
+                                    harpoon.clear();
+                                    thunder.clear();
+                                    airstrike.clear();
+                                    shadowArmor.clear();
+                                    bombs.clear();
+                                    updateHud();
+                                    resolution =
+                                            Bukkit.getScheduler()
+                                                    .runTaskLater(
+                                                            services.plugin(),
+                                                            () -> {
+                                                                resolution = null;
+                                                                if (phase == Phase.RESULT
+                                                                        && !context.ended()
+                                                                        && services.session()
+                                                                                .isRunning())
+                                                                    finishFfa();
+                                                            },
+                                                            DeathPause.TICKS);
+                                },
+                                2);
     }
 
     private void finishFfa() {
@@ -1323,6 +1481,16 @@ final class DuelSession implements PartyRoundSession {
 
     @Override
     public void onPlayerInteract(PlayerInteractEvent event) {
+        if (phase == Phase.SELECTING && fighter(event.getPlayer())) {
+            event.setCancelled(true);
+            if (event.getHand() == EquipmentSlot.HAND
+                    && event.getAction().isRightClick()
+                    && event.getItem() != null
+                    && event.getItem().getType() == Material.NETHER_STAR)
+                kitMenu.open(
+                        event.getPlayer(), kitChoices.selected(event.getPlayer().getUniqueId()));
+            return;
+        }
         if (sumo || !fighting(event.getPlayer())) {
             event.setCancelled(true);
             return;
@@ -1609,6 +1777,38 @@ final class DuelSession implements PartyRoundSession {
 
     @Override
     public void onInventoryClick(InventoryClickEvent event) {
+        if (chooseKits && kitMenu.owns(event.getView().getTopInventory())) {
+            event.setCancelled(true);
+            if (phase != Phase.SELECTING
+                    || !(event.getWhoClicked() instanceof Player p)
+                    || !fighter(p)) return;
+            PvpClass kit = kitMenu.choice(event.getView().getTopInventory(), p, event.getRawSlot());
+            if (kit != null)
+                Bukkit.getScheduler()
+                        .runTask(
+                                services.plugin(),
+                                () -> {
+                                    if (phase != Phase.SELECTING
+                                            || !fighter(p)
+                                            || !p.isOnline()
+                                            || context.ended()) return;
+                                    if (!kitChoices.choose(p.getUniqueId(), kit)) return;
+                                    kitMenu.close(p);
+                                    p.sendMessage(
+                                            text(
+                                                    "pvp.choice.selected",
+                                                    NamedTextColor.GREEN,
+                                                    kit.title));
+                                    p.playSound(
+                                            p.getLocation(),
+                                            Sound.BLOCK_NOTE_BLOCK_PLING,
+                                            .7f,
+                                            1.5f);
+                                    if (kitChoices.ready()) startSelectedCountdown();
+                                    else updateHud();
+                                });
+            return;
+        }
         if (event.getSlotType() == InventoryType.SlotType.CRAFTING
                 || event.getSlotType() == InventoryType.SlotType.RESULT
                 || event.getAction() == org.bukkit.event.inventory.InventoryAction.DROP_ALL_SLOT
@@ -1616,5 +1816,10 @@ final class DuelSession implements PartyRoundSession {
                 || event.getAction() == org.bukkit.event.inventory.InventoryAction.DROP_ALL_CURSOR
                 || event.getAction() == org.bukkit.event.inventory.InventoryAction.DROP_ONE_CURSOR)
             event.setCancelled(true);
+    }
+
+    @Override
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (chooseKits && kitMenu.owns(event.getView().getTopInventory())) event.setCancelled(true);
     }
 }

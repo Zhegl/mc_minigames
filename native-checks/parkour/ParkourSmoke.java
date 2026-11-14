@@ -51,7 +51,8 @@ public final class ParkourSmoke extends JavaPlugin {
                                                 "FLIGHT",
                                                 "LADDER_TRAVERSE",
                                                 "POT_ASCENT",
-                                                "POWDER_SNOW_DROP"))
+                                                "POWDER_SNOW_DROP",
+                                                "HONEY_TRAVERSE"))
                                     selected.add(
                                             Arrays.stream(kind.getEnumConstants())
                                                     .filter(k -> k.toString().equals(name))
@@ -202,6 +203,58 @@ public final class ParkourSmoke extends JavaPlugin {
                     "The sole rocket has real Flight Duration 2 metadata and no damaging star");
         }
         require(rockets == 1, "The production kit factory creates exactly one rocket");
+        catchAndIce();
+        assertions +=
+                PartyPvpSmoke.run(
+                        loader,
+                        world,
+                        (JavaPlugin)
+                                Objects.requireNonNull(
+                                        Bukkit.getPluginManager().getPlugin("PotatoMinigames")));
+    }
+
+    private void catchAndIce() throws Exception {
+        Object honeyFrom = call(course, "island", new Class<?>[] {int.class}, 7);
+        Object honeyTo = call(course, "island", new Class<?>[] {int.class}, 8);
+        int hy = (int) call(honeyTo, "y", new Class<?>[0]);
+        int hz = (int) call(honeyTo, "z", new Class<?>[0]);
+        int afterCheckpoint =
+                (int) call(honeyFrom, "z", new Class<?>[0])
+                        + (int) call(honeyFrom, "depth", new Class<?>[0]);
+        require(hz - 3 >= afterCheckpoint, "native honey starts beyond the preceding checkpoint");
+        Object iceFrom = call(course, "island", new Class<?>[] {int.class}, 2);
+        Object iceTo = call(course, "island", new Class<?>[] {int.class}, 3);
+        int iy = (int) call(iceFrom, "y", new Class<?>[0]);
+        int start = (int) call(iceFrom, "z", new Class<?>[0]) + 7;
+        int end = (int) call(iceTo, "z", new Class<?>[0]) - 1;
+        for (int lane = 0; lane < 2; lane++) {
+            int shift = lane * 28;
+            for (int z = hz - 3; z < hz; z++) {
+                for (int y = hy; y < hy + 6; y++)
+                    require(
+                            world.getBlockAt(shift, y, z).getType() == Material.HONEY_BLOCK,
+                            "both built lanes contain the complete short lower honey patch");
+                require(
+                        world.getBlockAt(shift, hy + 6, z).getType() == Material.DEEPSLATE_TILES
+                                && !world.getBlockAt(shift, hy + 6, z).isPassable(),
+                        "native solid caps cover every soft honey landing surface");
+            }
+            for (int z = start; z <= end; z++) {
+                int columns = 0;
+                for (int x = 0; x < 27; x++) {
+                    if (world.getBlockAt(shift + x, iy, z).getType() != Material.PACKED_ICE)
+                        continue;
+                    columns++;
+                    require(
+                            world.getBlockAt(shift + x, iy + 1, z).isPassable()
+                                    && world.getBlockAt(shift + x, iy + 2, z).isPassable(),
+                            "native road collision leaves room for a boat hull and passenger");
+                }
+                require(
+                        columns == 5,
+                        "the sliced native ice road stays five blocks wide through bends");
+            }
+        }
     }
 
     private void inventoryPermissions(Inventory own, Inventory rival) throws Exception {

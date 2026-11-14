@@ -58,6 +58,7 @@ queues:
     pvp: {enabled: true, minPlayers: 2, maxPlayers: 12}
     sumo: {enabled: true, minPlayers: 2, maxPlayers: 12}
     pvp_ffa: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    pvp_select: {enabled: true, minPlayers: 2, maxPlayers: 16}
     sumo_ffa: {enabled: true, minPlayers: 2, maxPlayers: 16}
     arms_race: {enabled: true, minPlayers: 2, maxPlayers: 16}
     one_shot: {enabled: true, minPlayers: 2, maxPlayers: 16}

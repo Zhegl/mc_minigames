@@ -1,14 +1,16 @@
 package me.petr1furious.potatominigames.core.game;
 
-import java.util.List;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+
+import me.petr1furious.potatominigames.core.team.TeamColor;
+
+import net.kyori.adventure.text.Component;
 
 import org.bukkit.Material;
 
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import io.papermc.paper.command.brigadier.CommandSourceStack;
-import net.kyori.adventure.text.Component;
-
-import me.petr1furious.potatominigames.core.team.TeamColor;
+import java.util.List;
 
 public interface Minigame {
 
@@ -20,6 +22,21 @@ public interface Minigame {
     /** One queue per mode. Single modes are hidden unless showModes() is overridden. */
     default List<String> modes() {
         return List.of("default");
+    }
+
+    /** Optional extra menu level; queue IDs and command syntax remain flat. */
+    record ModeGroup(Component title, Material icon, List<String> modes) {
+        public ModeGroup {
+            modes = List.copyOf(modes);
+        }
+    }
+
+    default List<ModeGroup> modeGroups() {
+        return List.of();
+    }
+
+    default Component groupedModeTitle(String mode) {
+        return modeTitle(mode);
     }
 
     /** Used by a plain {@code /<game> start}. */

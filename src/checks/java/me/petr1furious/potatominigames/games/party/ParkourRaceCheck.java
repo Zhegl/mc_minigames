@@ -35,6 +35,7 @@ public final class ParkourRaceCheck {
         navigation();
         geometry();
         swimRoute();
+        honeyCatch();
         iceRoute();
         staircase();
         flightBoundary();
@@ -847,6 +848,52 @@ public final class ParkourRaceCheck {
         }
     }
 
+    private static void honeyCatch() {
+        for (boolean mirror : List.of(false, true)) {
+            var course =
+                    layout(
+                            List.of(
+                                    ParkourCourse.Kind.WATER_DROP,
+                                    ParkourCourse.Kind.HONEY_TRAVERSE,
+                                    ParkourCourse.Kind.BRIDGE),
+                            mirror);
+            var from = course.island(1);
+            var to = course.island(2);
+            int count = 0;
+            for (var entry : course.blocks().entrySet()) {
+                if (entry.getValue() != Material.HONEY_BLOCK) continue;
+                var p = entry.getKey();
+                count++;
+                check(
+                        p.z() >= from.z() + from.depth()
+                                && p.z() >= to.z() - 3
+                                && p.z() < to.z()
+                                && p.y() >= to.y()
+                                && p.y() < to.y() + ParkourCourse.HONEY_CATCH_HEIGHT,
+                        "honey exists only at the final catch, never inside the preceding goal");
+                check(
+                        !course.attempt(0, p.x() + .5, p.y() + 1, p.z() + .5),
+                        "the previous task cannot use future honey to cushion its fall");
+                if (p.y() == to.y() + ParkourCourse.HONEY_CATCH_HEIGHT - 1) {
+                    check(
+                            course.blocks().get(new ParkourCourse.Pos(p.x(), p.y() + 1, p.z()))
+                                    == ParkourCourse.OBSTACLE_BLOCK,
+                            "a full solid cap covers every honey top landing surface");
+                    double fall = from.y() + 1 - (p.y() + 2);
+                    check(
+                            fall - 3 >= 20,
+                            "landing on the cap without a side catch causes a failed attempt");
+                }
+            }
+            check(
+                    count == 3 * ParkourCourse.HONEY_CATCH_HEIGHT,
+                    "the final honey patch is short and gives a full hitbox room below the cap");
+            check(
+                    to.z() - (from.z() + from.depth()) <= 4,
+                    "the short catch remains within an ordinary falling jump's forward reach");
+        }
+    }
+
     private static void iceRoute() {
         for (boolean mirror : List.of(false, true)) {
             var course = layout(List.of(ParkourCourse.Kind.BOAT_ICE), mirror);
@@ -864,7 +911,7 @@ public final class ParkourRaceCheck {
                     var next = new ParkourCourse.Pos(pos.x() + step[0], pos.y(), pos.z() + step[1]);
                     if (next.z() < start
                             || next.z() > end
-                            || course.blocks().get(next) != Material.BLUE_ICE
+                            || course.blocks().get(next) != Material.PACKED_ICE
                             || distances.containsKey(next)) continue;
                     distances.put(next, distances.get(pos) + 1);
                     pending.add(next);
@@ -872,21 +919,53 @@ public final class ParkourRaceCheck {
             }
             Integer length = distances.get(new ParkourCourse.Pos(center, from.y(), end));
             check(
-                    length != null && length >= end - start + 32,
-                    "The ice road is connected and requires substantial turns rather than a"
+                    length != null && length >= end - start + 20,
+                    "The ice road is connected and requires broad bends rather than a"
                             + " straight shortcut");
             for (int row : new int[] {start, end}) {
                 int width = 0;
                 for (int x = 0; x < ParkourCourse.WIDTH; x++)
                     if (course.blocks().get(new ParkourCourse.Pos(x, from.y(), row))
-                            == Material.BLUE_ICE) width++;
+                            == Material.PACKED_ICE) width++;
                 check(
-                        width == 3,
-                        "The three-block ice road joins both checkpoint islands without a gap");
+                        width == 5,
+                        "The five-block ice road joins both checkpoint islands without a gap");
+            }
+            Integer previous = null;
+            for (int z = start; z <= end; z++) {
+                int sum = 0, width = 0;
+                for (int x = 0; x < ParkourCourse.WIDTH; x++)
+                    if (course.blocks().get(new ParkourCourse.Pos(x, from.y(), z))
+                            == Material.PACKED_ICE) {
+                        sum += x;
+                        width++;
+                        check(
+                                !course.blocks()
+                                                .containsKey(
+                                                        new ParkourCourse.Pos(x, from.y() + 1, z))
+                                        && !course.blocks()
+                                                .containsKey(
+                                                        new ParkourCourse.Pos(x, from.y() + 2, z)),
+                                "hull and passenger have clear space across the full road width");
+                    }
+                check(width == 5, "road stays five blocks wide through both bends");
+                int middle = sum / width;
+                check(
+                        previous == null || Math.abs(previous - middle) <= 1,
+                        "the centerline progresses forward smoothly without right-angle runs");
+                if (z < start + 3 || z > end - 3)
+                    check(middle == center, "entry and exit have straight steering runups");
+                if (z < end - 1)
+                    for (int x : new int[] {middle - 3, middle + 3})
+                        check(
+                                course.blocks().get(new ParkourCourse.Pos(x, from.y() + 2, z))
+                                        == ParkourCourse.OBSTACLE_BLOCK,
+                                "outer guardrails prevent cutting the curves or sliding off");
+                previous = middle;
             }
             for (var entry : course.blocks().entrySet()) {
                 var pos = entry.getKey();
-                if (entry.getValue() == Material.BLUE_ICE && pos.z() >= start && pos.z() <= end)
+                if (entry.getValue() == Material.PACKED_ICE && pos.z() >= start && pos.z() <= end)
                     check(
                             distances.containsKey(pos),
                             "All ice corners belong to one connected drivable road");

@@ -1,14 +1,17 @@
 package me.petr1furious.potatominigames.core.queue;
 
+import me.petr1furious.potatominigames.core.command.CommandFailure;
+import me.petr1furious.potatominigames.core.game.Ballot;
+import me.petr1furious.potatominigames.core.game.Minigame;
+import me.petr1furious.potatominigames.core.session.ActiveSession;
+import me.petr1furious.potatominigames.core.session.SessionManager;
+import me.petr1furious.potatominigames.core.team.TeamColor;
 import me.petr1furious.potatominigames.i18n.I18n;
+
+import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.JoinConfiguration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.function.Function;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -22,16 +25,15 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
-
-import me.petr1furious.potatominigames.core.command.CommandFailure;
-import me.petr1furious.potatominigames.core.game.Ballot;
-import me.petr1furious.potatominigames.core.game.Minigame;
-import me.petr1furious.potatominigames.core.session.ActiveSession;
-import me.petr1furious.potatominigames.core.session.SessionManager;
-import me.petr1furious.potatominigames.core.team.TeamColor;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Chest menus: one icon per game, and for games with several modes a second menu with
@@ -85,18 +87,80 @@ public final class QueueMenu implements Listener {
     /** The mode menu of one game. */
     public void open(Player player, Minigame game) {
         List<Entry> entries = new ArrayList<>();
+        Set<Minigame.ModeGroup> shown = new HashSet<>();
         for (QueueService.Queue queue : queues.queuesOf(game)) {
-            entries.add(new Entry(viewer -> queueIcon(queue, viewer), clicker -> {
-                if (hasPicks(clicker, queue)) {
-                    openPicks(clicker, queue);
-                    return;
-                }
-                clicker.closeInventory();
-                queues.join(clicker, queue);
-                openPicks(clicker, queue);
-            }));
+            Optional<Minigame.ModeGroup> group = modeGroup(game, queue.mode());
+            if (group.isPresent()) {
+                if (shown.add(group.get()))
+                    entries.add(
+                            new Entry(
+                                    viewer -> groupIcon(game, group.get(), viewer),
+                                    clicker -> openGroup(clicker, game, group.get())));
+            } else entries.add(queueEntry(queue, false));
         }
-        show(player, game.displayName(), entries, new Entry(viewer -> backIcon(), this::open), null);
+        show(
+                player,
+                game.displayName(),
+                entries,
+                new Entry(viewer -> backIcon(), this::open),
+                null);
+    }
+
+    private Optional<Minigame.ModeGroup> modeGroup(Minigame game, String mode) {
+        return game.modeGroups().stream().filter(group -> group.modes().contains(mode)).findFirst();
+    }
+
+    private Entry queueEntry(QueueService.Queue queue, boolean grouped) {
+        return new Entry(
+                viewer ->
+                        grouped
+                                ? queueIcon(
+                                        queue, viewer, queue.game().groupedModeTitle(queue.mode()))
+                                : queueIcon(queue, viewer),
+                clicker -> {
+                    if (hasPicks(clicker, queue)) {
+                        openPicks(clicker, queue);
+                        return;
+                    }
+                    clicker.closeInventory();
+                    queues.join(clicker, queue);
+                    openPicks(clicker, queue);
+                });
+    }
+
+    private void openGroup(Player player, Minigame game, Minigame.ModeGroup group) {
+        List<Entry> entries =
+                queues.queuesOf(game).stream()
+                        .filter(queue -> group.modes().contains(queue.mode()))
+                        .map(queue -> queueEntry(queue, true))
+                        .toList();
+        show(
+                player,
+                group.title(),
+                entries,
+                new Entry(viewer -> backIcon(), clicker -> open(clicker, game)),
+                null);
+    }
+
+    private ItemStack groupIcon(Minigame game, Minigame.ModeGroup group, Player viewer) {
+        ItemStack item = new ItemStack(group.icon());
+        var available =
+                queues.queuesOf(game).stream()
+                        .filter(queue -> group.modes().contains(queue.mode()))
+                        .toList();
+        item.editMeta(meta -> {
+            meta.displayName(plain(group.title()).decorate(TextDecoration.BOLD));
+            List<Component> lore = new ArrayList<>();
+            for (var queue : available) {
+                lore.add(plain(game.groupedModeTitle(queue.mode())).color(NamedTextColor.GOLD));
+                queueStatus(lore, queue);
+            }
+            lore.add(plain(I18n.tr("core.menu.click_mode")).color(NamedTextColor.AQUA));
+            meta.lore(lore);
+            meta.setEnchantmentGlintOverride(
+                    available.stream().anyMatch(q -> q.contains(viewer.getUniqueId())));
+        });
+        return item;
     }
 
     private void pickGame(Player player, Minigame game) throws CommandFailure {
@@ -141,13 +205,17 @@ public final class QueueMenu implements Listener {
 
     /** Back from the first pick menu: the mode menu, or the game menu for one mode. */
     private Entry backFromPicks(QueueService.Queue queue) {
-        return new Entry(viewer -> backIcon(), clicker -> {
-            if (queue.game().showModes()) {
-                open(clicker, queue.game());
-            } else {
-                open(clicker);
-            }
-        });
+        return new Entry(
+                viewer -> backIcon(),
+                clicker -> {
+                    if (queue.game().showModes()) {
+                        var group = modeGroup(queue.game(), queue.mode());
+                        if (group.isPresent()) openGroup(clicker, queue.game(), group.get());
+                        else open(clicker, queue.game());
+                    } else {
+                        open(clicker);
+                    }
+                });
     }
 
     /** Back to the menu before this step. */
@@ -315,16 +383,23 @@ public final class QueueMenu implements Listener {
     }
 
     private ItemStack queueIcon(QueueService.Queue queue, Player viewer) {
+        return queueIcon(queue, viewer, queue.displayName());
+    }
+
+    private ItemStack queueIcon(QueueService.Queue queue, Player viewer, Component title) {
         ItemStack item = new ItemStack(queue.game().icon(queue.mode()));
         Optional<ActiveSession> running = sessions.sessionOf(queue.game());
         boolean mine = queue.contains(viewer.getUniqueId());
         item.editMeta(meta -> {
-            meta.displayName(plain(queue.displayName()).decorate(TextDecoration.BOLD));
+            meta.displayName(plain(title).decorate(TextDecoration.BOLD));
             List<Component> lore = new ArrayList<>();
             addDescription(lore, queue.game().description(queue.mode()));
             lore.add(Component.empty());
             if (running.isPresent()) {
-                lore.add(plain(I18n.tr("core.menu.session_played", running.get().displayName()).color(NamedTextColor.YELLOW)));
+                lore.add(
+                        plain(
+                                I18n.tr("core.menu.session_played", running.get().displayName())
+                                        .color(NamedTextColor.YELLOW)));
                 lore.add(plain(I18n.tr("core.menu.click_spectate").color(NamedTextColor.AQUA)));
             } else {
                 queueStatus(lore, queue);
@@ -332,8 +407,13 @@ public final class QueueMenu implements Listener {
                 if (hasPicks(viewer, queue)) {
                     pickStatus(lore, queue, viewer);
                 } else {
-                    lore.add(plain(mine ? I18n.tr("core.menu.in_this_queue").color(NamedTextColor.GREEN)
-                            : I18n.tr("core.menu.click_join").color(NamedTextColor.AQUA)));
+                    lore.add(
+                            plain(
+                                    mine
+                                            ? I18n.tr("core.menu.in_this_queue")
+                                                    .color(NamedTextColor.GREEN)
+                                            : I18n.tr("core.menu.click_join")
+                                                    .color(NamedTextColor.AQUA)));
                 }
             }
             meta.lore(lore);

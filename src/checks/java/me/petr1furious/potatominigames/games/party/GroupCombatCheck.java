@@ -1,5 +1,11 @@
 package me.petr1furious.potatominigames.games.party;
 
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.configuration.file.YamlConfiguration;
+
 import java.io.InputStreamReader;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
@@ -11,20 +17,32 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.configuration.file.YamlConfiguration;
 
 /** Group-mode integration, real generated spawns, uniform kits and one-life elimination. */
 public final class GroupCombatCheck {
     public static void main(String[] args) {
-        integration(); spawns(false); spawns(true); survival(); kits();
+        integration();
+        selection();
+        spawns(false);
+        spawns(true);
+        survival();
+        kits();
         System.out.println("Party group combat: PvP/sumo menu and queues, safe circular spawns for 1–16 players, all random classes, one life, first-death continuation and simultaneous/withdrawal outcomes passed");
     }
     private static void integration() {
         PartyGame game = new PartyGame((PartyConfig) null);
+        check(
+                game.modeGroups().size() == 1
+                        && game.modeGroups()
+                                .getFirst()
+                                .modes()
+                                .equals(List.of("pvp", "pvp_ffa", "pvp_select")),
+                "the Party menu groups exactly three PvP variants behind one entry");
+        check(
+                game.createSession(null, "pvp_select") instanceof DuelSession
+                        && game.minPlayers("pvp_select") == 2
+                        && game.maxPlayers("pvp_select") == 16,
+                "kit-selection PvP is a playable standalone group-combat mode");
         check(game.modes().containsAll(List.of("pvp", "sumo", "pvp_ffa", "sumo_ffa", "arms_race", "miners")), "Group variants coexist with the original tournament modes");
         for (String mode : List.of("pvp_ffa", "sumo_ffa")) {
             check(game.createSession(null, mode) instanceof DuelSession, "Group modes share the tested class/combat engine");
@@ -34,7 +52,7 @@ public final class GroupCombatCheck {
         }
         check(game.maxPlayers("pvp") == 12 && game.maxPlayers("sumo") == 12, "Tournament limits remain intact");
         var queues = YamlConfiguration.loadConfiguration(new InputStreamReader(GroupCombatCheck.class.getResourceAsStream("/config.yml"), StandardCharsets.UTF_8));
-        for (String mode : List.of("pvp_ffa", "sumo_ffa")) {
+        for (String mode : List.of("pvp_ffa", "sumo_ffa", "pvp_select")) {
             String path = "queues.party." + mode;
             check(queues.getBoolean(path + ".enabled") && queues.getInt(path + ".minPlayers") == 2
                     && queues.getInt(path + ".maxPlayers") == 16, "Group queues ship enabled with the advertised limits");
@@ -42,6 +60,52 @@ public final class GroupCombatCheck {
         var timings = YamlConfiguration.loadConfiguration(new InputStreamReader(GroupCombatCheck.class.getResourceAsStream("/games/party.yml"), StandardCharsets.UTF_8));
         check(timings.getInt("pvpFfa.overtimeSeconds") == 180 && timings.getInt("sumoFfa.overtimeSeconds") == 45, "Overtime has separate group-mode settings");
     }
+
+    private static void selection() {
+        List<UUID> ids = ids(3);
+        PvpKitChoices picks = new PvpKitChoices(ids);
+        check(
+                !picks.ready() && picks.picked() == 0 && picks.size() == 3,
+                "no fighter starts with an implicitly selected random kit");
+        for (PvpClass kit : PvpClass.values())
+            check(
+                    picks.choose(ids.getFirst(), kit) && picks.selected(ids.getFirst()) == kit,
+                    "every existing class can be selected or changed during the choice phase");
+        check(
+                !picks.choose(new UUID(8, 8), PvpClass.GUARDIAN)
+                        && !picks.choose(ids.get(1), null)
+                        && picks.picked() == 1,
+                "spectators and empty clicks cannot change class choices");
+        picks.choose(ids.getFirst(), PvpClass.SHADOW);
+        picks.choose(ids.get(1), PvpClass.SHADOW);
+        check(
+                !picks.ready(),
+                "duplicate class choices are allowed without skipping an undecided fighter");
+        picks.withdraw(ids.get(2));
+        check(
+                picks.ready() && picks.size() == 2 && picks.picked() == 2,
+                "a withdrawn fighter never holds the selection phase open");
+        Map<UUID, PvpClass> locked = picks.finish(new Random(42));
+        check(
+                locked.equals(Map.of(ids.getFirst(), PvpClass.SHADOW, ids.get(1), PvpClass.SHADOW))
+                        && !picks.choose(ids.getFirst(), PvpClass.GUARDIAN),
+                "the countdown locks the chosen classes without rerolling them");
+        PvpKitChoices timeout = new PvpKitChoices(ids);
+        timeout.choose(ids.getFirst(), PvpClass.LANCER);
+        Map<UUID, PvpClass> fallback = timeout.finish(new Random(42));
+        check(
+                fallback.size() == 3
+                        && fallback.get(ids.getFirst()) == PvpClass.LANCER
+                        && fallback.values().stream().allMatch(java.util.Objects::nonNull)
+                        && timeout.finish(new Random(99)).equals(fallback),
+                "timeout fills only missing choices, once, without overwriting a selected kit");
+        PvpKitChoices empty = new PvpKitChoices(ids.subList(0, 1));
+        empty.withdraw(ids.getFirst());
+        check(
+                !empty.ready() && empty.finish(new Random()).isEmpty(),
+                "an empty roster cannot start a fight or invent a random fighter");
+    }
+
     private static void spawns(boolean sumo) {
         if (sumo) spawns(true, PvpArena.Layout.COURTYARD);
         else for (var layout : PvpArena.Layout.values()) spawns(false, layout);
@@ -58,10 +122,10 @@ public final class GroupCombatCheck {
                 check(arena.contains(at), "Every group spawn lies inside the arena");
                 check(world.at(at.getBlockX(), at.getBlockY() - 1, at.getBlockZ()) != Material.AIR, "Players spawn on a solid floor");
                 for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
-                    int x = (int) Math.floor(at.getX() + dx * .3), z = (int) Math.floor(at.getZ() + dz * .3);
-                    check(world.at(x, at.getBlockY(), z) == Material.AIR && world.at(x, at.getBlockY() + 1, z) == Material.AIR,
-                            "The full player hitbox, not just its centre, is clear of cover");
-                }
+                        int x = (int) Math.floor(at.getX() + dx * .3), z = (int) Math.floor(at.getZ() + dz * .3);
+                        check(world.at(x, at.getBlockY(), z) == Material.AIR && world.at(x, at.getBlockY() + 1, z) == Material.AIR,
+                                "The full player hitbox, not just its centre, is clear of cover");
+                    }
                 check(unique.add(at.getX() + ":" + at.getZ()), "No two group participants share a spawn");
                 check(at.getDirection().dot(arena.center().toVector().subtract(at.toVector()).normalize()) > .999,
                         "Participants face the centre of the battle");

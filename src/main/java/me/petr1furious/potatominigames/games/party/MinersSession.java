@@ -22,15 +22,15 @@ import org.bukkit.GameMode;
 import org.bukkit.GameRules;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Particle;
-import org.bukkit.block.Block;
-import org.bukkit.damage.DamageSource;
-import org.bukkit.damage.DamageType;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.block.Block;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Item;
@@ -54,8 +54,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerDropItemEvent;
-import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -98,7 +98,7 @@ final class MinersSession implements PartyRoundSession {
     private final Map<UUID, Long> gadgetReadyAt = new HashMap<>();
     private final CountdownFreeze freeze = new CountdownFreeze();
     private final ArenaProjectiles shots = new ArenaProjectiles();
-    private final PvpBombs bombs = new PvpBombs(PvpBombs.MINERS_THROW_COOLDOWN);
+    private final PvpBombs bombs = PvpBombs.miners();
     private final MinersDrops drops = new MinersDrops();
     private final MinersGold gold = new MinersGold();
     private final MinersVisibility visibility = new MinersVisibility();
@@ -691,7 +691,8 @@ final class MinersSession implements PartyRoundSession {
             return;
         }
         if (event instanceof EntityDamageByEntityEvent hit) {
-            if (bombBlast(hit)) event.setDamage(PvpBombs.blastDamage(event.getDamage()));
+            if (bombBlast(hit))
+                event.setDamage(bombs.blastDamage(hit.getDamager(), event.getDamage()));
             Player attacker = source(hit);
             if (attacker != p && event.getFinalDamage() > 0)
                 lastHit.put(p.getUniqueId(), new Hit(attacker.getUniqueId(), tick));

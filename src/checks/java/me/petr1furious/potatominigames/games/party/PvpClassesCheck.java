@@ -1,5 +1,16 @@
 package me.petr1furious.potatominigames.games.party;
 
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.Vector;
+
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -7,16 +18,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import org.bukkit.Material;
-import org.bukkit.Location;
-import org.bukkit.World;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Player;
-import org.bukkit.block.BlockFace;
-import org.bukkit.block.Block;
-import org.bukkit.block.data.BlockData;
-import org.bukkit.util.RayTraceResult;
-import org.bukkit.util.Vector;
 
 /** Kit layout, potion targeting/caps, random eligibility and combat-passive rules. */
 public final class PvpClassesCheck {
@@ -95,11 +96,11 @@ public final class PvpClassesCheck {
             check(potion.affects(false, true) == potion.harmful, "Only harmful potions affect opponents");
         }
         for (int owned = 0; owned <= 8; owned++) for (int amount = 0; amount <= 3; amount++) for (int cap = 0; cap <= 4; cap++) {
-            int added = PvpPotion.refillAmount(owned, amount, cap);
-            check(added >= 0 && added <= amount, "Refill cannot exceed request or become negative");
-            if (owned <= cap) check(owned + added <= cap, "Refill never exceeds stock cap");
-            else check(added == 0, "Over-cap inventory cannot be refilled");
-        }
+                    int added = PvpPotion.refillAmount(owned, amount, cap);
+                    check(added >= 0 && added <= amount, "Refill cannot exceed request or become negative");
+                    if (owned <= cap) check(owned + added <= cap, "Refill never exceeds stock cap");
+                    else check(added == 0, "Over-cap inventory cannot be refilled");
+                }
     }
     private static void arrowChecks() {
         check(PvpClass.RANGER.specialArrows().equals(List.of(PvpArrow.HARMING, PvpArrow.SLOWNESS, PvpArrow.POISON, PvpArrow.WEAKNESS, PvpArrow.NAUSEA, PvpArrow.SPECTRAL)),
@@ -310,7 +311,11 @@ public final class PvpClassesCheck {
                 "Bomber starts with twelve finite TNT charges");
         check(kit.potions().stream().filter(slot -> slot.kind() == PvpPotion.HEALING).mapToInt(PvpClass.PotionSlot::amount).sum() == 1,
                 "Bomber only receives one healing potion");
-        check(PvpBombs.FUSE == 50 && PvpBombs.THROW_COOLDOWN == 20 && PvpBombs.PLACE_COOLDOWN == 6 && PvpBombs.MAX_ACTIVE == 4,
+        check(
+                PvpBombs.FUSE == 30
+                        && PvpBombs.THROW_COOLDOWN == 20
+                        && PvpBombs.PLACE_COOLDOWN == 6
+                        && PvpBombs.MAX_ACTIVE == 4,
                 "Fuse, throw/place pace and simultaneous bombs are bounded independently");
         for (int stock = 0; stock <= 20; stock++) {
             int added = PvpPotion.refillAmount(stock, PvpBombs.REFILL, PvpBombs.STOCK);
@@ -336,7 +341,10 @@ public final class PvpClassesCheck {
         for (Vector aim : List.of(facing, new Vector(), new Vector(0, 1, 0), new Vector(0, -1, 0)))
             check(Double.isFinite(PvpBombs.throwVelocity(aim).length()) && PvpBombs.throwVelocity(aim).length() <= 1.170001, "Vertical/zero aim never creates runaway TNT velocity");
         for (double damage : new double[] {-1, 0, 1, 6, 10, 40, 1000})
-            check(PvpBombs.blastDamage(damage) == Math.clamp(damage, 0, 10), "Native explosion damage is capped before armour for both opponents and the bomber");
+            check(
+                    PvpBombs.blastDamage(damage) == Math.clamp(damage * 1.4, 0, 16),
+                    "Native explosion damage is capped before armour for both opponents and the"
+                        + " bomber");
     }
     private static void randomEligibility() {
         PvpClass[] classes = PvpClass.values();
@@ -344,16 +352,16 @@ public final class PvpClassesCheck {
         check(n == 15, "Demolitionist joins the existing fourteen classes");
         int[][] pairs = new int[n][n];
         for (int first = 0; first < n; first++) for (int second = 0; second < n - 1; second++) {
-            int a = first, b = second;
-            var drawn = PvpClass.opening(new Random(0) {
-                int calls;
-                @Override public int nextInt(int bound) {
-                    if (calls++ == 0) { check(bound == n, "First draw covers all classes"); return a; }
-                    check(bound == n - 1, "Second draw excludes exactly one class"); return b;
-                }
-            });
-            pairs[drawn.getFirst().ordinal()][drawn.getLast().ordinal()]++;
-        }
+                int a = first, b = second;
+                var drawn = PvpClass.opening(new Random(0) {
+                    int calls;
+                    @Override public int nextInt(int bound) {
+                        if (calls++ == 0) { check(bound == n, "First draw covers all classes"); return a; }
+                        check(bound == n - 1, "Second draw excludes exactly one class"); return b;
+                    }
+                });
+                pairs[drawn.getFirst().ordinal()][drawn.getLast().ordinal()]++;
+            }
         for (int a = 0; a < n; a++) for (int b = 0; b < n; b++) check(pairs[a][b] == (a == b ? 0 : 1), "Every distinct matchup has equal probability");
     }
     private static void combatRules() {

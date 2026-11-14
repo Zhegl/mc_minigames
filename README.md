@@ -17,7 +17,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
-| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `pvp_ffa`, `sumo_ffa`, `arms_race`, `one_shot`, `tnt_run`, `mob_count`, `rhino`, `miners`, `magic_battle`, `parkour_race` | PvP and sumo have round-robin BO3 tournaments and simultaneous one-life FFA variants. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random equipment upgrades, consumable loot and underground PvP. Magic Battle puts six wands and forty-two spells on the imported Lighthouse sky-island map. |
+| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `pvp_ffa`, `pvp_select`, `sumo_ffa`, `arms_race`, `one_shot`, `tnt_run`, `mob_count`, `rhino`, `miners`, `magic_battle`, `parkour_race` | PvP and sumo have round-robin BO3 tournaments and simultaneous one-life FFA variants. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random equipment upgrades, consumable loot and underground PvP. Magic Battle puts six wands and forty-two spells on the imported Lighthouse sky-island map. |
 | **Counter-Strike** | `/cs` | `default`, `deathmatch`, `wingman` | Classic bomb defusal, A-side Wingman or a timed free-for-all with respawns and free weapon selection on Dust II. |
 | **The Finals** | `/finals` | — | Two teams open vaults, carry cash boxes and defend or steal cashouts in a disposable arena. The first team to $20,000 wins, or the richer team after ten minutes. |
 
@@ -394,6 +394,16 @@ headroom and forward passages before construction, retries blocked compositions 
 has a bounded safe fallback with the same chosen count of seven or eight distinct tasks. Regression checks
 cover all ordered neighbouring task pairs in both mirrored layouts.
 
+The honey catch starts entirely beyond its departure checkpoint and exists only
+at the bottom of the fall. Its solid cap prevents landing on honey's soft upper
+surface; the 36-block drop onto the cap fails the attempt unless the player first
+catches the side. Six lower honey rows leave room for the player's full hitbox
+to clear the cap and make that catch. The ice-boat road uses five clear columns,
+long sweeping bends, straight entry/exit and two-block-high guardrails rather
+than repeated right-angle corners. Packed ice gives vanilla boats a speed
+advantage with more manageable steering; walking remains legal and takes the
+same guarded route. Both layouts preserve checkpoint headroom and lane bounds.
+
 All kits use vanilla Minecraft items and enchantments with native physics/cooldowns.
 A checkpoint removes the old inventory, cursor, armour and offhand before granting
 only the next task's kit. Elytra are equipped automatically on the flight task.
@@ -424,9 +434,9 @@ The clock remains in slot 9; the other items can be rearranged.
 | Water ascent | 2 | +20 | Water bucket and a climbing wall |
 | Powder-snow clutch | 3 | -40 | Powder snow bucket |
 | Wind-charge clutch | 3 | -44 | 3 wind charges; burst one into the floor just before landing, then land back on the checkpoint |
-| Honey-wall slide | 14 | -24 | No items; a honey wall at the outer edge |
+| Honey-wall slide | 4 | -36 | No items; catch the side of a three-row, six-block-high honey patch at the bottom; a solid cap prevents soft landings on top |
 | Boat slalom | 32 | 0 | Oak boat, water and three offset gates |
-| Ice-boat chicane | 58 | 0 | Oak boat and a three-block-wide blue-ice road with eight right-angle turns and four lateral crossings |
+| Ice-boat chicane | 80 | 0 | Oak boat and a five-block-wide packed-ice road with broad bends, straight entry/exit and two-block-high guardrails |
 | Wind-charge hops | 14 | +6 | 4 wind charges and a raised middle ledge |
 
 The table lists the full pool; only seven or eight tasks appear in a given race.
@@ -537,7 +547,7 @@ messages and the ability item's tooltip. Sumo still has no hunger or health dama
 | Всадник / Lancer | Netherite spear, backup stone sword, leather chestplate, chain helmet/leggings, iron boots; 1 speed and 1 healing splash; vulnerable horse, once per round | **Spur:** faster horse for 3 s, or Speed I for 3 s on foot; 20 s cooldown |
 | Гарпунщик / Harpooner | Loyalty III trident with +2 main-hand melee damage, backup stone sword; iron helmet/boots and chain chest/leggings; 1 speed and 1 healing splash | **Dry Riptide:** 0.6 s forward spin with native collision damage, capped at 6 before armour (3 hearts), and moderate knockback; 20 s cooldown. One hit per target; shields block it |
 | Громовержец / Thunderer | Iron thunder axe, backup stone sword; iron helmet/boots and chain chest/leggings; 1 speed and 1 healing splash. Unblocked axe hits apply Glowing for 3 s, at most once per 8 s | **Thunderstrike:** hold the storm wand to preview the aimed block within 48 blocks, then right-click. After 1 s, a fixed 3-block-radius strike deals 8 damage in its central core, falling to 3 at the edge before armour; 3 s cooldown. Move out or use cover |
-| Подрывник / Demolitionist | Stone sword; iron helmet/boots, chain leggings and orange leather chestplate with Blast Protection II; 12 tagged TNT, 1 speed and 1 healing splash | **Carpet Bombing:** aim at a 7×7 square within 48 blocks; a one-second warning precedes nine weaker TNT in three rows, plus up to 4 carried TNT (cap 12). 18 s cooldown. Manual throws every 1 s; placement every 0.3 s |
+| Подрывник / Demolitionist | Stone sword; iron helmet/boots, chain leggings and orange leather chestplate with Blast Protection II; 12 tagged TNT, 1 speed and 1 healing splash | **Carpet Bombing:** aim at a 7×7 square within 48 blocks; a half-second warning precedes nine weaker TNT in three rows, plus up to 4 carried TNT (cap 12). 18 s cooldown. Manual throws every 1 s; placement every 0.3 s |
 | Тень / Shadow | Unenchanted diamond sword, full dark leather armour (hidden to others during invisibility), 2 splash Invisibility potions (up to 20 s each), 1 speed and 1 healing splash. Hits do not remove invisibility; its stock cannot be replenished | **Dark Wand:** hit an opponent with the tagged stick in slot 8 to apply Blindness I for 2 s and Slowness II for 3 s, once per 20 s. No health damage; shields block the proc; right-click does not activate it |
 
 Demolitionist uses the tagged TNT stack in hotbar slot 4. Right-click an arena
@@ -553,19 +563,29 @@ full live-bomb slots or blocked cooldowns spend no ammo. The loadout starts with
 caster sees the aimed block in gold when ready or red during cooldown, with a
 7×7 square marking the drop zone. Aim reaches 48 blocks and stops at solid cover.
 The entire square must fit inside the arena. Right-click locks the target and
-warns everyone for one second, then drops three rows of three TNT, four ticks
-between rows, from six blocks above that surface. These charges have a 1.5-second
-fuse, power 1.5 and a damage cap of 6 (three hearts before armour) each. They can
+warns everyone for half a second, then drops three rows of three TNT, four ticks
+between rows, from six blocks above that surface. These charges have a 0.9-second
+fuse, power 1.5 and a damage cap of 9 (4.5 hearts before armour) each. They can
 also hurt their owner. The nine airstrike charges have a separate allowance from
 the four manual charges. The ability also adds up to four carried TNT, capped at
 12, on an 18-second cooldown; it still calls the strike when stock is full. An
 invalid target consumes neither cooldown nor supplies. Death, round transition
 and stop cancel pending rows, remove live charges and restore preview blocks.
-The Miners mode keeps its separate two-second TNT throw cooldown.
+The Miners mode keeps its separate two-second throw cooldown, 50-tick fuse,
+10-damage cap and ordinary contact behavior.
 
-At most four manually thrown/placed TNT can be live per bomber. Each manual charge has a 50-tick fuse,
+Thrown Demolitionist TNT also detonates on direct contact with an active opponent
+or their horse. A swept check along the TNT's actual movement accounts for its
+collision box, fast crossings and solid cover. The owner, their own mount and
+spectators are excluded. Contact stops the same tracked TNT at the hit and sets
+its native fuse to zero, producing one ordinary owned explosion on the next
+entity tick; there is no second direct-damage hit. Placed and airstrike charges
+keep their timers. Added timing, damage, contact/cover/miss and Miners-isolation
+regressions passed in both supported full builds during PR preparation.
+
+At most four manually thrown/placed TNT can be live per bomber. Each manual charge has a 30-tick (1.5-second) fuse,
 explosion power 2 (roughly 4-block reach, with native distance/cover attenuation),
-and no incendiary effect. Raw blast damage is capped at 10 (5 hearts before armour)
+and no incendiary effect. Native raw blast damage is multiplied by 1.4 and capped at 16 (8 hearts before armour)
 for enemies, horses and the bomber; armour, Blast Protection and native damage
 invulnerability still apply. The orange Blast Protection II leather chestplate
 softens self damage while leaving the class vulnerable in melee. Blasts never
@@ -769,7 +789,7 @@ Assignments are bound to player UUIDs and survive tournament shuffling.
 
 ### Party group PvP and sumo
 
-Open the compass → **Вечеринка** → **Массовое PvP** or **Массовое сумо**,
+Open the compass → **Вечеринка** → **PvP** → **Групповое**, or choose **Массовое сумо**,
 or run `/play party pvp_ffa` / `/play party sumo_ffa`.
 Both variants support **2–16 players** fighting at once with one life each.
 The last survivor wins three Party points. If everyone dies together, the battle
@@ -809,6 +829,37 @@ move to the spectator viewpoint immediately; PvP keeps its three-second death
 screen. Eliminated spectators can teleport to follow survivors. During combat,
 the boss bar shows the fraction of players still alive, and overtime has its own
 label instead of a timer stuck at zero.
+
+### PvP class selection
+
+The Party lobby now groups PvP behind one entry: **Классик / Classic** (`pvp`),
+**Групповое / Group** (`pvp_ffa`) and **Выбор китов / Choose Kits** (`pvp_select`).
+Queue and command IDs remain unchanged for the existing variants. Sumo and all
+other Party entries retain their original menus. Direct entry to the new queue
+is `/play party pvp_select`; `/party start pvp_select @a` and
+`/party test pvp_select` use the same factory.
+
+Kit selection uses exactly the group PvP arena, limits (2–16), one-life combat,
+class abilities, overtime, spectator behavior and awards. Players first spawn
+on the arena, frozen and protected, with a private menu of all fifteen classes.
+Weapon/role icons, descriptions, passives and abilities explain each class.
+Duplicate choices are allowed. Click a class to choose it; right-click the star
+in the hotbar to reopen the menu and change it while others are deciding.
+
+Once everyone has chosen, the selected classes are locked and equipped, all
+selection windows close and the ordinary fight countdown starts. Selection lasts
+at most 30 seconds; at the deadline only missing choices become random classes.
+The boss bar shows the number ready and seconds remaining. Withdrawn players do
+not hold the phase open; reconnects still spectate. Menu clicks/drags cannot take
+items, foreign/stale menus cannot select a class, and menu callbacks stop after
+withdrawal, countdown or game end. Menu and item text use the recipient's locale.
+
+Model regression cases cover grouping/queue wiring, all class choices, duplicates,
+changes before locking, withdrawals, spectator rejection and timeout assignment.
+Full builds passed for both supported APIs during PR preparation. The native
+fixture additionally checks the real Party/PvP menu navigation, all class icons,
+foreign/stale clicks and drag protection. A connected-client selection/countdown
+playthrough remains necessary before merging.
 
 ### Party Arms Race
 

@@ -40,6 +40,7 @@ public final class PartyGame implements Minigame {
                 "pvp",
                 "sumo",
                 "pvp_ffa",
+                "pvp_select",
                 "sumo_ffa",
                 "arms_race",
                 "one_shot",
@@ -63,15 +64,33 @@ public final class PartyGame implements Minigame {
     }
 
     @Override
+    public List<ModeGroup> modeGroups() {
+        return List.of(
+                new ModeGroup(
+                        I18n.tr("party.rounds.mode.pvp"),
+                        Material.IRON_SWORD,
+                        List.of("pvp", "pvp_ffa", "pvp_select")));
+    }
+
+    @Override
+    public Component groupedModeTitle(String mode) {
+        return List.of("pvp", "pvp_ffa", "pvp_select").contains(mode)
+                ? I18n.tr("party.rounds.pvp_variant." + mode)
+                : modeTitle(mode);
+    }
+
+    @Override
     public Material icon() {
         return Material.IRON_SWORD;
     }
 
     @Override
     public Component modeTitle(String mode) {
-        return mode.equals("pvp_ffa") || mode.equals("sumo_ffa") ? I18n.tr("party.rounds.mode." + mode) : mode.equals("party_games")
-                ? I18n.tr("party.rounds.mode.party_games")
-                : PartyRoundFactory.title(mode);
+        return mode.equals("pvp_ffa") || mode.equals("pvp_select") || mode.equals("sumo_ffa")
+                ? I18n.tr("party.rounds.mode." + mode)
+                : mode.equals("party_games")
+                        ? I18n.tr("party.rounds.mode.party_games")
+                        : PartyRoundFactory.title(mode);
     }
 
     @Override
@@ -83,6 +102,7 @@ public final class PartyGame implements Minigame {
             case "miners", "tool_race" -> Material.DIAMOND_PICKAXE;
             case "color_floor" -> Material.LIME_CONCRETE;
             case "pvp_ffa" -> Material.DIAMOND_SWORD;
+            case "pvp_select" -> Material.NETHER_STAR;
             case "sumo_ffa" -> Material.STICK;
             case "anvils" -> Material.ANVIL;
             case "hole_in_the_wall" -> Material.SLIME_BLOCK;
@@ -118,6 +138,7 @@ public final class PartyGame implements Minigame {
 
     @Override
     public GameSession createSession(SessionServices services, String mode) {
+        if (mode.equals("pvp_select")) return new DuelSession(services, config, false, true, true);
         if (mode.equals("one_shot"))
             return new OneShotSession(services, config, PartyRoundContext.standalone(services));
         if (mode.equals("parkour_race"))

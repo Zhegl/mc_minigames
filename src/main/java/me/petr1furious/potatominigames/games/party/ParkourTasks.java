@@ -31,9 +31,17 @@ final class ParkourTasks {
             }
             case HONEY_TRAVERSE -> {
                 int side = from.centerX() < WIDTH / 2.0 ? 0 : WIDTH - 1;
-                for (int z = from.z() + 5; z < to.z(); z++)
-                    for (int y = to.y() - 2; y <= from.y() + 2; y++)
+                // Entirely after the departure checkpoint: the preceding task cannot use
+                // this honey to break a fall. Catch the side only at the end of the drop.
+                for (int z = to.z() - 3; z < to.z(); z++) {
+                    // Six lower rows leave room to clear the cap with the full player
+                    // hitbox, then touch honey before reaching the destination's floor.
+                    for (int y = to.y(); y < to.y() + HONEY_CATCH_HEIGHT; y++)
                         plan.put(new Pos(side, y, z), Material.HONEY_BLOCK);
+                    // A full solid cap hides the honey's soft landing surface. The 36-block
+                    // drop onto this cap is lethal without first making the side catch.
+                    plan.put(new Pos(side, to.y() + HONEY_CATCH_HEIGHT, z), OBSTACLE_BLOCK);
+                }
             }
             case BOAT_WATER -> {
                 for (int z = from.z() + 7; z < to.z(); z++)
@@ -67,29 +75,21 @@ final class ParkourTasks {
 
     private static void iceRoad(Map<Pos, Material> plan, Island from, Island to) {
         int center = (int) from.centerX(), direction = center < WIDTH / 2 ? 1 : -1;
-        int start = from.z() + 7;
-        // Four cross-lane runs, joined by eight right-angle turns. Keep neighbouring
-        // parallel stretches far enough apart that jumping across is not a shortcut.
-        int[][] points = {
-            {0, 0}, {0, 7}, {14, 7}, {14, 18}, {4, 18},
-            {4, 29}, {18, 29}, {18, 40}, {0, 40}, {0, to.z() - start - 1}
-        };
-        for (int segment = 1; segment < points.length; segment++) {
-            int[] a = points[segment - 1], b = points[segment];
-            for (int offset = Math.min(a[0], b[0]); offset <= Math.max(a[0], b[0]); offset++)
-                for (int row = Math.min(a[1], b[1]); row <= Math.max(a[1], b[1]); row++)
-                    for (int x = center + direction * offset - 1;
-                            x <= center + direction * offset + 1;
-                            x++)
-                        for (int z = Math.max(start, start + row - 1);
-                                z <= Math.min(to.z() - 1, start + row + 1);
-                                z++) plan.put(new Pos(x, from.y(), z), Material.BLUE_ICE);
+        int start = from.z() + CHECKPOINT_DEPTH, end = to.z() - 1;
+        // Two broad, continuous bends with straight entry/exit tangents. Packed ice
+        // retains the boat's native speed advantage while being easier to steer than blue ice.
+        for (int z = from.z() + 4; z <= end; z++) {
+            double progress = Math.max(0, (double) (z - start) / (end - start));
+            int offset = (int) Math.round(8 * (1 - Math.cos(2 * Math.PI * progress)));
+            int rowCenter = center + direction * offset;
+            int halfWidth = z < start ? Math.min(2, from.width() / 2) : 2;
+            for (int x = rowCenter - halfWidth; x <= rowCenter + halfWidth; x++)
+                plan.put(new Pos(x, from.y(), z), Material.PACKED_ICE);
+            if (z >= start && z < end - 1)
+                for (int x : new int[] {rowCenter - 3, rowCenter + 3})
+                    for (int y = from.y(); y <= from.y() + 2; y++)
+                        plan.put(new Pos(x, y, z), OBSTACLE_BLOCK);
         }
-        for (int x = Math.max(from.x(), center - 1);
-                x <= Math.min(from.x() + from.width() - 1, center + 1);
-                x++)
-            for (int z = from.z() + 4; z < start; z++)
-                plan.put(new Pos(x, from.y(), z), Material.BLUE_ICE);
     }
 
     private ParkourTasks() {}
