@@ -1370,15 +1370,19 @@ public final class CsCheck {
             check(points.size() == (side == 0 ? 15 : 5), "CS2-style T and CT spawn pools");
             for (var point : points) {
                 int x = (int) Math.floor(point.x()),
-                        y = (int) point.y(),
+                        y = (int) Math.ceil(point.y()),
                         z = (int) Math.floor(point.z());
                 check(
-                        y == (side == 0 ? 82 : 75),
+                        point.y() == (side == 0 ? 82 : 75.5),
                         "T starts on the street and CT in the intended underpass below Short");
                 if (side == 1) {
                     check(
                             blocks.containsKey(new CsArena.Pos(x, 80, z)),
                             "the CT spawn has the original underpass roof above it");
+                    check(point.x() >= 102.5 && point.x() <= 103.5 && point.yaw() == 90,
+                            "CT starts inside the recess facing out, not in the through-passage");
+                    check(blocks.get(new CsArena.Pos(x, 75, z)).contains("type=bottom"),
+                            "CT feet sit exactly on the original lower slab surface");
                     check(
                             !CsArena.buyPosition(side, point.x(), 82, point.z()),
                             "Short above CT spawn is outside the CT buy zone");
@@ -1408,7 +1412,7 @@ public final class CsCheck {
         teamSpawns.addAll(CsArena.spawnPoints(1));
         for (var point : CsArena.deathmatchSpawns()) {
             int x = (int) Math.floor(point.x()),
-                    y = (int) point.y(),
+                    y = (int) Math.ceil(point.y()),
                     z = (int) Math.floor(point.z());
             check(
                     y >= 79 || CsArena.spawnPoints(1).contains(point),

@@ -202,20 +202,7 @@ final class CsCombat {
                                         a.leg && b.leg,
                                         Math.min(a.distance, b.distance)));
         }
-        CsAudio.play(
-                session.viewers(),
-                eye,
-                w.silenced()
-                        ? Sound.BLOCK_NOTE_BLOCK_HAT
-                        : w.category == CsWeapon.Category.SNIPER
-                                ? Sound.ENTITY_FIREWORK_ROCKET_BLAST
-                                : Sound.ENTITY_FIREWORK_ROCKET_SHOOT,
-                w.soundRadius(),
-                w.silenced()
-                        ? .8f
-                        : w.category == CsWeapon.Category.SNIPER
-                                ? .6f
-                                : w.category == CsWeapon.Category.SHOTGUN ? .8f : 1.6f);
+        CsAudio.shot(session.viewers(), eye, w);
         for (Impact hit : hits.values())
             session.hurt(
                     hit.target,

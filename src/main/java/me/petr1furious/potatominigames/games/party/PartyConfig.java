@@ -5,6 +5,8 @@ import me.petr1furious.potatominigames.core.config.Property;
 import me.petr1furious.potatominigames.core.config.PropertyBag;
 import me.petr1furious.potatominigames.core.config.PropertyCodec;
 
+import org.bukkit.configuration.ConfigurationSection;
+
 public final class PartyConfig {
     private final PropertyBag bag = new PropertyBag("party");
     public final Property<Integer> roundSeconds =
@@ -73,13 +75,13 @@ public final class PartyConfig {
                     .validate(n -> n >= 1 && n <= 10);
 
     public final Property<Integer> minersPreparationSeconds =
-            bag.define("miners.preparationSeconds", PropertyCodec.INT, 15)
+            bag.define("miners.preparationSeconds", PropertyCodec.INT, 25)
                     .validate(n -> n >= 10 && n <= 300);
     public final Property<Integer> minersCombatSeconds =
             bag.define("miners.combatSeconds", PropertyCodec.INT, 180)
                     .validate(n -> n >= 30 && n <= 600);
     public final Property<Integer> minersFinaleSeconds =
-            bag.define("miners.finaleSeconds", PropertyCodec.INT, 60)
+            bag.define("miners.finaleSeconds", PropertyCodec.INT, 120)
                     .validate(n -> n >= 15 && n <= 120);
 
     public final Property<Integer> holeWallSeconds =
@@ -115,13 +117,13 @@ public final class PartyConfig {
             bag.define("partyGames.armsRaceSeconds", PropertyCodec.INT, 180)
                     .validate(n -> n >= 60 && n <= 600);
     public final Property<Integer> partyMinersPreparation =
-            bag.define("partyGames.minersPreparationSeconds", PropertyCodec.INT, 15)
+            bag.define("partyGames.minersPreparationSeconds", PropertyCodec.INT, 25)
                     .validate(n -> n >= 10 && n <= 300);
     public final Property<Integer> partyMinersCombat =
-            bag.define("partyGames.minersCombatSeconds", PropertyCodec.INT, 90)
+            bag.define("partyGames.minersCombatSeconds", PropertyCodec.INT, 120)
                     .validate(n -> n >= 30 && n <= 600);
     public final Property<Integer> partyMinersFinale =
-            bag.define("partyGames.minersFinaleSeconds", PropertyCodec.INT, 30)
+            bag.define("partyGames.minersFinaleSeconds", PropertyCodec.INT, 60)
                     .validate(n -> n >= 15 && n <= 120);
 
     public final Property<Integer> pvpFfaOvertimeSeconds =
@@ -141,6 +143,25 @@ public final class PartyConfig {
             .validate(n -> n >= 10 && n <= 120);
 
     public PartyConfig(ConfigRegistry configs) {
+        if (migrateMinersTimings(configs.file("games/party.yml")))
+            configs.saveFile("games/party.yml");
+        configs.hide("games/party.yml", "miners.timingVersion");
         configs.register(bag, "games/party.yml", "");
+    }
+
+    /** Upgrade the previous defaults once; preserve custom server timings. */
+    static boolean migrateMinersTimings(ConfigurationSection config) {
+        if (config.getInt("miners.timingVersion", 0) >= 1) return false;
+        upgradeTiming(config, "miners.preparationSeconds", 15, 25);
+        upgradeTiming(config, "miners.finaleSeconds", 60, 120);
+        upgradeTiming(config, "partyGames.minersPreparationSeconds", 15, 25);
+        upgradeTiming(config, "partyGames.minersCombatSeconds", 90, 120);
+        upgradeTiming(config, "partyGames.minersFinaleSeconds", 30, 60);
+        config.set("miners.timingVersion", 1);
+        return true;
+    }
+
+    private static void upgradeTiming(ConfigurationSection config, String key, int oldValue, int newValue) {
+        if (config.getInt(key, newValue) == oldValue) config.set(key, newValue);
     }
 }

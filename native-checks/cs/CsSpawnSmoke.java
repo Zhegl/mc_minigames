@@ -1,6 +1,7 @@
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.data.type.Slab;
 
 import java.lang.reflect.*;
 import java.util.*;
@@ -13,11 +14,11 @@ final class CsSpawnSmoke {
 
     private static final Set<Spot> CT_UNDERPASS =
             Set.of(
-                    new Spot(93, 75, 66),
-                    new Spot(95, 75, 66),
-                    new Spot(97, 75, 63),
-                    new Spot(95, 75, 61),
-                    new Spot(93, 75, 60));
+                    new Spot(102, 75, 60),
+                    new Spot(103, 75, 62),
+                    new Spot(103, 75, 64),
+                    new Spot(103, 75, 66),
+                    new Spot(102, 75, 68));
 
     static int run(ClassLoader loader, World world) throws Exception {
         assertions = 0;
@@ -30,6 +31,7 @@ final class CsSpawnSmoke {
         while (!(boolean) build.invoke(arena, 4096)) {}
 
         Method spawn = method(type, "spawn", int.class, int.class);
+        Method inside = method(type, "inside", Location.class);
         Method shuffle = method(type, "shuffleSpawns", Random.class);
         Random random = new Random(1432);
         List<Location> opponents = new ArrayList<>();
@@ -40,8 +42,9 @@ final class CsSpawnSmoke {
                 for (int slot = 0; slot < (side == 0 ? 15 : 5); slot++) {
                     Location at = (Location) spawn.invoke(arena, side, slot);
                     safe(at);
+                    require((boolean) inside.invoke(arena, at), "Classic start is inside the map");
                     require(
-                            at.getY() == (side == 0 ? 82 : 75),
+                            at.getY() == (side == 0 ? 82 : 75.5),
                             "Classic uses the T street and covered CT start, not Short above it");
                     if (side == 1)
                         require(
@@ -77,6 +80,7 @@ final class CsSpawnSmoke {
                             (double) method(record, "y").invoke(point),
                             (double) method(record, "z").invoke(point));
             safe(at);
+            require((boolean) inside.invoke(arena, at), "Deathmatch candidate is inside the map");
             locations.add(at);
         }
         Method deathmatch = method(type, "deathmatchSpawn", Collection.class, Random.class);
@@ -185,18 +189,31 @@ final class CsSpawnSmoke {
         return result;
     }
 
-    private static void safe(Location at) {
+    private static void safe(Location at) throws Exception {
         require(
                 at.getY() >= 79
                         || CT_UNDERPASS.contains(
                                 new Spot(at.getBlockX(), at.getBlockY(), at.getBlockZ())),
                 "Only the verified CT underpass may spawn below the foundation cutoff");
         require(
-                at.getBlock().isPassable() && at.clone().add(0, 1, 0).getBlock().isPassable(),
+                (at.getBlock().isPassable()
+                                || (at.getY() - at.getBlockY() == .5
+                                        && at.getBlock().getBlockData() instanceof Slab slab
+                                        && slab.getType() == Slab.Type.BOTTOM))
+                        && at.clone().add(0, 1, 0).getBlock().isPassable()
+                        && at.clone().add(0, 1.79, 0).getBlock().isPassable(),
                 "Native feet and head collision checks accept the respawn");
         require(
                 !at.clone().subtract(0, .05, 0).getBlock().isPassable(),
                 "Native floor check finds support, including slabs and stairs");
+        Object level = at.getWorld().getClass().getMethod("getHandle").invoke(at.getWorld());
+        Class<?> boxType = Class.forName("net.minecraft.world.phys.AABB");
+        Object body = boxType.getConstructor(double.class, double.class, double.class,
+                        double.class, double.class, double.class)
+                .newInstance(at.getX() - .3, at.getY() + .00001, at.getZ() - .3,
+                        at.getX() + .3, at.getY() + 1.8, at.getZ() + .3);
+        require((boolean) level.getClass().getMethod("noCollision", boxType).invoke(level, body),
+                "Full player-sized body clears native block collision shapes");
     }
 
     private static Method method(Class<?> type, String name, Class<?>... args) throws Exception {
