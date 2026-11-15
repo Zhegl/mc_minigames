@@ -8,7 +8,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
-/** One kill per weapon, ending with the deliberately difficult golden shovel. */
+/** One kill per weapon; standalone ends with a golden shovel, Party Games with a bow. */
 enum ArmsRaceWeapon {
     DIAMOND_SWORD(Material.DIAMOND_SWORD),
     IRON_SWORD(Material.IRON_SWORD),
@@ -43,7 +43,7 @@ enum ArmsRaceWeapon {
     static java.util.List<ArmsRaceWeapon> progression(boolean embedded) {
         return embedded
                 ? java.util.List.of(
-                        DIAMOND_SWORD, IRON_AXE, BOW, CROSSBOW, WOODEN_SWORD, GOLDEN_SHOVEL)
+                        DIAMOND_SWORD, IRON_AXE, WOODEN_SWORD, GOLDEN_SHOVEL, BOW)
                 : java.util.List.of(values());
     }
 

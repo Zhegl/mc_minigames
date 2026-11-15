@@ -3,6 +3,7 @@ package me.petr1furious.potatominigames.games.cs;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.type.Slab;
 
 import java.io.*;
 import java.util.*;
@@ -79,16 +80,16 @@ final class CsArena {
                             new Spawn(-1.5, 82, 36.5, -90),
                             new Spawn(-.5, 82, 37.5, -90),
                             new Spawn(1.5, 82, 38.5, -90)),
-                    // The real CT start is the covered underpass; Y=82 is Short above it.
+                    // Recessed spawn on the original slab floor, behind the CT through-passage.
                     List.of(
-                            new Spawn(93.5, 75, 66.5, 180),
-                            new Spawn(95.5, 75, 66.5, 180),
-                            new Spawn(97.5, 75, 63.5, 180),
-                            new Spawn(95.5, 75, 61.5, 180),
-                            new Spawn(93.5, 75, 60.5, 180)));
+                            new Spawn(102.5, 75.5, 60.5, 90),
+                            new Spawn(103.5, 75.5, 62.5, 90),
+                            new Spawn(103.5, 75.5, 64.5, 90),
+                            new Spawn(103.5, 75.5, 66.5, 90),
+                            new Spawn(102.5, 75.5, 68.5, 90)));
     private static final org.bukkit.util.BoundingBox[] BUY_ZONES = {
         new org.bukkit.util.BoundingBox(-3, 81, 19, 4, 85, 40),
-        new org.bukkit.util.BoundingBox(91, 74, 57, 100, 79, 71)
+        new org.bukkit.util.BoundingBox(100, 75, 58, 105, 79, 71)
     };
     private final List<List<Spawn>> spawnOrder = new ArrayList<>();
 
@@ -245,7 +246,7 @@ final class CsArena {
                 pending.add(
                         new Pos(
                                 (int) Math.floor(point.x()),
-                                (int) point.y(),
+                                (int) Math.ceil(point.y()),
                                 (int) Math.floor(point.z())));
         // Both original bomb platforms are known walkable map regions.
         pending.add(new Pos(103, 82, 88));
@@ -313,8 +314,13 @@ final class CsArena {
     private Location spawnLocation(Spawn point) {
         if (wingman && !CsWingman.contains(point.x(), point.y(), point.z())) return null;
         Location at = new Location(world, point.x(), point.y(), point.z(), point.yaw(), 0);
-        if (!at.getBlock().isPassable()
+        // A bottom slab shares the feet's block while its upper half is clear.
+        boolean slabFloor = at.getY() - at.getBlockY() >= .5
+                && at.getBlock().getBlockData() instanceof Slab slab
+                && slab.getType() == Slab.Type.BOTTOM;
+        if ((!at.getBlock().isPassable() && !slabFloor)
                 || !at.clone().add(0, 1, 0).getBlock().isPassable()
+                || !at.clone().add(0, 1.79, 0).getBlock().isPassable()
                 || at.clone().subtract(0, .05, 0).getBlock().isPassable()) return null;
         return at;
     }

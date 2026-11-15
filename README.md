@@ -363,9 +363,10 @@ points, then first places, then second places; exact ties share the title.
 Round results are followed by a four-second intermission. Every game then has
 its own four-second countdown after its arena is ready and players have spawned.
 The current game owns the
-sidebar during play; total points appear between games. Arms Race uses six weapon
-stages only inside Party Games (standalone keeps twelve), with a three-minute limit;
-Miners uses 15 seconds preparation, 90 seconds combat and a 30-second finale.
+sidebar during play; total points appear between games. Arms Race uses five weapon
+stages only inside Party Games: diamond sword → iron axe → wooden sword → golden
+shovel → bow, with no crossbow (standalone keeps twelve), with a three-minute limit;
+Miners uses 25 seconds preparation, 120 seconds combat and a 60-second finale.
 
 These games are also independently available:
 
@@ -576,8 +577,8 @@ messages and the ability item's tooltip. Sumo still has no hunger or health dama
 | Воздушный рыцарь / Aerial Knight | Density I mace, backup stone sword, 8 wind charges; chain chest/leggings, iron helmet, leather boots with Feather Falling III; 1 speed and 1 healing splash | **Wind Leap:** upward launch and up to 4 wind charges, capped at 8 carried charges; 20 s cooldown |
 | Паладин / Paladin | Iron sword and shield, chain chest/leggings and iron helmet/boots; 1 speed and 1 healing splash | **Purify:** heals 1.5 hearts, removes poison/weakness/slowness/blindness/nausea and extinguishes fire, then Resistance I for 2 s; 24 s cooldown |
 | Криомант / Cryomancer | Sharpness I stone sword, 16 snowballs; cyan leather robe with Protection II, remaining iron armour; 1 slowness and 2 healing splashes. Snowball hits apply Slowness IV for 4 s and Weakness I for 3 s, at most once per 0.5 s | **Frost:** up to 8 snowballs (cap 16), Speed I for 3 s, and Slowness I for 3 s on a visible opponent within 6 blocks; 20 s cooldown |
-| Пиромант / Pyromancer | Fire Aspect I wooden sword, Flame I bow, unlimited arrows; chain chest/leggings and iron helmet/boots; 1 weakness and 1 healing splash. Fire Resistance lasts the round | **Flare:** ignites a visible opponent within 8 blocks for 5 s and grants 2 absorption hearts for 4 s; 20 s cooldown. No target means no cooldown spent |
-| Всадник / Lancer | Netherite spear, backup stone sword, leather chestplate, chain helmet/leggings, iron boots; 1 speed and 1 healing splash; vulnerable horse, once per round | **Spur:** faster horse for 3 s, or Speed I for 3 s on foot; 20 s cooldown |
+| Пиромант / Pyromancer | Fire Aspect I wooden sword, Flame I bow, unlimited arrows; chain chest/leggings and iron helmet/boots; 1 weakness and 1 healing splash. Fire Resistance lasts the round | **Flare:** ignites a visible opponent within 8 blocks for 5 s; 20 s cooldown. No target means no cooldown spent |
+| Всадник / Lancer | Netherite spear, backup stone sword, leather chestplate, chain helmet/leggings, iron boots; 1 speed and 1 healing splash; horse with iron horse armour, once per round | **Spur:** faster horse for 3 s, or Speed I for 3 s on foot; 10 s cooldown |
 | Гарпунщик / Harpooner | Loyalty III trident with +2 main-hand melee damage, backup stone sword; iron helmet/boots and chain chest/leggings; 1 speed and 1 healing splash | **Dry Riptide:** 0.6 s forward spin with native collision damage, capped at 6 before armour (3 hearts), and moderate knockback; 20 s cooldown. One hit per target; shields block it |
 | Громовержец / Thunderer | Iron thunder axe, backup stone sword; iron helmet/boots and chain chest/leggings; 1 speed and 1 healing splash. Unblocked axe hits apply Glowing for 3 s, at most once per 8 s | **Thunderstrike:** hold the storm wand to preview the aimed block within 48 blocks, then right-click. After 1 s, a fixed 3-block-radius strike deals 8 damage in its central core, falling to 3 at the edge before armour; 3 s cooldown. Move out or use cover |
 | Подрывник / Demolitionist | Stone sword; iron helmet/boots, chain leggings and orange leather chestplate with Blast Protection II; 12 tagged TNT, 1 speed and 1 healing splash | **Carpet Bombing:** aim at a 7×7 square within 48 blocks; a half-second warning precedes nine weaker TNT in three rows, plus up to 4 carried TNT (cap 12). 18 s cooldown. Manual throws every 1 s; placement every 0.3 s |
@@ -612,7 +613,10 @@ or their horse. A swept check along the TNT's actual movement accounts for its
 collision box, fast crossings and solid cover. The owner, their own mount and
 spectators are excluded. Contact stops the same tracked TNT at the hit and sets
 its native fuse to zero, producing one ordinary owned explosion on the next
-entity tick; there is no second direct-damage hit. Placed and airstrike charges
+entity tick; there is no second direct-damage hit. Contact-triggered explosions
+deal half normal damage to every affected entity, applied after the damage cap
+(maximum 8 damage / 4 hearts before armour). Timer-triggered explosions retain
+their full damage. Placed and airstrike charges
 keep their timers. Added timing, damage, contact/cover/miss and Miners-isolation
 regressions passed in both supported full builds during PR preparation.
 
@@ -671,7 +675,7 @@ round reset, leaving and shutdown still remove them. Native spin state and pendi
 knockback are cleaned up on elimination, round reset, leaving and shutdown.
 
 The lancer receives a saddled horse **only when the countdown ends**. It has
-8 hearts, no armour, fixed movement speed 0.25 (0.30 during Spur), and jump strength
+8 hearts, iron horse armour, fixed movement speed 0.25 (0.30 during Spur), and jump strength
 0.4. Killing it leaves the rider on foot until the next round; there is no resummon
 or healing the horse with class potions/food. Only its owner can mount it, and its
 inventory is locked. Enemy arrows, melee, harmful potions and environmental damage
@@ -679,7 +683,7 @@ can hurt it; frost snowballs and Slowness can counter mounted movement. Netherit
 hits, including native speed-scaled charges, deal their normal Minecraft damage
 without a class-specific cap, both on foot and against horses. A backup stone sword,
 light armour, one speed splash and one healing splash complete the kit. Spur gives
-the rider Speed I for 3 s when used on foot, with the same 20 s cooldown. Mounts
+the rider Speed I for 3 s when used on foot, with the same 10 s cooldown. Mounts
 are removed on elimination, leaving, round reset and session shutdown.
 
 Shadow's invisibility is a finite consumable, not a cooldown ability. Each of its
@@ -1191,7 +1195,7 @@ iron pickaxe, stone sword, leather armour and 64 cobblestone; no starting food. 
 and Haste I last through the match. Construction is spread across ticks, then a
 five-second countdown freezes players before mining begins.
 
-Players have **15 seconds** to mine privately. Ores roll **random equipment upgrades
+Players have **25 seconds** to mine privately. Ores roll **random equipment upgrades
 and consumables**. A stronger pickaxe, weapon or armor piece automatically replaces
 the matching equipment; weaker or equal finds are discarded. The comparison includes
 Efficiency, Sharpness, Protection, Power and Quick Charge. Swords, axes, bows,
@@ -1249,12 +1253,14 @@ dig through them. Mining them gives the usual capped cobblestone supply, without
 ore loot. Continue mining, dig tunnels, build with cobblestone and use the tracking
 compass to locate
 the nearest surviving opponent. PvP has a **three-minute** phase followed by a
-**one-minute** shrinking zone with glowing players, stopping at **4×4**. The light-blue
+**two-minute** shrinking zone with glowing players, stopping at **4×4**. The light-blue
 translucent walls mark the safe area without collision or mining restrictions;
 blocks on both sides remain mineable within the arena. Zone damage applies only
 when the player's position is outside these walls, starting at 2 damage per second
-and increasing after the shrinking minute. Players inside the final area never
-take zone damage. Nametags are hidden before the finale; opponents remain visible when encountered
+and increasing after the shrinking phase. Players inside the final area never
+take zone damage. Shrinking spans the entire finale, so the longer finale also
+slows the boundary movement. Previous default phase timings upgrade
+once on existing servers; custom timings remain unchanged. Nametags are hidden before the finale; opponents remain visible when encountered
 in tunnels. Spectral arrows keep their native temporary glowing effect. Detection
 Potions can be drunk after the partitions open to make all other surviving players
 glow for five seconds, visible to everyone. They are finite loot (one bottle),
@@ -1850,7 +1856,7 @@ pistols/rifles retain about 82% damage, M4A1-S 55%, most SMGs 26%, UMP-45 6%,
 shotguns 3% and snipers 91%. Point-blank base damage is unaffected.
 Visible trails are thin, full-bright yellow `BlockDisplay` streaks covering the
 actual hitscan path from half a block ahead of the eye to the hit target, stopping
-at unpenetrated cover (maximum 256 blocks). They are 0.04 blocks thick and last
+at unpenetrated cover (maximum 256 blocks). They are 0.02 blocks thick and last
 three ticks (about 150 ms at 20 TPS); all parts appear immediately, without
 changing hit registration. Only the first pellet of a shotgun blast is drawn.
 Displays are created without spawning world entities; bundled spawn/metadata
@@ -1954,6 +1960,8 @@ respawning and round reset clear the movement history. Vertical motion retains
 its separate airborne penalty. Vanilla sprint remains disabled as before; the
 normal full-speed CS movement and slow crouched movement use their actual speeds.
 
+Each of the 27 guns has a distinct vanilla sound/pitch profile: suppressed clicks,
+sharp pistol/SMG shots, metallic rifle reports and deeper shotgun/sniper blasts.
 Shots are positional sounds emitted at the shooter's eye/weapon height, with
 native stereo direction and distance fading. Maximum audible ranges are 128 blocks
 for unsuppressed pistols, 144 for SMGs/shotguns, 176 for rifles/machine guns and

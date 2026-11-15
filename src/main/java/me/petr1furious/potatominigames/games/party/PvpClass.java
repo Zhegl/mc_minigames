@@ -32,7 +32,7 @@ enum PvpClass {
     PALADIN(24),
     CRYOMANCER(20),
     PYROMANCER(20),
-    LANCER(20),
+    LANCER(10),
     SHADOW(20),
     HARPOONER(20),
     THUNDERER(3),
@@ -338,7 +338,6 @@ enum PvpClass {
                     return false;
                 }
                 opponent.setFireTicks(Math.max(opponent.getFireTicks(), 100));
-                effect(player, PotionEffectType.ABSORPTION, 4, 0);
             }
         }
         return true;

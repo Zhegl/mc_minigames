@@ -41,18 +41,20 @@ public final class PartyPolishCheck {
         var shortChain = ArmsRaceWeapon.progression(true);
         var fullChain = ArmsRaceWeapon.progression(false);
         check(
-                shortChain.size() == 6 && fullChain.size() == 12,
-                "Six steps only inside Party Games");
+                shortChain.size() == 5 && fullChain.size() == 12,
+                "Five steps only inside Party Games; standalone keeps twelve");
         check(
-                shortChain.getLast() == ArmsRaceWeapon.GOLDEN_SHOVEL
-                        && new HashSet<>(shortChain).size() == 6,
-                "Short progression retains final challenge");
+                shortChain.getLast() == ArmsRaceWeapon.BOW
+                        && !shortChain.contains(ArmsRaceWeapon.CROSSBOW)
+                        && new HashSet<>(shortChain).size() == 5,
+                "Short progression excludes crossbow and ends with bow");
         UUID a = new UUID(0, 1), b = new UUID(0, 2);
         var race = new ArmsRaceState(List.of(a, b), shortChain.size());
-        for (int stage = 0; stage < 6; stage++) {
+        for (int stage = 0; stage < shortChain.size(); stage++) {
             race.setAlive(b, true);
             race.death(b, a, stage);
-            check((race.winner() != null) == (stage == 5), "Exactly six kills to win");
+            check((race.winner() != null) == (stage == shortChain.size() - 1),
+                    "Exactly five kills to win the short progression");
         }
         var session = new PartyGamesSession(null, null);
         int[] updates = {0};

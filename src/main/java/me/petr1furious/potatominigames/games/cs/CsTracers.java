@@ -18,7 +18,7 @@ final class CsTracers {
     static final int LIFE_TICKS = 3;
     static final int MAX_ACTIVE = 128;
     static final double START = .5;
-    static final float WIDTH = .04f;
+    static final float WIDTH = .02f;
 
     private record Streak(long until, List<Player> viewers, Object remove) {}
 

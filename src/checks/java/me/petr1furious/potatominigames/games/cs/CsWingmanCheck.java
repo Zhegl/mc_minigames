@@ -113,7 +113,7 @@ final class CsWingmanCheck {
     }
 
     private static CsArena.Pos pos(CsArena.Spawn p) {
-        return new CsArena.Pos((int) Math.floor(p.x()), (int) p.y(), (int) Math.floor(p.z()));
+        return new CsArena.Pos((int) Math.floor(p.x()), (int) Math.ceil(p.y()), (int) Math.floor(p.z()));
     }
 
     private static Set<CsArena.Pos> reachable(

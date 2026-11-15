@@ -351,6 +351,13 @@ public final class PartyRuntimeCheck {
                     + " damage");
         bombs.tick();
         check(hit.teleports == 1, "an impact-armed TNT cannot be detonated twice by the monitor");
+        check(
+                bombs.blastDamage(hit.entity, 100) == 8
+                        && bombs.blastDamage(hit.entity, 5) == 3.5,
+                "contact detonation halves both capped and uncapped blast damage");
+        hit.valid = false;
+        check(bombs.blastDamage(hit.entity, 100) == 8,
+                "contact damage reduction survives native TNT discard during the explosion");
         FakeBomb covered = new FakeBomb(101);
         covered.at = new Location(world, 0, 81, 0);
         PvpBombs.configure(covered.entity, owner.player, new Vector(1, 0, 0));
@@ -369,6 +376,8 @@ public final class PartyRuntimeCheck {
         miss.at.setX(2);
         bombs.tick();
         check(miss.fuse == PvpBombs.FUSE, "a nearby miss retains its ordinary short fuse");
+        check(bombs.blastDamage(miss.entity, 100) == 16,
+                "a thrown charge without contact keeps full timer-triggered blast damage");
         FakeBomb placed = new FakeBomb(103), rain = new FakeBomb(104), overlap = new FakeBomb(105);
         for (FakeBomb bomb : List.of(placed, rain, overlap)) {
             bomb.at = new Location(world, 1, 81, 0);

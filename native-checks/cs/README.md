@@ -264,3 +264,15 @@ appearance at range, post-round looting and Wingman's stacked CT/Short routes.
 Fall damage must stay disabled in all three CS modes; ordinary weapon/grenade
 and void-boundary damage must still work. Client controls, visual/audio feel and
 latency-sensitive behavior are not proven by the native fixtures alone.
+
+## Recessed CT spawn follow-up (2026-11-15)
+
+A spawn-only entry point ran the updated `CsSpawnSmoke` against Paper 26.3 #249
+and the current local production JAR: `CS_RECESS_SPAWN_PASS: 3437 native assertions`.
+Every Classic, Wingman and Deathmatch candidate has map membership, native
+floor support and a clear 0.6×1.8 player body (`ServerLevel.noCollision`). The
+five recessed CT starts use the original bottom slabs at feet Y=75.5, facing
+west, and remain inside Wingman's allowed area. Obstructed-slot fallback and
+Wingman seals passed too. `checkCounterStrike` passed 6679 assertions.
+Only spawn checks ran on the disposable server; other native suites were not
+repeated. Log: `../cs-issue-32-native-26.3/ct-recess-spawn-console.log`.

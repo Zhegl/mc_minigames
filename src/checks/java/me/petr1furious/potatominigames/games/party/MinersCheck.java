@@ -49,8 +49,28 @@ public final class MinersCheck {
         var timings = YamlConfiguration.loadConfiguration(new InputStreamReader(timingsStream, StandardCharsets.UTF_8));
         check(queues.getBoolean("queues.party.miners.enabled") && queues.getInt("queues.party.miners.minPlayers") == 2
                 && queues.getInt("queues.party.miners.maxPlayers") == 12, "Party miners has an enabled public queue");
-        check(timings.getInt("miners.preparationSeconds") == 15 && timings.getInt("miners.combatSeconds") == 180
-                && timings.getInt("miners.finaleSeconds") == 60, "Defaults give fifteen-second mining, three-minute combat and a one-minute finale");
+        check(timings.getInt("miners.preparationSeconds") == 25 && timings.getInt("miners.combatSeconds") == 180
+                && timings.getInt("miners.finaleSeconds") == 120, "Defaults give 25-second mining, three-minute combat and a two-minute finale");
+        check(timings.getInt("partyGames.minersPreparationSeconds") == 25
+                && timings.getInt("partyGames.minersCombatSeconds") == 120
+                && timings.getInt("partyGames.minersFinaleSeconds") == 60,
+                "Mixed Party Games uses 25-second mining, 120-second combat and a 60-second finale");
+        var saved = new YamlConfiguration();
+        saved.set("miners.preparationSeconds", 15);
+        saved.set("miners.finaleSeconds", 60);
+        saved.set("partyGames.minersPreparationSeconds", 40);
+        saved.set("partyGames.minersCombatSeconds", 90);
+        saved.set("partyGames.minersFinaleSeconds", 30);
+        check(PartyConfig.migrateMinersTimings(saved)
+                && saved.getInt("miners.preparationSeconds") == 25
+                && saved.getInt("miners.finaleSeconds") == 120
+                && saved.getInt("partyGames.minersPreparationSeconds") == 40
+                && saved.getInt("partyGames.minersCombatSeconds") == 120
+                && saved.getInt("partyGames.minersFinaleSeconds") == 60,
+                "Existing defaults upgrade while custom mining durations are preserved");
+        saved.set("miners.finaleSeconds", 60);
+        check(!PartyConfig.migrateMinersTimings(saved) && saved.getInt("miners.finaleSeconds") == 60,
+                "An administrator can restore old timings after the one-time upgrade");
     }
     private static void quotas() {
         for (int players = 1; players <= 12; players++) {
