@@ -3,6 +3,10 @@ package me.petr1furious.potatominigames.games.finals;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Display;
+import org.bukkit.Material;
+import org.bukkit.Color;
 import org.bukkit.util.Vector;
 import java.util.Collection;
 import java.util.HashMap;
@@ -23,21 +27,46 @@ public final class FinalsMapJumpPads {
     private final List<Pad> pads;
     private final Map<UUID, Long> cooldowns = new HashMap<>();
     private final Map<UUID, Flight> flights = new HashMap<>();
+    private final Map<Integer, BlockDisplay> outlines = new HashMap<>();
+    private boolean showing;
 
     private static final class Flight {
         final Location start, target;
         final int duration;
         final long deadline;
+        final long started;
         Location last;
-        int step, stalled;
+        int stalled;
+        Vector velocity;
         Flight(Location start, Location target, long now) {
             this.start = start.clone(); this.target = target.clone(); last = start.clone();
             duration = duration(start, target);
+            started = now;
             deadline = now + duration * 4L + 100;
         }
     }
 
     FinalsMapJumpPads(FinalsMapArena arena) { pads = List.copyOf(arena.jumpPads()); }
+
+    void start() { showing = true; refreshOutlines(); }
+
+    private void refreshOutlines() {
+        for (int i = 0; i < pads.size(); i++) {
+            BlockDisplay previous = outlines.get(i);
+            if (previous != null && previous.isValid()) continue;
+            if (previous != null) previous.remove();
+            outlines.remove(i);
+            Location at = pads.get(i).origin().add(-.5, .01, -.5);
+            if (!at.getWorld().isChunkLoaded(at.getBlockX() >> 4, at.getBlockZ() >> 4)) continue;
+            outlines.put(i, at.getWorld().spawn(at, BlockDisplay.class, display -> {
+                display.setPersistent(false); display.setGravity(false); display.setInvulnerable(true);
+                display.setBlock(Material.LIME_STAINED_GLASS.createBlockData());
+                display.setTransformationMatrix(new org.joml.Matrix4f().scale(1, .06f, 1));
+                display.setGlowing(true); display.setGlowColorOverride(Color.AQUA);
+                display.setBrightness(new Display.Brightness(15, 15)); display.setViewRange(4);
+            }));
+        }
+    }
 
     static double rise(Location start, Location target) {
         double horizontal = Math.hypot(target.getX() - start.getX(), target.getZ() - start.getZ());
@@ -45,7 +74,8 @@ public final class FinalsMapJumpPads {
     }
 
     static int duration(Location start, Location target) {
-        return Math.max(8, (int) Math.ceil((start.distance(target) + 4 * rise(start, target)) / 1.5));
+        int original = Math.max(8, (int) Math.ceil((start.distance(target) + 4 * rise(start, target)) / 1.5));
+        return (int) Math.ceil(original / 1.5);
     }
 
     static Location arc(Location start, Location target, double progress) {
@@ -55,6 +85,7 @@ public final class FinalsMapJumpPads {
     }
 
     void tick(Collection<Player> players, Predicate<Player> active, long now) {
+        if (showing && now % 20 == 0) refreshOutlines();
         cooldowns.entrySet().removeIf(e -> e.getValue() <= now);
         var present = new java.util.HashSet<UUID>();
         for (Player player : players) {
@@ -72,7 +103,7 @@ public final class FinalsMapJumpPads {
                         || at.getY() < origin.getY() - .1 || at.getY() > origin.getY() + .65) continue;
                 player.setFallDistance(0);
                 cooldowns.put(id, now + 20);
-                if (pad.target() == null) player.setVelocity(new Vector(0, UP_SPEED, 0));
+                if (pad.target() == null) player.setVelocity(player.getVelocity().setY(UP_SPEED));
                 else {
                     Flight launched = new Flight(at, pad.target(), now);
                     flights.put(id, launched);
@@ -89,28 +120,39 @@ public final class FinalsMapJumpPads {
     private void advance(Player player, Flight flight, long now) {
         Location at = player.getLocation();
         boolean sameWorld = at.getWorld().equals(flight.start.getWorld());
-        if (!sameWorld || now >= flight.deadline || (flight.step > 0 && at.distanceSquared(flight.last) > 64)) {
+        if (!sameWorld || now >= flight.deadline || (now > flight.started && at.distanceSquared(flight.last) > 64)) {
             flights.remove(player.getUniqueId());
             return;
         }
         if (at.distanceSquared(flight.last) < .0025) flight.stalled++;
         else flight.stalled = 0;
         flight.last = at.clone();
-        boolean landed = flight.step >= flight.duration && at.distanceSquared(flight.target) < .25;
+        long elapsed = now - flight.started;
+        boolean landed = elapsed >= flight.duration && at.distanceSquared(flight.target) < .25;
         if (landed || flight.stalled >= 12) {
             flights.remove(player.getUniqueId());
             cooldowns.put(player.getUniqueId(), now + 20);
             player.setVelocity(new Vector());
             return;
         }
-        Location waypoint = arc(flight.start, flight.target, (double) flight.step / flight.duration);
-        if (at.distanceSquared(waypoint) < 2.25 && flight.step < flight.duration) flight.step++;
-        waypoint = arc(flight.start, flight.target, (double) flight.step / flight.duration);
-        Vector velocity = waypoint.subtract(at).toVector();
-        if (velocity.lengthSquared() > 1.8 * 1.8) velocity.normalize().multiply(1.8);
+        Location expected = arc(flight.start, flight.target, (double) elapsed / flight.duration);
+        Location next = arc(flight.start, flight.target, (double) (elapsed + 1) / flight.duration);
+        Vector correction = expected.toVector().subtract(at.toVector()).multiply(.12);
+        if (correction.lengthSquared() > .35 * .35) correction.normalize().multiply(.35);
+        Vector velocity = next.toVector().subtract(expected.toVector()).add(correction);
+        if (velocity.lengthSquared() > 2.7 * 2.7) velocity.normalize().multiply(2.7);
+        if (flight.velocity != null) {
+            Vector change = velocity.clone().subtract(flight.velocity);
+            if (change.lengthSquared() > .25 * .25) change.normalize().multiply(.25);
+            velocity = flight.velocity.clone().add(change);
+        }
+        flight.velocity = velocity.clone();
         player.setFallDistance(0);
         player.setVelocity(velocity);
     }
 
-    void clear() { flights.clear(); cooldowns.clear(); }
+    void clear() {
+        flights.clear(); cooldowns.clear();
+        showing = false; outlines.values().forEach(BlockDisplay::remove); outlines.clear();
+    }
 }

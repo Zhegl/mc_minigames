@@ -44,6 +44,10 @@ final class FinalsRevives implements Listener {
 
         Location fallback(UUID target);
 
+        default Location recovery(UUID target) { return fallback(target); }
+
+        default boolean safeRecovery(Location point) { return point != null && inside(point); }
+
         void begin(Player player);
 
         boolean complete(UUID target, Player reviver, Location point, boolean defibrillator);
@@ -63,6 +67,7 @@ final class FinalsRevives implements Listener {
         final UUID target;
         final String name;
         Location point;
+        Location recovery;
         Item item;
         Interaction interaction;
         Player carrier;
@@ -109,6 +114,7 @@ final class FinalsRevives implements Listener {
         Location safe = safePoint(player.getUniqueId(), point);
         if (safe == null) return;
         Statue statue = new Statue(player.getUniqueId(), player.getName(), safe);
+        statue.recovery = context.recovery(player.getUniqueId());
         statues.put(statue.target, statue);
         spawn(statue, new Vector());
     }
@@ -214,6 +220,7 @@ final class FinalsRevives implements Listener {
         target.point = location(target.target);
         target.removeEntities();
         target.carrier = player;
+        target.recovery = context.recovery(player.getUniqueId());
         ItemStack offhand = player.getInventory().getItemInOffHand();
         target.previousOffhand = offhand == null ? null : offhand.clone();
         player.getInventory().setItemInOffHand(trophy(target, player));
@@ -335,6 +342,7 @@ final class FinalsRevives implements Listener {
     private void drop(Statue statue, boolean thrown) {
         Player carrier = statue.carrier;
         if (carrier == null) return;
+        statue.recovery = context.recovery(carrier.getUniqueId());
         Location point = carrier.getEyeLocation();
         Vector direction = point.getDirection().normalize();
         // Spawn before any wall. The native item then supplies swept terrain collision and gravity.
@@ -343,18 +351,29 @@ final class FinalsRevives implements Listener {
                         .rayTraceBlocks(point, direction, .7, FluidCollisionMode.NEVER, true);
         if (obstruction == null) point.add(direction.clone().multiply(.6));
         point.subtract(0, .2, 0);
-        Location safe = safePoint(statue.target, point);
+        boolean recovered = !validPoint(point);
+        Location safe = recovered ? returnPoint(statue) : point.clone();
         if (safe == null) safe = statue.point.clone();
         releaseHand(statue);
         statue.point = safe;
-        spawn(statue, thrown ? direction.multiply(1.25).add(new Vector(0, .12, 0)) : new Vector());
+        spawn(statue, thrown && !recovered ? direction.multiply(1.25).add(new Vector(0, .12, 0)) : new Vector());
+    }
+
+    private boolean validPoint(Location point) {
+        return point != null && context.world().equals(point.getWorld()) && context.inside(point)
+                && point.getY() >= context.world().getMinHeight();
+    }
+
+    private Location returnPoint(Statue statue) {
+        if (validPoint(statue.recovery) && context.safeRecovery(statue.recovery))
+            return statue.recovery.clone().add(0, .25, 0);
+        return safePoint(statue.target, context.recovery(statue.target));
     }
 
     private Location safePoint(UUID target, Location point) {
-        if (point != null
-                && context.world().equals(point.getWorld())
-                && context.inside(point)
-                && point.getY() >= context.world().getMinHeight()) return point.clone();
+        if (validPoint(point)) return point.clone();
+        Location recovery = context.recovery(target);
+        if (validPoint(recovery) && context.safeRecovery(recovery)) return recovery.clone().add(0, .25, 0);
         Location fallback = context.fallback(target);
         return fallback != null
                         && context.world().equals(fallback.getWorld())
@@ -385,7 +404,7 @@ final class FinalsRevives implements Listener {
                 continue;
             }
             if (statue.item == null || !statue.item.isValid()) {
-                Location safe = safePoint(statue.target, context.fallback(statue.target));
+                Location safe = returnPoint(statue);
                 if (safe != null) {
                     statue.point = safe;
                     spawn(statue, new Vector());
@@ -396,7 +415,7 @@ final class FinalsRevives implements Listener {
             if (!context.world().equals(live.getWorld())
                     || !context.inside(live)
                     || live.getY() < context.world().getMinHeight()) {
-                Location safe = safePoint(statue.target, context.fallback(statue.target));
+                Location safe = returnPoint(statue);
                 if (safe != null) {
                     statue.point = safe;
                     spawn(statue, new Vector());

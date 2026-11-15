@@ -57,7 +57,31 @@ public final class FinalsHighlightsCheck {
         timedObjectiveLabels();
         downedTeammateLabels();
         distantProjection();
+        cashboxProjection();
         System.out.println("FinalsHighlightsCheck: " + checks + " checks passed");
+    }
+
+    private static void cashboxProjection() throws Exception {
+        Fixture f = new Fixture();
+        Location point = new Location(f.arena.world, 1001.5, 90, 2002.5);
+        for (var phase : List.of(FinalsState.Phase.CASHBOX_AVAILABLE, FinalsState.Phase.CARRIED)) {
+            var marker = FinalsHighlights.cashboxMarker(phase, point);
+            require(marker != null && marker.key().equals("cashbox") && marker.block() == Material.GOLD_BLOCK,
+                    "Loose and carried cashboxes have an objective marker");
+            Method placement = FinalsHighlights.class.getDeclaredMethod("placement", Player.class, marker.getClass());
+            placement.setAccessible(true);
+            Object projected = placement.invoke(null, f.viewer, marker);
+            require((boolean) value(projected, "projected"), "A distant cashbox projects into rendered chunks");
+            require(f.viewer.getEyeLocation().distance((Location) value(projected, "label")) <= 8.000001,
+                    "The distant cashbox label remains close and readable");
+            Component text = (Component) value(projected, "text");
+            require(plain(text, Locale.ENGLISH).contains("Cashbox") && plain(text, Locale.ENGLISH).contains("blocks"),
+                    "The distant cashbox label includes its name and actual distance");
+        }
+        require(FinalsHighlights.cashboxMarker(FinalsState.Phase.CASHOUT, point) == null,
+                "Depositing a cashbox removes its marker");
+        require(FinalsHighlights.cashboxMarker(FinalsState.Phase.CASHBOX_AVAILABLE, null) == null,
+                "No cashbox marker is made without a known location");
     }
 
     private static void distantProjection() throws Exception {

@@ -294,6 +294,24 @@ public final class FinalsHighlightsSmoke {
                     "Explicit cleanup removes every real native marker");
             require(observer.spawned.values().stream().noneMatch(initial -> initial.entity.isValid()),
                     "Native lifecycle leaves no orphan marker entities");
+            Method cashboxUpdate = method(type, "update", FinalsMapArena.class, FinalsState.Phase.class,
+                    int.class, long.class, long.class, Collection.class, Map.class, Function.class,
+                    Predicate.class, Location.class, UUID.class);
+            Location box = new Location(world, 1500.5, 100, 1500.5);
+            bob.locale = Locale.forLanguageTag("ru");
+            invoke(cashboxUpdate, highlights, arena, FinalsState.Phase.CASHBOX_AVAILABLE, -1, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, box, null);
+            require(hasLabel(alice, "Cashbox") && hasLabel(eve, "Cashbox"),
+                    "Both teams get a far cashbox label through the full update path");
+            require(hasLabel(bob, "Кэшбокс"), "Cashbox labels use the viewer's locale");
+            require(alice.blocks().size() == 3, "A distant cashbox adds a native glowing block proxy");
+            invoke(cashboxUpdate, highlights, arena, FinalsState.Phase.CARRIED, -1, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, box, alice.id);
+            require(!hasLabel(alice, "Cashbox") && hasLabel(eve, "Cashbox"),
+                    "The carrier avoids an own-body marker while other players can track the cashbox");
+            invoke(cashboxUpdate, highlights, arena, FinalsState.Phase.CASHOUT, 0, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, box, null);
+            require(!hasLabel(eve, "Cashbox"), "Depositing cleans up native cashbox markers");
             invoke(clear, highlights);
             smoke.getLogger().info("FINALS_HIGHLIGHTS_SMOKE_PASS: " + assertions + " native assertions");
             return assertions;

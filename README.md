@@ -275,6 +275,8 @@ gold outlines while the cashbox is available or carried; after depositing it, on
 the occupied cashout is highlighted. Labels remain visible through walls and follow
 falling stations. Distant cashouts show a bold A or B above their timer and distance,
 using a nearby direction marker so the letter remains readable beyond entity render range.
+Loose and carried cashboxes also have a gold direction marker with their real distance,
+including beyond entity render range. The carrier does not see a marker on their own body.
 Teammates have private outlines and name markers visible only to
 their allies, including a marker at their death location while they respawn. Normal
 overhead player names are hidden during Finals. Visibility is still subject to the
@@ -303,9 +305,10 @@ headroom and objective spacing. Map jump pads can connect rooftops:
 - Save with `/finals map save NAME`. Both endpoints must be safe standing locations
   inside the selected map. A targeted pad without a destination cannot be saved.
 
-Pads appear as protected slime blocks in matches; setup previews identify launch
-points and destinations. Targeted launches guide players along an arc using velocity,
-and stop when blocked by terrain. They do not teleport through buildings. Old maps
+Pads appear as protected slime blocks with glowing outlines in matches; setup previews identify launch
+points and destinations. Targeted launches guide players along a smooth timed arc using velocity,
+at 1.5 times their original flight speed, and stop when blocked by terrain. They do
+not teleport through buildings. Upward pads preserve horizontal momentum. Old maps
 without configured pads continue to work.
 
 Set a map's instant-death floor with `/finals map deathheight NAME 40`: contestants
@@ -315,6 +318,10 @@ die when their feet move below Y=40 (exactly Y=40 is safe). Use
 shows the draft setting. Each playable map stores its own value, including areas
 created from the same imported world; changing map A never changes map B.
 Existing maps default to off, while normal arena-boundary deaths still apply.
+Cashboxes and revive statues crossing this floor return to the carrier's last safe
+ground position before jumping or falling, or the thrower's last grounded position
+when thrown. A statue created by a falling player's death uses that player's departure
+point. Recovery clears the object's velocity; destroyed departure ledges use a fallback.
 
 Use `/finals map time NAME night` to set the match's fixed time of day. Presets are
 `sunrise` (0), `day` (1000), `noon` (6000), `sunset` (12000), `night` (13000), and
