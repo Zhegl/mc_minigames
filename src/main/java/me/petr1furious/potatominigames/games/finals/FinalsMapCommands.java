@@ -1,6 +1,7 @@
 package me.petr1furious.potatominigames.games.finals;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
@@ -37,7 +38,7 @@ public final class FinalsMapCommands {
                 Commands.literal("map")
                         .requires(source ->
                                 source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
-                        .executes(ctx -> run(ctx, c -> send(c, "help")));
+                        .executes(ctx -> run(ctx, c -> { send(c, "help"); send(c, "pad_help"); send(c, "death_height_help"); send(c, "time_help"); }));
         map.then(
                 Commands.literal("list")
                         .executes(ctx ->
@@ -322,6 +323,51 @@ public final class FinalsMapCommands {
                                                                                 maps.info(
                                                                                         name(
                                                                                                 c)))))));
+        var pad = nameArgument();
+        for (String kind : new String[] {"up", "targeted"})
+            pad.then(Commands.literal(kind).executes(ctx -> run(ctx, c -> {
+                maps.jumpPad(name(c), GameCommands.requirePlayer(c).getLocation(), kind.equals("targeted"));
+                send(c, "pad_added", name(c));
+                showPreview(c);
+            })));
+        map.then(Commands.literal("jumppad").then(pad));
+        map.then(Commands.literal("jumppadtarget").then(nameArgument().then(
+                Commands.argument("number", IntegerArgumentType.integer(1)).executes(ctx -> run(ctx, c -> {
+                    maps.jumpPadTarget(name(c), IntegerArgumentType.getInteger(c, "number"), GameCommands.requirePlayer(c).getLocation());
+                    send(c, "updated", name(c));
+                    showPreview(c);
+                })))));
+        map.then(Commands.literal("jumppadremove").then(nameArgument().then(
+                Commands.argument("number", IntegerArgumentType.integer(1)).executes(ctx -> run(ctx, c -> {
+                    maps.jumpPadRemove(name(c), IntegerArgumentType.getInteger(c, "number"));
+                    send(c, "updated", name(c));
+                })))));
+        var deathHeight = nameArgument();
+        deathHeight.then(Commands.argument("height", DoubleArgumentType.doubleArg()).executes(ctx -> run(ctx, c -> {
+            maps.deathHeight(name(c), DoubleArgumentType.getDouble(c, "height"));
+            send(c, "death_height_updated", name(c));
+        })));
+        deathHeight.then(Commands.literal("off").executes(ctx -> run(ctx, c -> {
+            maps.deathHeight(name(c), null);
+            send(c, "death_height_updated", name(c));
+        })));
+        map.then(Commands.literal("deathheight").then(deathHeight));
+        var time = nameArgument();
+        time.then(Commands.argument("ticks", IntegerArgumentType.integer(0, 23999)).executes(ctx -> run(ctx, c -> {
+            maps.timeOfDay(name(c), IntegerArgumentType.getInteger(c, "ticks"));
+            send(c, "time_updated", name(c));
+        })));
+        java.util.Map<String, Integer> presets = java.util.Map.of(
+                "sunrise", 0, "day", 1000, "noon", 6000, "sunset", 12000, "night", 13000, "midnight", 18000);
+        presets.forEach((preset, ticks) -> time.then(Commands.literal(preset).executes(ctx -> run(ctx, c -> {
+            maps.timeOfDay(name(c), ticks);
+            send(c, "time_updated", name(c));
+        }))));
+        time.then(Commands.literal("default").executes(ctx -> run(ctx, c -> {
+            maps.timeOfDay(name(c), null);
+            send(c, "time_updated", name(c));
+        })));
+        map.then(Commands.literal("time").then(time));
         root.then(map);
     }
 

@@ -24,6 +24,19 @@ socket is replaced: spawn packets, initial text/glow/block metadata, delayed chu
 delivery, private visibility and tracking-loss recovery use the native runtime.
 The fixture unregisters its temporary players and removes its displays afterward.
 
+`FinalsMarkerStartupSmoke.run(smokePlugin, mainPlugin, done, failed)` exercises
+automatic chunk delivery and entity tracking over real server ticks. Both native
+players join the world before their first chunks are sent; the fixture waits for
+each client's recorded packets to place the vault label and outline at the actual
+vault, then checks distant projection and return without respawning the displays.
+It does not call entity-tracker update methods or manually mark chunks as sent.
+The recording connection applies spawn, movement, metadata and removal packets;
+this checks delivery and positions, not visual rendering by a Minecraft client.
+Keep the isolated server running until either callback completes.
+On 2026-11-14, this startup fixture passed 94 assertions across seven automatic
+server ticks against JAR SHA-256
+`224f32fb59f0ce6d3b77ef534fe09ca08fc89fd76a694f28afc4c1fa0a3e5f97`.
+
 `FinalsSlimeMapsSmoke.run(smokePlugin, mainPlugin, done, failed)` is a callback-based
 fixture for prepared Slime templates. Compile it with the other fixtures and invoke
 it from an isolated runner on the server thread. Keep that server running until
@@ -73,6 +86,12 @@ The loadout fixture also covers the 18-second selection window, saved specializa
 and gadget choices, and two complete three-player team wipes. It checks early
 respawn/revive rejection, identical shared spawn positions, equipment restoration,
 and a disconnected member returning after the shared deadline.
+
+The shared-start run on 2026-11-14 passed 519 focused session checks, 25 native
+respawn-input assertions and 222 native loadout assertions against JAR SHA-256
+`fab4fa98b2a286f3726e97a14f6b84f73c6d0b3712a5d4c9aa1ecf910eeb0f7a`.
+It verifies actual spawn positions for both three-player teams: one random
+configured point per team, retained after countdown loadout changes and rejoins.
 
 `FinalsSpecializationsSmoke.run(smokePlugin, mainPlugin)` is an additional synchronous
 fixture to invoke on the server thread in an isolated runner. Compile it alongside

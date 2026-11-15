@@ -190,6 +190,12 @@ public final class FinalsArena implements FinalsMapArena {
                 0);
     }
 
+    @Override
+    public List<Location> spawnLocations(int team) {
+        return java.util.stream.IntStream.range(0, 8)
+                .mapToObj(index -> spawn(team, index)).toList();
+    }
+
     public Location vault() {
         if (activeVault < 0)
             throw new IllegalStateException("Build the arena before using its vault");

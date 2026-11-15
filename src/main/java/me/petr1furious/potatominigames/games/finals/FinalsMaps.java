@@ -335,6 +335,40 @@ public final class FinalsMaps {
         points.remove(number - 1);
     }
 
+    public void jumpPad(String name, Location location, boolean targeted) {
+        update(name, location, draft -> {
+            Point point = Point.of(location).centered();
+            if (draft.jumpPads.stream().anyMatch(p -> p.origin().sameBlock(point))) throw failure("pad_duplicate");
+            draft.jumpPads.add(new JumpPad(point, targeted, null));
+        });
+    }
+
+    public void deathHeight(String name, Double height) {
+        if (height != null && !Double.isFinite(height)) throw failure("death_height_invalid");
+        update(name, null, draft -> draft.deathHeight = height);
+    }
+
+    public void timeOfDay(String name, Integer time) {
+        if (time != null && (time < 0 || time > 23999)) throw failure("time_invalid");
+        update(name, null, draft -> draft.timeOfDay = time);
+    }
+
+    public void jumpPadTarget(String name, int number, Location location) {
+        update(name, location, draft -> {
+            if (number < 1 || number > draft.jumpPads.size()) throw failure("point_number", number, draft.jumpPads.size());
+            JumpPad pad = draft.jumpPads.get(number - 1);
+            if (!pad.targeted()) throw failure("pad_not_targeted");
+            draft.jumpPads.set(number - 1, new JumpPad(pad.origin(), true, Point.of(location).centered()));
+        });
+    }
+
+    public void jumpPadRemove(String name, int number) {
+        update(name, null, draft -> {
+            if (number < 1 || number > draft.jumpPads.size()) throw failure("point_number", number, draft.jumpPads.size());
+            draft.jumpPads.remove(number - 1);
+        });
+    }
+
     public void save(String name) {
         SaveWork work = beginSave(name);
         try {
@@ -449,6 +483,9 @@ public final class FinalsMaps {
                         previous.blue(),
                         previous.vaults(),
                         previous.cashouts(),
+                        previous.jumpPads(),
+                        previous.deathHeight(),
+                        previous.timeOfDay(),
                         filename);
         Path target = templates.resolve(filename), temporary = templates.resolve(filename + ".tmp");
         final SaveWork work;
@@ -606,6 +643,8 @@ public final class FinalsMaps {
         invalidStandingPoints(world, saved.blue(), "blue_spawn", invalid);
         invalidStandingPoints(world, saved.vaults(), "vault", invalid);
         invalidStandingPoints(world, saved.cashouts(), "cashout", invalid);
+        invalidStandingPoints(world, saved.jumpPads().stream().map(JumpPad::origin).toList(), "pad", invalid);
+        invalidStandingPoints(world, saved.jumpPads().stream().map(p -> p.target() == null ? p.origin() : p.target()).toList(), "pad_target", invalid);
         if (!invalid.isEmpty())
             throw failure(
                     "unsafe_points",
@@ -674,7 +713,11 @@ public final class FinalsMaps {
                 draft.cashouts.stream().filter(java.util.Objects::nonNull).count(),
                 Component.join(
                         net.kyori.adventure.text.JoinConfiguration.separator(Component.text("; ")),
-                        draft.cashouts.stream().map(this::mark).toList()));
+                        draft.cashouts.stream().map(this::mark).toList()))
+                .append(Component.newline()).append(I18n.tr("finals.map.death_height_info",
+                        draft.deathHeight == null ? I18n.tr("finals.map.death_height_off") : draft.deathHeight))
+                .append(Component.newline()).append(I18n.tr("finals.map.time_info",
+                        draft.timeOfDay == null ? I18n.tr("finals.map.time_default") : draft.timeOfDay));
     }
 
     private Component mark(Point point) {
@@ -757,6 +800,9 @@ public final class FinalsMaps {
                 snapshot.blue = entry.saved.blue();
                 snapshot.vaults = entry.saved.vaults();
                 snapshot.cashouts = entry.saved.cashouts();
+                snapshot.jumpPads = entry.saved.jumpPads();
+                snapshot.deathHeight = entry.saved.deathHeight();
+                snapshot.timeOfDay = entry.saved.timeOfDay();
                 snapshot.write(section);
                 section.set("template", entry.saved.template());
             }

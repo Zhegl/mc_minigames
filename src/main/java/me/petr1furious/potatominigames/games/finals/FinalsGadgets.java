@@ -27,6 +27,7 @@ import java.util.*;
 
 /** All gadget state belongs to one Finals session; its existing ticker drives every effect. */
 final class FinalsGadgets {
+    static final double JUMP_PAD_SPEED = 1.05;
     private static final NamespacedKey KEY = new NamespacedKey("potatominigames", "finals_gadget");
     private static final double DOME_RADIUS = 4;
     private static final long BEAM_INPUT_TICKS = 6;
@@ -927,7 +928,7 @@ final class FinalsGadgets {
                     || Math.abs(at.getZ() - center.getZ()) > 1
                     || at.getY() < center.getY() - .1
                     || at.getY() > center.getY() + .65) continue;
-            Vector launch = forward(player, .42, 1.05);
+            Vector launch = forward(player, .42, JUMP_PAD_SPEED);
             if (!context.inside(at.clone().add(launch.clone().multiply(3)))) continue;
             player.setFallDistance(0);
             player.setVelocity(launch);

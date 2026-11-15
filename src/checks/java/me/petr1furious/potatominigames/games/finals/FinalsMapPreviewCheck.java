@@ -57,6 +57,18 @@ public final class FinalsMapPreviewCheck {
         require(
                 before.size() == 4 && value(before.get(0), "key").equals("vault"),
                 "Each view snapshot remains independent of later draft edits");
+        var origin = new FinalsMapData.Point(8.5, 65, 8.5, 0, 0);
+        draft.jumpPads.add(new FinalsMapData.JumpPad(origin, true, null));
+        List<?> unfinished = (List<?>) markers.invoke(null, draft);
+        require(value(unfinished.getLast(), "key").equals("pad_targeted"), "An unfinished targeted pad remains visible in editor previews");
+        var target = new FinalsMapData.Point(18.5, 75, 8.5, 0, 0);
+        draft.jumpPads.set(0, new FinalsMapData.JumpPad(origin, true, target));
+        List<?> completed = (List<?>) markers.invoke(null, draft);
+        require(value(completed.getLast(), "key").equals("pad_target")
+                        && value(completed.getLast(), "number").equals(1)
+                        && value(completed.getLast(), "point").equals(target), "Target preview shares its launch pad number and destination");
+        draft.jumpPads.clear();
+        require(((List<?>) markers.invoke(null, draft)).size() == after.size(), "Removing a pad removes both preview endpoints");
         System.out.println(
                 "FinalsMapPreviewCheck: draft previews and live-edit descriptors passed");
     }

@@ -172,6 +172,13 @@ public final class FinalsMapPreview implements Listener {
         append(result, draft.cashouts, "cashout", NamedTextColor.GOLD, false);
         append(result, draft.red, "red_spawn", NamedTextColor.RED, true);
         append(result, draft.blue, "blue_spawn", NamedTextColor.BLUE, true);
+        for (int i = 0; i < draft.jumpPads.size(); i++) {
+            var pad = draft.jumpPads.get(i);
+            result.add(new Marker(pad.targeted() ? "pad_targeted" : "pad_up", i + 1,
+                    pad.origin(), NamedTextColor.AQUA, true));
+            if (pad.target() != null)
+                result.add(new Marker("pad_target", i + 1, pad.target(), NamedTextColor.LIGHT_PURPLE, true));
+        }
         return List.copyOf(result);
     }
 

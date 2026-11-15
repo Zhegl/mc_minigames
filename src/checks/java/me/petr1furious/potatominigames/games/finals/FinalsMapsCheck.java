@@ -38,10 +38,88 @@ public final class FinalsMapsCheck {
         fullHeight();
         vaultPersistence();
         cashoutPersistence();
+        jumpPadPersistence();
+        deathHeightPersistence();
+        timeOfDayPersistence();
         arenaCopies();
         atomicReplacementLocks();
         imports();
         System.out.println("FinalsMapsCheck passed");
+    }
+
+    private static void timeOfDayPersistence() throws Exception {
+        YamlConfiguration input = new YamlConfiguration(); draft().write(input);
+        input.set("time-of-day", 18000);
+        Draft configured = Draft.read(input);
+        YamlConfiguration output = new YamlConfiguration(); configured.write(output);
+        require(output.getInt("time-of-day", -1) == 18000, "Each map preserves its selected time of day");
+        configured.deathHeight = 64.5;
+        Saved savedA = Saved.from(configured, "a.slime");
+        Draft other = draft(); other.timeOfDay = 1000;
+        Saved savedB = Saved.from(other, "b.slime");
+        FakeWorld shared = new FakeWorld("editor");
+        FinalsMapArena a = new FinalsImportedArena(shared.world, savedA, (FinalsMapSnapshot) null);
+        FinalsMapArena b = new FinalsImportedArena(shared.world, savedB, (FinalsMapSnapshot) null);
+        require(a.timeOfDay() == 18000 && b.timeOfDay() == 1000 && a.deathHeight() == 64.5 && b.deathHeight() == null,
+                "Actual arenas backed by the same world use only their own time and death settings");
+        Draft copy = configured.copy(); copy.timeOfDay = null; copy.write(output);
+        require(Draft.read(output).timeOfDay == null && savedA.timeOfDay() == 18000 && configured.timeOfDay == 18000,
+                "Resetting a draft time removes its override without changing a saved map or another draft");
+        FinalsMapArena legacy = new FinalsImportedArena(shared.world, Saved.from(draft(), "old.slime"), (FinalsMapSnapshot) null);
+        require(legacy.timeOfDay() == 6000 && legacy.deathHeight() == null, "Existing maps preserve noon and no custom death floor");
+        for (Object invalid : List.of(-1, 24000, 1.5, "night", Double.NaN)) {
+            output.set("time-of-day", invalid);
+            fails(() -> Draft.read(output), "Invalid persisted time rejected: " + invalid);
+        }
+    }
+
+    private static void deathHeightPersistence() throws Exception {
+        Draft a = draft(), b = draft();
+        a.deathHeight = 64.5;
+        Saved savedA = Saved.from(a, "a.slime"), savedB = Saved.from(b, "b.slime");
+        require(a.world.equals(b.world) && savedA.deathHeight() == 64.5 && savedB.deathHeight() == null,
+                "Maps sharing an editor world retain independent death heights");
+        YamlConfiguration yaml = new YamlConfiguration();
+        a.write(yaml.createSection("a")); b.write(yaml.createSection("b"));
+        YamlConfiguration restored = new YamlConfiguration(); restored.loadFromString(yaml.saveToString());
+        require(Draft.read(restored.getConfigurationSection("a")).deathHeight == 64.5
+                        && Draft.read(restored.getConfigurationSection("b")).deathHeight == null,
+                "Per-map death heights remain isolated after YAML round-trip");
+        Draft edited = a.copy(); edited.deathHeight = -10d;
+        require(a.deathHeight == 64.5 && savedA.deathHeight() == 64.5,
+                "Unsaved edits cannot change a published map's death height");
+        edited.deathHeight = null; edited.write(yaml.getConfigurationSection("a"));
+        require(Draft.read(yaml.getConfigurationSection("a")).deathHeight == null,
+                "Turning death height off removes its persisted setting");
+        edited.deathHeight = Double.NaN;
+        fails(() -> Saved.from(edited, "bad.slime"), "Non-finite saved death height is rejected");
+        yaml.getConfigurationSection("a").set("death-height", "bad");
+        fails(() -> Draft.read(yaml.getConfigurationSection("a")), "Invalid persisted death height is rejected");
+    }
+
+    private static void jumpPadPersistence() throws Exception {
+        Draft draft = draft();
+        Point origin = new Point(8.5, 65, 8.5, 0, 0), target = new Point(-8.5, 70, 8.5, 90, 0);
+        draft.jumpPads.add(new JumpPad(origin, true, null));
+        fails(() -> Saved.from(draft, "pads.slime"), "An unfinished targeted pad cannot be saved");
+        draft.jumpPads.set(0, new JumpPad(origin, true, target));
+        draft.jumpPads.add(new JumpPad(new Point(8.5, 65, -8.5, 0, 0), false, null));
+        Saved saved = Saved.from(draft, "pads.slime");
+        YamlConfiguration yaml = new YamlConfiguration();
+        draft.write(yaml);
+        YamlConfiguration loaded = new YamlConfiguration();
+        loaded.loadFromString(yaml.saveToString());
+        require(Saved.from(Draft.read(loaded), "pads.slime").equals(saved), "Both pad types and targets round-trip with saved maps");
+        Draft copy = draft.copy(); copy.jumpPads.clear();
+        require(draft.jumpPads.size() == 2 && saved.jumpPads().size() == 2, "Draft pad edits cannot alter saved pads");
+        draft.jumpPads.removeLast(); draft.write(yaml);
+        require(Draft.read(yaml).jumpPads.size() == 1, "Removed pad entries do not survive YAML rewrite");
+        draft.jumpPads.add(draft.jumpPads.getFirst());
+        fails(() -> Saved.from(draft, "pads.slime"), "Duplicate pads cannot be saved");
+        draft.jumpPads.clear();
+        draft.jumpPads.add(new JumpPad(origin, true, new Point(100, 65, 100, 0, 0)));
+        fails(() -> Saved.from(draft, "pads.slime"), "Targets outside the playable selection cannot be saved");
+        require(Saved.from(draft(), "old.slime").jumpPads().isEmpty(), "Existing maps remain compatible without pads");
     }
 
     private static void cashoutPersistence() throws Exception {
