@@ -89,6 +89,8 @@ final class FinalsSession implements GameSession {
     private FinalsRespawnInput respawnInput;
     private Item cashbox;
     private Location cashboxLocation;
+    private Location cashboxRecovery;
+    private final Map<UUID, Location> lastGrounded = new HashMap<>();
     private UUID recentDropper;
     private UUID cashboxThrower;
     private Vector cashboxPreviousCenter;
@@ -441,8 +443,10 @@ final class FinalsSession implements GameSession {
                 return roster.containsKey(player.getUniqueId())
                         && Objects.equals(roster.get(player.getUniqueId()), roster.get(target));
             }
-            public boolean inside(Location point) { return arena != null && arena.contains(point); }
+            public boolean inside(Location point) { return safeObjectiveLocation(point); }
             public Location fallback(UUID id) { return arena.spawn(roster.get(id), spawnIndex(id)); }
+            public Location recovery(UUID id) { return recoveryPoint(id); }
+            public boolean safeRecovery(Location point) { return supportedRecovery(point); }
             public void begin(Player player) {
                 if (weapons != null) weapons.stopFiring(player.getUniqueId());
                 if (gadgets != null) gadgets.reveal(player);
@@ -581,6 +585,8 @@ final class FinalsSession implements GameSession {
             teamWipes.clear();
             teamRespawnPositions.clear();
             startingSpawns.clear();
+            lastGrounded.clear();
+            cashboxRecovery = null;
             releaseAll();
             if (weapons != null) weapons.clear();
             if (gadgets != null) gadgets.clear();
@@ -659,6 +665,7 @@ final class FinalsSession implements GameSession {
         gadgets = new FinalsGadgets(combat);
         cashouts = new FinalsCashoutPhysics(arena);
         mapJumpPads = new FinalsMapJumpPads(arena);
+        mapJumpPads.start();
         highlights = new FinalsHighlights(services.plugin());
         tabList = new FinalsTabList(services.plugin());
         if (gameMaster != null) gameEvents = new FinalsGameEvents(gameEventsContext());
@@ -756,7 +763,17 @@ final class FinalsSession implements GameSession {
                 player -> revives != null && revives.location(player.getUniqueId()) != null
                         ? revives.location(player.getUniqueId())
                         : deathLocations.getOrDefault(player.getUniqueId(), player.getLocation()),
-                player -> downed(player.getUniqueId()));
+                player -> downed(player.getUniqueId()), cashboxHighlightPoint(),
+                state == null ? null : state.carrier());
+    }
+
+    private Location cashboxHighlightPoint() {
+        if (state == null) return null;
+        if (state.carrier() != null) {
+            Player carrier = Bukkit.getPlayer(state.carrier());
+            return carrier == null ? null : carrier.getLocation().add(0, .8, 0);
+        }
+        return cashbox != null && cashbox.isValid() ? cashbox.getLocation() : cashboxLocation;
     }
 
     private boolean protectedSpawn(Player player) {
@@ -895,6 +912,7 @@ final class FinalsSession implements GameSession {
         inventory.setHeldItemSlot(0);
         Location shared = teamRespawnPositions.get(id);
         teleport(player, shared == null ? spawnLocation(id) : shared.clone());
+        lastGrounded.put(id, player.getLocation().clone());
         teamRespawnPositions.remove(id);
         teamWipes.spawn(id);
         gadgetSicknessUntil.remove(id);
@@ -948,13 +966,15 @@ final class FinalsSession implements GameSession {
         }
         if (cashbox != null && cashbox.isValid()) {
             cashboxLocation = cashbox.getLocation();
-            if (!arena.contains(cashboxLocation)) {
+            if (!safeObjectiveLocation(cashboxLocation)) {
                 removeCashbox();
-                cashboxLocation = null;
+                cashboxLocation = cashboxReturnPoint();
             } else if (depositThrownCashbox()) return;
+        } else if (cashbox != null) {
+            removeCashbox();
+            cashboxLocation = cashboxReturnPoint();
         }
-        if (cashboxLocation == null || !arena.contains(cashboxLocation))
-            cashboxLocation = arena.vault().add(0, 1, 0);
+        if (!safeObjectiveLocation(cashboxLocation)) cashboxLocation = cashboxReturnPoint();
         if (cashbox == null || !cashbox.isValid()) {
             createCashbox(new Vector());
         }
@@ -985,6 +1005,37 @@ final class FinalsSession implements GameSession {
         cashbox.setCanPlayerPickup(false);
         cashbox.setCanMobPickup(false);
         cashbox.setUnlimitedLifetime(true);
+    }
+
+    private boolean safeObjectiveLocation(Location point) {
+        return arena != null && point != null && arena.contains(point)
+                && (arena.deathHeight() == null || point.getY() >= arena.deathHeight());
+    }
+
+    private boolean supportedRecovery(Location point) {
+        if (!safeObjectiveLocation(point)) return false;
+        var support = point.clone().subtract(0, .15, 0).getBlock();
+        return !support.isPassable() && !support.isLiquid();
+    }
+
+    private void rememberGround(Player player, Location point) {
+        if (player.isOnGround() && supportedRecovery(point))
+            lastGrounded.put(player.getUniqueId(), point.clone());
+    }
+
+    private Location recoveryPoint(UUID id) {
+        Location point = lastGrounded.get(id);
+        if (supportedRecovery(point)) return point.clone();
+        Integer team = roster.get(id);
+        if (team != null) for (Location spawn : arena.spawnLocations(team))
+            if (supportedRecovery(spawn)) return spawn.clone();
+        return arena.vault().clone().add(0, 1, 0);
+    }
+
+    private Location cashboxReturnPoint() {
+        Location anchor = supportedRecovery(cashboxRecovery) ? cashboxRecovery
+                : arena.vault().clone().add(0, 1, 0);
+        return anchor.clone().add(0, .25, 0);
     }
 
     /** Sweep native item motion so a fast throw cannot skip an entire station between ticks. */
@@ -1068,6 +1119,8 @@ final class FinalsSession implements GameSession {
         Location release = eye.clone().add(direction.clone().multiply(distance));
         if (!arena.contains(release)) release = player.getLocation().add(0, .4, 0);
         if (!state.drop(id, tick)) return;
+        rememberGround(player, player.getLocation());
+        cashboxRecovery = recoveryPoint(id);
         cashboxLocation = release;
         recentDropper = id;
         pickupAfter = tick + 20;
@@ -1083,12 +1136,14 @@ final class FinalsSession implements GameSession {
     private void dropCashbox(Player player) {
         if (state == null || !player.getUniqueId().equals(state.carrier())) return;
         if (state.drop(player.getUniqueId(), tick)) {
+            rememberGround(player, player.getLocation());
+            cashboxRecovery = recoveryPoint(player.getUniqueId());
             cashboxThrower = null;
             cashboxPreviousCenter = null;
             cashboxLocation =
-                    arena.contains(player.getLocation())
+                    safeObjectiveLocation(player.getLocation())
                             ? player.getLocation().add(0, .4, 0)
-                            : arena.vault().add(0, 1, 0);
+                            : cashboxReturnPoint();
             recentDropper = player.getUniqueId();
             pickupAfter = tick + 20;
             carryVisual(player, false);
@@ -1233,6 +1288,7 @@ final class FinalsSession implements GameSession {
         if (before == FinalsState.Phase.VAULT_OPENING
                 && state.phase() == FinalsState.Phase.CASHBOX_AVAILABLE) {
             cashboxLocation = arena.vault().add(0, 1, 0);
+            cashboxRecovery = cashboxLocation.clone();
             services.messages().broadcast(text("vault_open"));
             objectiveSound(arena.vault(), "minecraft:block.chest.open", 1.1f);
         }
@@ -1379,6 +1435,8 @@ final class FinalsSession implements GameSession {
         teamWipes.clear();
         teamRespawnPositions.clear();
         startingSpawns.clear();
+        lastGrounded.clear();
+        cashboxRecovery = null;
         gadgetSicknessUntil.clear();
         deathLocations.clear();
         protectedUntil.clear();
@@ -1986,6 +2044,7 @@ final class FinalsSession implements GameSession {
     public void onPlayerMove(PlayerMoveEvent event) {
         if (internalTeleport || !running() || !connected.contains(event.getPlayer().getUniqueId()))
             return;
+        if (active(event.getPlayer())) rememberGround(event.getPlayer(), event.getFrom());
         Frozen hold = frozen.get(event.getPlayer().getUniqueId());
         if (hold != null) {
             Location to = hold.anchor().clone();
@@ -2003,6 +2062,8 @@ final class FinalsSession implements GameSession {
 
     @Override
     public void onPlayerJump(PlayerJumpEvent event) {
+        if (running() && active(event.getPlayer()) && supportedRecovery(event.getFrom()))
+            lastGrounded.put(event.getPlayer().getUniqueId(), event.getFrom().clone());
         if (running() && frozen.containsKey(event.getPlayer().getUniqueId())) {
             event.setCancelled(true);
             event.getPlayer().setVelocity(new Vector());

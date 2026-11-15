@@ -318,3 +318,5 @@ map.preview.blue_spawn: "Blue spawn <arg:0>"
 map.preview.enabled: "Map previews enabled for <arg:0>. Green: vaults; gold: cashouts; red/blue: team spawns."
 map.preview.disabled: "Map previews disabled."
 map.error.preview_world: "Enter this map's editor before showing previews."
+
+highlight.cashbox: "◆ Cashbox"

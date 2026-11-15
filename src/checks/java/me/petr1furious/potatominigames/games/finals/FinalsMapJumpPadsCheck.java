@@ -22,17 +22,34 @@ public final class FinalsMapJumpPadsCheck {
         check(FinalsMapJumpPads.arc(start, target, 1).equals(target), "Arc ends at configured destination");
         check(FinalsMapJumpPads.arc(start, target, .5).getY() > target.getY(), "Targeted trajectory clears the higher roof");
         for (Location goal : List.of(target, target.clone().add(0, -50, 0), start.clone().add(0, 20, 0))) {
+            int oldDuration = Math.max(8, (int) Math.ceil((start.distance(goal) + 4 * FinalsMapJumpPads.rise(start, goal)) / 1.5));
+            check(Math.abs(FinalsMapJumpPads.duration(start, goal) - oldDuration / 1.5) < 1,
+                    "Targeted flights take two thirds of their original duration, rounded to a tick");
             var pads = pads(start, goal);
             TestPlayer player = new TestPlayer(start);
             for (int tick = 0; tick < FinalsMapJumpPads.duration(start, goal) * 3; tick++) {
                 pads.tick(List.of(player.player), p -> true, tick);
-                check(player.velocity.length() <= 1.800001, "Guided flight respects the movement speed bound");
+                check(player.velocity.length() <= 2.700001, "Guided flight respects the faster movement speed bound");
                 player.at.add(player.velocity);
                 if (player.at.distance(goal) < .5) break;
             }
             check(player.at.distance(goal) < .5, "Velocity-guided flight reaches higher, lower and vertical targets");
         }
         var pads = pads(start, target);
+        var delayedPads = pads(start, target);
+        TestPlayer delayed = new TestPlayer(start);
+        Location actual = start.clone();
+        Vector previous = null;
+        for (int tick = 0; tick < 35; tick++) {
+            if (tick % 3 == 0) {
+                delayed.at.setX(actual.getX()); delayed.at.setY(actual.getY()); delayed.at.setZ(actual.getZ());
+            }
+            delayedPads.tick(List.of(delayed.player), p -> true, tick);
+            if (previous != null) check(delayed.velocity.distance(previous) <= .250001,
+                    "Delayed movement reports do not cause abrupt mid-flight velocity changes");
+            actual.add(delayed.velocity);
+            previous = delayed.velocity.clone();
+        }
         TestPlayer blocked = new TestPlayer(start);
         for (int tick = 0; tick < 14; tick++) pads.tick(List.of(blocked.player), p -> true, tick);
         check(blocked.velocity.lengthSquared() == 0, "A blocked flight stops instead of repeatedly forcing movement");
@@ -48,6 +65,10 @@ public final class FinalsMapJumpPadsCheck {
         first.velocity.zero();
         vertical.tick(List.of(first.player), p -> true, 1);
         check(first.velocity.lengthSquared() == 0, "Standing on a pad does not retrigger every tick");
+        first.velocity = new Vector(.4, -.2, -.3);
+        vertical.tick(List.of(first.player), p -> true, 25);
+        check(first.velocity.distance(new Vector(.4, 3.15, -.3)) < .000001,
+                "Upward launch preserves horizontal momentum for a smoother transition");
         System.out.println("FinalsMapJumpPadsCheck: " + checks + " checks passed");
     }
 
@@ -67,6 +88,7 @@ public final class FinalsMapJumpPadsCheck {
             player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class},
                     (self, method, args) -> switch (method.getName()) {
                         case "getUniqueId" -> id; case "getLocation" -> at.clone(); case "getWorld" -> at.getWorld();
+                        case "getVelocity" -> velocity.clone();
                         case "setVelocity" -> { velocity = ((Vector) args[0]).clone(); yield null; }
                         default -> null;
                     });
