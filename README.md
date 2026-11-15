@@ -1480,11 +1480,27 @@ the surface or anything below it kills an alive participant, even if they stand
 still inside a solid box. Blocks, roofs, doors, sponges and temporary perk
 invulnerability do not provide shelter. Spectators and other game worlds are unaffected.
 
-Water is rendered with real source blocks in already loaded arena chunks. Solid
-terrain is retained, while the lethal height crosses it; no chunks are generated
-just for the flood. Layer painting has a fixed per-tick budget. The flood clock,
-listeners and pending work stop on failed startup or session end, and the core
-discards the temporary match world without changing its template.
+Flood is a **client-only water surface**, not a real fluid volume: it does not edit
+terrain, schedule fluid ticks, recalculate lighting or provide buoyancy. The server
+still applies the lethal height, including beyond the visible rectangle.
+
+The usual footprint is **7×7 chunks**, keeping pillars in the central 5×5. Wider
+layouts expand the rectangle only enough to retain a one-chunk pillar margin;
+`big_house` and large rosters keep their configured spacing. Other loaded chunks
+are not scanned or painted, and no chunk is loaded/generated just for Flood.
+
+The initial and next-layer caches are prepared during the opening countdown,
+and GO waits until initial preparation/delivery to already-sent chunks is ready.
+Only the current/next surfaces are retained. Later rises are prepared ahead, and
+bounded chunk batches are delivered round-robin with nearby chunks first. Late
+joins and chunk resends receive the current plane, not a backlog of submerged
+layers. An idle plane is not repeatedly repainted.
+
+Each callback has a shared 2048-unit terrain-read/packet-cell budget; this bounds
+work, not a wall-clock deadline. Large audiences can briefly trail visually while
+the lethal height advances on schedule. Previous fake cells restore the current
+real block state, preserving construction. Cleanup stops callbacks and listeners,
+restores still-visible fake cells, and leaves the template/lobby unchanged.
 
 ## Passive Pillars sky
 
@@ -2146,8 +2162,9 @@ elimination and one-shot timeout penalties.
 cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
 `checkPillarsFlood` checks exact rise boundaries and lethal contact without relying
 on player movement. `checkPillarsSky` checks equal profile selection and bounded
-custom colours/star intensity; `native-checks/pillars` exercises real water blocks,
-session contact/cleanup and the registered native sky data on a disposable server.
+custom colours/star intensity; `native-checks/pillars` exercises client water delivery,
+pre-start readiness, bounded per-tick work, late viewers, unchanged native blocks,
+session contact/cleanup and registered native sky data on a disposable server.
 `checkPillarsPerks` checks all twenty-five weighted outcomes and rarity, atomic TNT power/fuse/owner,
 decoy enemy-only one-shot triggers, damage cap and owner/terrain immunity,
 shuffled 3×3 anvil plans, face-connected and atomic transmutation, gravity duration/cooldown,

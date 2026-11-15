@@ -270,6 +270,13 @@ final class PillarsSession implements GameSession {
             player.setFallDistance(0);
         }
 
+        if (mode.flood.get() || rules.modifiers().contains("flood")) {
+            flood = new FloodModifier(world, (int) Math.floor(config.platformHeight.get()) + 1, center, spots);
+            floodPosition = center.clone();
+            Bukkit.getPluginManager().registerEvents(flood, services.plugin());
+            floodTask = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickFlood, 1L, 1L);
+        }
+
         if (mode.bossBar.get()) {
             bossBar = services.bossBars().create(Component.empty(), BossBar.Color.PINK, BossBar.Overlay.NOTCHED_10);
             for (PillarPlayer pillarPlayer : alive) {
@@ -283,7 +290,7 @@ final class PillarsSession implements GameSession {
         timeLeft = mode.timeLimitSeconds();
         itemCountdown = itemCooldown();
         startCountdown = Math.max(0, config.startCountdown.get());
-        started = startCountdown <= 0;
+        started = startCountdown <= 0 && (flood == null || flood.isReady());
         if (!started) {
             for (PillarPlayer pillarPlayer : alive) {
                 pillarPlayer.player().setInvulnerable(true);
@@ -309,12 +316,6 @@ final class PillarsSession implements GameSession {
         if (mode.perks.get() || rules.modifiers().contains("perks")) {
             perks = new PillarsPerks(this, services, world, config.perkChance.get(),
                     () -> create(draw(new ItemPool.GroupState(groups), 1)));
-        }
-        if (mode.flood.get() || rules.modifiers().contains("flood")) {
-            flood = new FloodModifier(world, (int) Math.floor(config.platformHeight.get()) + 1);
-            floodPosition = center.clone();
-            Bukkit.getPluginManager().registerEvents(flood, services.plugin());
-            floodTask = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickFlood, 1L, 1L);
         }
         if (preset != null || mode.id.equals("fusion")) {
             announce(I18n.tr("pillars.play.modifiers.mix", game.modeTitle(modeId).color(mode.accentColor()),
@@ -500,7 +501,11 @@ final class PillarsSession implements GameSession {
     }
 
     private void tickFlood() {
-        if (ending || !started || alive.isEmpty()) return;
+        if (ending || alive.isEmpty()) return;
+        if (!started) {
+            flood.prepare();
+            return;
+        }
         flood.tick();
         // Death callbacks remove from alive synchronously; traverse backwards without copying the roster.
         for (int i = alive.size() - 1; i >= 0; i--) {
@@ -561,6 +566,13 @@ final class PillarsSession implements GameSession {
     private void tickStartCountdown() {
         // Release on the tick after the last number so it stays on screen.
         if (startCountdown <= 0) {
+            if (flood != null && !flood.isReady()) {
+                for (Player player : services.participants().onlinePlayers()) {
+                    player.showTitle(Title.title(I18n.tr("pillars.play.flood.preparing"),
+                            Component.empty(), COUNTDOWN_TIMES));
+                }
+                return;
+            }
             release();
             return;
         }

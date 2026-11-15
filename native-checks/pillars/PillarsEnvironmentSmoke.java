@@ -3,7 +3,7 @@ import java.util.logging.Level;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
-/** Run only on a disposable ASP server: real flood blocks, contact logic and synced sky registries. */
+/** Run only on a disposable ASP server: client-only flood, contact logic and synced sky registries. */
 public final class PillarsEnvironmentSmoke extends JavaPlugin {
     @Override
     public void onEnable() {

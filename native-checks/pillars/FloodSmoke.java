@@ -7,11 +7,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.Set;
+import io.papermc.paper.math.BlockPosition;
+import io.papermc.paper.math.Position;
 import net.kyori.adventure.util.TriState;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
@@ -21,11 +25,11 @@ import org.bukkit.Material;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.Event;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -50,6 +54,17 @@ public final class FloodSmoke {
     private Method closeFlood;
     private Method tickModifier;
     private Method surfaceY;
+    private Method prepareModifier;
+    private Method isReady;
+    private Method lastWorkUnits;
+    private int activeTicks;
+    private long deliveredCells;
+    private long packetCalls;
+    private int maxTickCells;
+    private int maxWorkUnits;
+    private long totalTickNanos;
+    private long maxTickNanos;
+    private int measuredTicks;
     private Server lookupServer;
     private BukkitTask callbackTask;
     private int assertions;
@@ -71,151 +86,209 @@ public final class FloodSmoke {
         try {
             createWorld();
             prepareSession();
-            int x = 0, z = 0;
-            buildBarrierAndBox(x, z);
-            FakePlayer keeper = participant("keeper", x + 2.5, FEET_Y, z + 2.5, true);
-            FakePlayer submerged = participant("submerged", x + 6.5, INITIAL_SURFACE - .25, z + 6.5, true);
-            FakePlayer barrier = participant("barrier", x + 4.5, INITIAL_SURFACE, z + 4.5, true);
-            FakePlayer boxed = participant("boxed", x + 9.5, INITIAL_SURFACE, z + 9.5, true);
-            FakePlayer stationary = participant("stationary", x + 12.5, INITIAL_SURFACE + 1, z + 12.5, true);
-            FakePlayer alreadyDead = participant("already-dead", x + 3.5, INITIAL_SURFACE - 2, z + 3.5, true);
+            buildBarrierAndBox(0, 0);
+            FakePlayer keeper = participant("keeper", 2.5, FEET_Y + 100, 2.5, true);
+            FakePlayer submerged = participant("submerged", 6.5, INITIAL_SURFACE - .25, 6.5, true);
+            FakePlayer barrier = participant("barrier", 4.5, INITIAL_SURFACE, 4.5, true);
+            FakePlayer boxed = participant("boxed", 9.5, INITIAL_SURFACE, 9.5, true);
+            FakePlayer stationary = participant("stationary", 12.5, INITIAL_SURFACE + 1, 12.5, true);
+            FakePlayer beyondBounds = participant("beyond-render-bounds", 1600.5, INITIAL_SURFACE, 1600.5, true);
+            FakePlayer alreadyDead = participant("already-dead", 3.5, INITIAL_SURFACE - 2, 3.5, true);
             alreadyDead.dead = true;
             Object disconnected = pillarPlayer(UUID.randomUUID());
             participants.put((UUID) get(disconnected, "id"), disconnected);
             alive.add(disconnected);
-            FakePlayer spectator = participant("spectator", x + 7.5, INITIAL_SURFACE - 2, z + 7.5, false);
+            FakePlayer spectator = participant("spectator", 7.5, INITIAL_SURFACE - 2, 7.5, false);
             spectator.gameMode = GameMode.SPECTATOR;
-            FakePlayer outsider = player("nonparticipant", x + 5.5, INITIAL_SURFACE - 2, z + 5.5);
+            FakePlayer outsider = player("nonparticipant", 5.5, INITIAL_SURFACE - 2, 5.5);
             prepareLookupServer();
-
-            // The first loaded chunk is first in the production render queue. Its probe avoids the box.
-            Chunk first = world.getLoadedChunks()[0];
-            int probeX = first.getX() * 16 + 1, probeZ = first.getZ() * 16 + 1;
-            require(block(probeX, INITIAL_SURFACE - 1, probeZ) == Material.AIR,
-                    "The isolated void world's initial water probe starts as air");
-            require(surface() == INITIAL_SURFACE,
-                    "The initial lethal/water surface is player feet minus twenty, not platform block height");
-            require(get(session, "started").equals(false), "The fixture begins in the actual session countdown state");
-            for (int i = 0; i < 400; i++) tickSession();
-            require(surface() == INITIAL_SURFACE,
-                    "Two rise periods spent in the match countdown do not advance Flood");
-            require(block(probeX, INITIAL_SURFACE - 1, probeZ) == Material.AIR,
-                    "Countdown callbacks do not paint queued water before gameplay starts");
+            for (FakePlayer viewer : List.copyOf(transport.values())) sendChunk(viewer, 0, 0);
+            for (int cx = -3; cx <= 3; cx++) {
+                for (int cz = -3; cz <= 3; cz++) {
+                    if (cx != 0 || cz != 0) sendChunk(keeper, cx, cz);
+                }
+            }
+            sendChunk(keeper, 4, 0);
+            require(!ready(), "The bounded initial and next surfaces require preparation, not a constructor burst");
+            require(deliveredCells == 0, "Chunk notifications enqueue work rather than repainting synchronously");
+            require(surface() == INITIAL_SURFACE, "The initial lethal surface is player feet minus twenty");
+            long prepStart = System.nanoTime();
+            int readyAtTick = -1;
+            for (int i = 1; i <= 400; i++) {
+                tickSession();
+                if (readyAtTick < 0 && ready()) readyAtTick = i;
+            }
+            long prepNanos = System.nanoTime() - prepStart;
+            require(ready(), "Countdown preparation completes both initial and next-layer caches and initial delivery");
+            require((Integer) invoke(lastWorkUnits, flood) == 0,
+                    "Ready countdowns have finished preparation work, not merely deferred it until the active clock");
+            require(surface() == INITIAL_SURFACE && get(session, "started").equals(false),
+                    "Two rise periods in the real countdown do not advance the active clock");
             require(totalDeaths() == 0 && transport.values().stream().allMatch(p -> p.lookups == 0),
-                    "Countdown callbacks do not even select players for Flood damage");
+                    "Countdown preparation does not select players for damage");
+            require(client(keeper, 1, INITIAL_SURFACE - 1, 1) == Material.WATER
+                            && client(spectator, 1, INITIAL_SURFACE - 1, 1) == Material.WATER
+                            && client(outsider, 1, INITIAL_SURFACE - 1, 1) == Material.WATER,
+                    "Players, spectators and nonparticipants see the initial water before release");
+            require(waterChunks(keeper).size() == 49 && waterChunks(keeper).contains(key(-3, -3))
+                            && waterChunks(keeper).contains(key(3, 3)) && !waterChunks(keeper).contains(key(4, 0)),
+                    "The default visual footprint is exactly seven by seven chunks, even with a sent outside chunk");
+            require(waterCount(keeper) <= 49 * 256 && onlyWaterY(keeper, INITIAL_SURFACE - 1),
+                    "Only one bounded surface, never a submerged volume, is delivered initially");
+            require(client(keeper, 4, INITIAL_SURFACE - 1, 4) != Material.WATER && boxIntact(0, 0),
+                    "Client water preserves real solids and the sealed native box");
+            assertNativeDry(keeper);
+            long idlePackets = packetCalls;
+            for (int i = 0; i < 30; i++) tickSession();
+            require(packetCalls == idlePackets, "A ready countdown does not repeatedly repaint an idle surface");
 
             set(session, "started", true);
             tickSession();
             require(submerged.healthCalls == 1 && submerged.lastHealth == 0,
-                    "An already-submerged live participant dies without moving or producing a move event");
+                    "An already-submerged live participant dies without moving");
             require(barrier.healthCalls == 1 && boxed.healthCalls == 1,
-                    "Standing on a solid barrier or in a sealed dry box is no refuge from the lethal height");
-            require(block(x + 4, INITIAL_SURFACE - 1, z + 4) == Material.STONE,
-                    "The real solid barrier is not replaced with water");
-            require(boxIntact(x, z), "The sealed box's native solid floor, walls and ceiling are retained");
-            require(block(x + 9, INITIAL_SURFACE, z + 9) == Material.AIR,
-                    "The boxed participant is killed even while its actual feet block remains dry air");
+                    "A solid barrier or sealed dry box is no refuge from the lethal height");
+            require(beyondBounds.healthCalls == 1,
+                    "The lethal plane still applies to live players beyond the bounded rendered rectangle");
             require(!alive.contains(submerged.rosterEntry) && !alive.contains(barrier.rosterEntry)
                             && !alive.contains(boxed.rosterEntry),
-                    "Synchronous death removal does not skip neighboring entries in the actual reverse roster traversal");
-
-            for (int activeTick = 2; activeTick <= 199; activeTick++) tickSession();
-            require(surface() == INITIAL_SURFACE, "The plane remains at its initial height through active tick 199");
-            require(block(probeX, INITIAL_SURFACE - 1, probeZ) == Material.WATER,
-                    "The initial rendered source-water block has its top at feet minus twenty");
-            require(block(probeX, INITIAL_SURFACE, probeZ) == Material.AIR,
-                    "No next-layer water is painted before the two-hundredth active tick");
-            require(stationary.healthCalls == 0 && !stationary.dead,
-                    "A motionless player exactly one block above the initial plane survives the first 199 ticks");
+                    "Synchronous death removal does not skip neighbors in the actual reverse roster traversal");
+            require(block(9, INITIAL_SURFACE, 9) == Material.AIR && boxIntact(0, 0),
+                    "Collision kills inside a dry native box without changing its real blocks");
+            advanceTo(199);
+            require(surface() == INITIAL_SURFACE && stationary.healthCalls == 0,
+                    "A stationary player one block above the surface survives through active tick 199");
             require(keeper.healthCalls == 0 && alreadyDead.healthCalls == 0,
                     "Above-water and already-dead roster entries are not killed");
             assertExcluded(spectator, outsider);
-
-            Location stationaryBefore = stationary.feet.clone();
+            Location before = stationary.feet.clone();
+            world.getBlockAt(1, INITIAL_SURFACE - 1, 1).setType(Material.LAPIS_BLOCK, false);
             tickSession();
-            require(surface() == INITIAL_SURFACE + 1, "The first rise happens at exactly active tick 200");
-            require(block(probeX, INITIAL_SURFACE, probeZ) == Material.WATER,
-                    "The native water surface actually rises one block on active tick 200");
-            require(block(probeX, INITIAL_SURFACE + 1, probeZ) == Material.AIR,
-                    "Water stops below the new surface instead of painting an extra block above it");
-            require(stationary.healthCalls == 1 && stationary.lastHealth == 0
-                            && stationary.feet.equals(stationaryBefore),
-                    "The rising plane eliminates the stationary player at equality without any movement callback");
-            require(boxIntact(x, z), "Rising Flood still does not replace any native solid box blocks");
+            require(surface() == INITIAL_SURFACE + 1 && stationary.healthCalls == 1
+                            && stationary.lastHealth == 0 && stationary.feet.equals(before),
+                    "At exactly active tick 200 the rising plane kills a stationary player at equality");
+            advanceTo(250);
+            require(client(keeper, 1, INITIAL_SURFACE - 1, 1) == Material.LAPIS_BLOCK,
+                    "A rise restores the previous fake plane to its CURRENT native block, not cached air");
+            require(client(keeper, 1, INITIAL_SURFACE, 1) == Material.WATER
+                            && onlyWaterY(keeper, INITIAL_SURFACE),
+                    "The delivered water rises to the current plane and removes the old fake plane");
             assertExcluded(spectator, outsider);
+            require(boxIntact(0, 0), "Rising client water retains every native box block");
 
-            // Real ChunkLoadEvent delivery, not an invocation of the listener or a fake chunk.
-            Chunk late = loadFreshChunk(100);
-            int lateX = late.getX() * 16 + 2, lateZ = late.getZ() * 16 + 2;
-            require(block(lateX, INITIAL_SURFACE - 1, lateZ) == Material.AIR
-                            && block(lateX, INITIAL_SURFACE, lateZ) == Material.AIR,
-                    "A genuinely newly loaded chunk starts without either missing water layer");
-            int catchupTicks = (world.getLoadedChunks().length * 512 + 2047) / 2048 + 2;
-            require(catchupTicks < 190, "The isolated fixture can drain its real render queue before a second rise");
-            for (int i = 0; i < catchupTicks; i++) tickSession();
-            require(block(lateX, INITIAL_SURFACE - 1, lateZ) == Material.WATER
-                            && block(lateX, INITIAL_SURFACE, lateZ) == Material.WATER,
-                    "The real chunk-load listener catches a new chunk up across every existing Flood layer");
-            require(surface() == INITIAL_SURFACE + 1 && block(lateX, INITIAL_SURFACE + 1, lateZ) == Material.AIR,
-                    "Chunk catch-up does not advance or overshoot the gameplay surface");
+            // Exercise real Paper packet events; native chunks and terrain remain genuine CraftBukkit objects.
+            FakePlayer late = player("late-viewer", 34.5, FEET_Y + 100, 34.5);
+            sendChunk(late, 2, 2);
+            advanceTo(270);
+            require(client(late, 33, INITIAL_SURFACE, 33) == Material.WATER
+                            && !late.client.containsKey(Position.block(33, INITIAL_SURFACE - 1, 33)),
+                    "Late viewers receive only the current surface, never historical submerged layers");
+            unloadChunk(keeper, 2, 2);
+            long unsentBefore = keeper.cells;
+            advanceTo(280);
+            require(keeper.cells == unsentBefore, "An unsent chunk does not trigger idle packet repaint");
+            sendChunk(keeper, 2, 2);
+            advanceTo(300);
+            require(client(keeper, 33, INITIAL_SURFACE, 33) == Material.WATER
+                            && onlyWaterY(keeper, INITIAL_SURFACE),
+                    "A chunk unload/reload replays only the current surface");
+            long lateBeforeLeave = late.cells;
+            World lobby = originalServer.getWorlds().stream().filter(w -> w != world).findFirst().orElseThrow();
+            late.feet.setWorld(lobby);
+            advanceTo(320);
+            require(late.cells == lateBeforeLeave, "Leaving the world abandons queued or idle client-water work");
+            late.online = false;
+            FakePlayer reconnect = new FakePlayer(late.id, "reconnected-viewer", new Location(world, 34.5, 200, 34.5));
+            transport.put(reconnect.id, reconnect);
+            sendChunk(reconnect, 2, 2);
+            advanceTo(340);
+            require(client(reconnect, 33, INITIAL_SURFACE, 33) == Material.WATER && late.cells == lateBeforeLeave,
+                    "A new connection with the same UUID gets a fresh current surface without sending to the old connection");
+            idlePackets = packetCalls;
+            advanceTo(390);
+            require(packetCalls == idlePackets, "Settled active ticks do not repaint an unchanged plane");
 
-            BlockFromToEvent flowing = new BlockFromToEvent(
-                    world.getBlockAt(lateX, INITIAL_SURFACE, lateZ), BlockFace.DOWN);
-            Bukkit.getPluginManager().callEvent(flowing);
-            require(flowing.isCancelled(), "The live native Flood listener cancels source-water flow below its flat surface");
-            require(registeredFloodListeners() > 0, "The fixture exercises a registered native event listener");
+            // Extra native chunks are deliberately loaded outside the rectangle, never added to viewer work.
+            for (int i = 0; i < 64; i++) {
+                Chunk outside = loadFreshChunk(100 + i);
+                sendChunk(keeper, outside.getX(), outside.getZ());
+            }
+            advanceTo(399);
+            require(packetCalls == idlePackets,
+                    "Loading and sending 64 out-of-bounds native chunks does not repaint or enlarge the current surface");
+            long nativeBefore = nativeFingerprint(79, 106);
+            long benchCells = deliveredCells;
+            long benchPackets = packetCalls;
+            long benchStart = System.nanoTime();
+            int firstBenchTick = activeTicks;
+            advanceTo(25 * 200 + 100);
+            long benchNanos = System.nanoTime() - benchStart;
+            require(surface() == INITIAL_SURFACE + 25, "Twenty-five consecutive rises retain the exact gameplay clock");
+            require(nativeFingerprint(79, 106) == nativeBefore,
+                    "Many consecutive rises, including loaded out-of-bounds chunks, do not mutate actual world blocks");
+            require(waterChunks(keeper).size() == 49 && waterCount(keeper) <= 49 * 256
+                            && onlyWaterY(keeper, surface() - 1),
+                    "After many rises the rendered footprint and stored water remain one bounded current plane");
+            require(maxTickCells <= 2048, "Every prepare/active callback delivers at most 2048 cell updates across all viewers");
+            require(maxWorkUnits <= 2048, "Production preparation plus delivery work stays within its shared per-tick budget");
+            assertNativeDry(keeper);
+            smoke.getLogger().info("PILLARS_FLOOD_COST: countdownPrepareMs=" + prepNanos / 1_000_000.0
+                    + " firstReadyCountdownTick=" + readyAtTick
+                    + " benchmarkTicks=" + (activeTicks - firstBenchTick) + " consecutiveRises=24"
+                    + " loadedChunks=" + world.getLoadedChunks().length + " renderedChunks=" + waterChunks(keeper).size()
+                    + " benchmarkMs=" + benchNanos / 1_000_000.0 + " deliveredCells=" + (deliveredCells - benchCells)
+                    + " packets=" + (packetCalls - benchPackets) + " maxCellsPerTick=" + maxTickCells
+                    + " maxWorkUnitsPerTick=" + maxWorkUnits + " measuredTicks=" + measuredTicks
+                    + " meanCallbackMicros=" + totalTickNanos / (double) measuredTicks / 1_000.0
+                    + " maxCallbackMicros=" + maxTickNanos / 1_000.0);
 
-            // Leave genuine work pending, then close the production component and its gameplay task.
-            Chunk queued = loadFreshChunk(200);
-            int queuedX = queued.getX() * 16 + 2, queuedZ = queued.getZ() * 16 + 2;
-            require(block(queuedX, INITIAL_SURFACE - 1, queuedZ) == Material.AIR,
-                    "There is unpainted native chunk work waiting at shutdown");
+            int currentY = surface() - 1;
+            world.getBlockAt(1, currentY, 1).setType(Material.EMERALD_BLOCK, false);
+            unloadChunk(keeper, 3, 3);
+            FakePlayer queued = player("queued-at-close", 18.5, 200, 18.5);
+            sendChunk(queued, 1, 1);
             callbackTask = Bukkit.getScheduler().runTaskTimer(smoke, () -> {
                 try { tickSession(); }
                 catch (Exception failure) { throw new IllegalStateException("Flood smoke callback", failure); }
             }, 1L, 1L);
             set(session, "floodTask", callbackTask);
-            require(Bukkit.getScheduler().isQueued(callbackTask.getTaskId()),
-                    "Shutdown starts with a genuinely scheduled native gameplay callback");
+            require(Bukkit.getScheduler().isQueued(callbackTask.getTaskId()), "Cleanup starts with a real scheduled callback");
             invoke(closeFlood, session);
             require(callbackTask.isCancelled() && !Bukkit.getScheduler().isQueued(callbackTask.getTaskId())
                             && get(session, "floodTask") == null,
-                    "Production closeFlood cancels and releases the actual scheduled gameplay callback");
-            require(registeredFloodListeners() == 0, "Production close unregisters every Flood gameplay listener");
+                    "Production closeFlood cancels and releases the actual gameplay callback");
+            require(client(keeper, 1, currentY, 1) == Material.EMERALD_BLOCK,
+                    "Close restores a current real block changed underneath the fake water");
+            require(transport.values().stream().filter(p -> p.online && p.feet.getWorld() == world)
+                            .allMatch(p -> waterCount(p) == 0),
+                    "Close removes every still-sent fake water cell for connected world viewers");
+            require(registeredFloodListeners() == 0, "Close unregisters every native Flood packet listener");
             int closedSurface = surface();
             int deathsBeforeClose = totalDeaths();
-            Chunk afterClose = loadFreshChunk(300);
-            int closedX = afterClose.getX() * 16 + 2, closedZ = afterClose.getZ() * 16 + 2;
-            for (int i = 0; i < 250; i++) invoke(tickModifier, flood);
-            require(surface() == closedSurface, "Closed Flood ignores subsequent modifier ticks without advancing time");
-            require(block(queuedX, INITIAL_SURFACE - 1, queuedZ) == Material.AIR
-                            && block(queuedX, INITIAL_SURFACE, queuedZ) == Material.AIR,
-                    "Close abandons the existing paint queue rather than altering blocks after teardown");
-            require(block(closedX, INITIAL_SURFACE - 1, closedZ) == Material.AIR
-                            && block(closedX, INITIAL_SURFACE, closedZ) == Material.AIR,
-                    "Chunks loaded after close cannot enqueue or receive water");
-            // Model the normal ended session as well as testing the scheduler's actual cancellation.
-            // A stale callback must not select a survivor who is now below the former plane.
+            long closedPackets = packetCalls;
+            sendChunk(queued, 0, 1);
+            for (int i = 0; i < 250; i++) {
+                invoke(tickModifier, flood);
+                invoke(prepareModifier, flood);
+            }
+            require(surface() == closedSurface && packetCalls == closedPackets && queued.client.isEmpty(),
+                    "Closed prepare/tick and subsequent chunk events do not advance time or drain abandoned queues");
             set(session, "ending", true);
             keeper.feet.setY(INITIAL_SURFACE - 2);
             for (int i = 0; i < 250; i++) tickSession();
             require(totalDeaths() == deathsBeforeClose && keeper.healthCalls == 0 && surface() == closedSurface,
-                    "Actual ended-session callbacks do not select newly submerged survivors or restart closed Flood");
-            // Idempotence is important when session startup failure and normal teardown overlap.
+                    "Ended-session callbacks cannot select newly submerged survivors or restart Flood");
             invoke(closeFlood, session);
             require(callbackTask.isCancelled() && registeredFloodListeners() == 0,
-                    "Repeated production cleanup leaves callbacks cancelled and listeners removed");
+                    "Repeated cleanup leaves callbacks cancelled and listeners removed");
+            checkExpandedFootprint();
             smoke.getLogger().info("PILLARS_FLOOD_SMOKE_PASS: " + assertions + " assertions");
             return assertions;
         } finally {
-            // Never let a failing assertion leave Bukkit's global server replaced for the next fixture.
             serverField.set(null, originalServer);
             try {
                 if (callbackTask != null) callbackTask.cancel();
-                if (flood != null) {
-                    if (closeFlood != null && session != null) invoke(closeFlood, session);
-                    else ((AutoCloseable) flood).close();
-                }
+                if (flood != null) ((AutoCloseable) flood).close();
             } finally {
                 serverField.set(null, originalServer);
                 if (world != null) {
@@ -238,7 +311,9 @@ public final class FloodSmoke {
                 }));
         require(world != null, "A dedicated disposable native void world is created");
         worldFolder = world.getWorldFolder().toPath();
-        world.getChunkAt(0, 0);
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) world.getChunkAt(x, z);
+        }
         // Warm native block access while Bukkit still contains the genuine CraftServer.
         world.getBlockAt(1, INITIAL_SURFACE - 1, 1).setType(Material.AIR, false);
     }
@@ -256,14 +331,18 @@ public final class FloodSmoke {
         set(session, "startCountdown", 5L);
         set(session, "started", false);
         set(session, "ending", false);
-        Constructor<?> constructor = floodType.getDeclaredConstructor(World.class, int.class);
+        Constructor<?> constructor = floodType.getDeclaredConstructor(World.class, int.class, Location.class, List.class);
         constructor.setAccessible(true);
-        flood = constructor.newInstance(world, FEET_Y);
+        flood = constructor.newInstance(world, FEET_Y, new Location(world, .5, FEET_Y, .5),
+                List.of(new Location(world, -32, FEET_Y, -32), new Location(world, 32, FEET_Y, 32)));
         set(session, "flood", flood);
         tickFlood = method(sessionType, "tickFlood");
         closeFlood = method(sessionType, "closeFlood");
         tickModifier = method(floodType, "tick");
         surfaceY = method(floodType, "surfaceY");
+        prepareModifier = method(floodType, "prepare");
+        isReady = method(floodType, "isReady");
+        lastWorkUnits = method(floodType, "lastWorkUnits");
         Bukkit.getPluginManager().registerEvents((Listener) flood, smoke);
     }
 
@@ -320,7 +399,7 @@ public final class FloodSmoke {
                             && args[0] instanceof UUID id) {
                         FakePlayer player = transport.get(id);
                         if (player != null) player.lookups++;
-                        return player == null ? null : player.proxy;
+                        return player == null || !player.online ? null : player.proxy;
                     }
                     if (operation.getName().equals("getOnlinePlayers")) {
                         return transport.values().stream().map(p -> p.proxy).toList();
@@ -335,9 +414,140 @@ public final class FloodSmoke {
 
     private void tickSession() throws Exception {
         Server previous = Bukkit.getServer();
+        long cellsBefore = deliveredCells;
+        long begin = System.nanoTime();
+        boolean active = (Boolean) get(session, "started") && !(Boolean) get(session, "ending");
         serverField.set(null, lookupServer);
         try { invoke(tickFlood, session); }
         finally { serverField.set(null, previous); }
+        if (active) activeTicks++;
+        recordWork(cellsBefore, begin);
+    }
+
+    private void recordWork(long cellsBefore, long begin) throws Exception {
+        long elapsed = System.nanoTime() - begin;
+        int cells = Math.toIntExact(deliveredCells - cellsBefore);
+        int work = (Integer) invoke(lastWorkUnits, flood);
+        maxTickCells = Math.max(maxTickCells, cells);
+        maxWorkUnits = Math.max(maxWorkUnits, work);
+        totalTickNanos += elapsed;
+        maxTickNanos = Math.max(maxTickNanos, elapsed);
+        measuredTicks++;
+        require(cells <= 2048 && work <= 2048,
+                "Each native callback respects the shared preparation/delivery cell budget");
+    }
+
+    private void advanceTo(int target) throws Exception {
+        while (activeTicks < target) tickSession();
+    }
+
+    private boolean ready() throws Exception { return (Boolean) invoke(isReady, flood); }
+
+    private void sendChunk(FakePlayer viewer, int x, int z) throws Exception {
+        Chunk chunk = world.getChunkAt(x, z);
+        viewer.sentChunks.add(chunk.getChunkKey());
+        packetEvent("PlayerChunkLoadEvent", viewer, chunk);
+    }
+
+    private void unloadChunk(FakePlayer viewer, int x, int z) throws Exception {
+        Chunk chunk = world.getChunkAt(x, z);
+        viewer.sentChunks.remove(chunk.getChunkKey());
+        viewer.client.keySet().removeIf(p -> p.blockX() >> 4 == x && p.blockZ() >> 4 == z);
+        packetEvent("PlayerChunkUnloadEvent", viewer, chunk);
+    }
+
+    private void packetEvent(String name, FakePlayer viewer, Chunk chunk) throws Exception {
+        Class<?> type = Class.forName("io.papermc.paper.event.packet." + name);
+        Constructor<?> constructor = type.getConstructor(Chunk.class, Player.class);
+        Bukkit.getPluginManager().callEvent((Event) constructor.newInstance(chunk, viewer.proxy));
+    }
+
+    private static long key(int x, int z) {
+        return (x & 0xffffffffL) | ((long) z << 32);
+    }
+
+    private Material client(FakePlayer viewer, int x, int y, int z) {
+        BlockData data = viewer.client.get(Position.block(x, y, z));
+        return data == null ? null : data.getMaterial();
+    }
+
+    private int waterCount(FakePlayer viewer) {
+        return (int) viewer.client.values().stream().filter(d -> d.getMaterial() == Material.WATER).count();
+    }
+
+    private Set<Long> waterChunks(FakePlayer viewer) {
+        Set<Long> chunks = new HashSet<>();
+        viewer.client.forEach((position, data) -> {
+            if (data.getMaterial() == Material.WATER) chunks.add(key(position.blockX() >> 4, position.blockZ() >> 4));
+        });
+        return chunks;
+    }
+
+    private boolean onlyWaterY(FakePlayer viewer, int y) {
+        return viewer.client.entrySet().stream().allMatch(e -> e.getValue().getMaterial() != Material.WATER
+                || e.getKey().blockY() == y);
+    }
+
+    private void assertNativeDry(FakePlayer viewer) {
+        boolean dry = viewer.client.entrySet().stream().filter(e -> e.getValue().getMaterial() == Material.WATER)
+                .allMatch(e -> block(e.getKey().blockX(), e.getKey().blockY(), e.getKey().blockZ()).isAir());
+        require(dry, "Every delivered water cell remains native dry air; Flood does not create fluid/light world work");
+    }
+
+    private long nativeFingerprint(int minY, int maxY) {
+        List<Chunk> chunks = new ArrayList<>(List.of(world.getLoadedChunks()));
+        chunks.sort(Comparator.comparingInt(Chunk::getX).thenComparingInt(Chunk::getZ));
+        long fingerprint = 1;
+        for (Chunk chunk : chunks) {
+            fingerprint = fingerprint * 31 + chunk.getChunkKey();
+            for (int y = minY; y <= maxY; y++) {
+                for (int x = 0; x < 16; x++) {
+                    for (int z = 0; z < 16; z++) {
+                        fingerprint = fingerprint * 31 + chunk.getBlock(x, y, z).getBlockData().getAsString().hashCode();
+                    }
+                }
+            }
+        }
+        return fingerprint;
+    }
+
+    private void checkExpandedFootprint() throws Exception {
+        // A second real renderer proves large layouts are expanded, not silently clipped to 5x5 pillar chunks.
+        transport.clear();
+        FakePlayer viewer = player("expanded-layout", .5, 200, .5);
+        Constructor<?> constructor = flood.getClass().getDeclaredConstructor(World.class, int.class, Location.class, List.class);
+        constructor.setAccessible(true);
+        flood = constructor.newInstance(world, FEET_Y, new Location(world, .5, FEET_Y, .5),
+                List.of(new Location(world, -5 * 16 + .5, FEET_Y, 4 * 16 + .5)));
+        Bukkit.getPluginManager().registerEvents((Listener) flood, smoke);
+        for (int x = -7; x <= 4; x++) {
+            for (int z = -4; z <= 6; z++) sendChunk(viewer, x, z);
+        }
+        long begin = System.nanoTime();
+        long cellsBefore = deliveredCells;
+        for (int i = 0; i < 400; i++) {
+            long tickBegin = System.nanoTime();
+            long tickCells = deliveredCells;
+            invoke(prepareModifier, flood);
+            recordWork(tickCells, tickBegin);
+        }
+        require(ready() && surface() == INITIAL_SURFACE,
+                "Expanded initial and next surfaces prepare fully without advancing the active clock");
+        require(waterChunks(viewer).size() == 90 && waterChunks(viewer).contains(key(-6, 5))
+                        && waterChunks(viewer).contains(key(3, -3)),
+                "An outlying pillar expands only the required edges, including its one-chunk margin");
+        require(!waterChunks(viewer).contains(key(-7, 5)) && !waterChunks(viewer).contains(key(-6, 6))
+                        && !waterChunks(viewer).contains(key(4, 0)),
+                "Even the expanded footprint excludes sent chunks beyond its exact bounded rectangle");
+        require(onlyWaterY(viewer, INITIAL_SURFACE - 1) && waterCount(viewer) <= 90 * 256,
+                "Expanded layouts still send one bounded surface rather than a submerged volume");
+        assertNativeDry(viewer);
+        smoke.getLogger().info("PILLARS_FLOOD_EXPANDED_COST: prepareTicks=400 renderedChunks="
+                + waterChunks(viewer).size() + " deliveredCells=" + (deliveredCells - cellsBefore)
+                + " preparationMs=" + (System.nanoTime() - begin) / 1_000_000.0);
+        ((AutoCloseable) flood).close();
+        require(waterCount(viewer) == 0 && registeredFloodListeners() == 0,
+                "Expanded renderer cleanup restores the surface and unregisters packet listeners");
     }
 
     private Chunk loadFreshChunk(int start) {
@@ -372,10 +582,14 @@ public final class FloodSmoke {
     }
 
     private final class FakePlayer {
-        final UUID id = UUID.randomUUID();
+        final UUID id;
         final String name;
         final Location feet;
         final Player proxy;
+        final Set<Long> sentChunks = new HashSet<>();
+        final Map<BlockPosition, BlockData> client = new LinkedHashMap<>();
+        long cells;
+        boolean online = true;
         Object rosterEntry;
         boolean dead;
         GameMode gameMode = GameMode.SURVIVAL;
@@ -384,6 +598,11 @@ public final class FloodSmoke {
         double lastHealth = Double.NaN;
 
         FakePlayer(String name, Location feet) {
+            this(UUID.randomUUID(), name, feet);
+        }
+
+        FakePlayer(UUID id, String name, Location feet) {
+            this.id = id;
             this.name = name;
             this.feet = feet;
             proxy = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[] {Player.class},
@@ -405,7 +624,39 @@ public final class FloodSmoke {
                         }
                         case "getGameMode" -> gameMode;
                         case "isDead" -> dead;
-                        case "isOnline" -> true;
+                        case "isOnline" -> online;
+                        case "getSentChunkKeys" -> {
+                            if (operation.getReturnType().isInstance(sentChunks)) yield Set.copyOf(sentChunks);
+                            // Some Paper releases expose the native fastutil LongSet rather than Set<Long>.
+                            yield Class.forName("it.unimi.dsi.fastutil.longs.LongOpenHashSet")
+                                    .getConstructor(java.util.Collection.class).newInstance(sentChunks);
+                        }
+                        case "isChunkSent" -> {
+                            if (args.length == 1 && args[0] instanceof Number value) {
+                                yield sentChunks.contains(value.longValue());
+                            }
+                            if (args.length == 1 && args[0] instanceof Chunk chunk) {
+                                yield sentChunks.contains(chunk.getChunkKey());
+                            }
+                            yield sentChunks.contains(key(((Number) args[0]).intValue(), ((Number) args[1]).intValue()));
+                        }
+                        case "sendMultiBlockChange" -> {
+                            if (!online || feet.getWorld() != world) {
+                                throw new AssertionError("Flood sends water to an offline or departed connection");
+                            }
+                            Map<?, ?> changes = (Map<?, ?>) args[0];
+                            packetCalls++;
+                            for (var change : changes.entrySet()) {
+                                BlockPosition position = ((Position) change.getKey()).toBlock();
+                                if (!sentChunks.contains(key(position.blockX() >> 4, position.blockZ() >> 4))) {
+                                    throw new AssertionError("Flood sends a block in a chunk not sent to this viewer");
+                                }
+                                client.put(position, ((BlockData) change.getValue()).clone());
+                                cells++;
+                                deliveredCells++;
+                            }
+                            yield null;
+                        }
                         case "getHealth" -> dead ? 0.0 : 20.0;
                         case "setHealth" -> {
                             healthCalls++;
