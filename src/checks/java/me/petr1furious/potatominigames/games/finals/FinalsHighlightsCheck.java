@@ -58,7 +58,39 @@ public final class FinalsHighlightsCheck {
         downedTeammateLabels();
         distantProjection();
         cashboxProjection();
+        enemyHealthVisibility();
         System.out.println("FinalsHighlightsCheck: " + checks + " checks passed");
+    }
+
+    private static void enemyHealthVisibility() throws Exception {
+        Fixture f = new Fixture();
+        Player enemy = f.player("enemy", f.arena.world, 40, 2);
+        Player ally = f.player("ally", f.arena.world, 3, 2);
+        Player outsider = f.player("master", f.arena.world, 4, 2);
+        f.teams.put(enemy.getUniqueId(), 1); f.teams.put(ally.getUniqueId(), 0);
+        f.active.addAll(List.of(enemy.getUniqueId(), ally.getUniqueId(), outsider.getUniqueId()));
+        var players = List.of(f.viewer, enemy, ally, outsider);
+        var labels = FinalsHighlights.enemyHealthMarkers(f.viewer, players, f.teams, p -> true);
+        require(labels.size() == 1 && labels.getFirst().key().equals("enemy-health-" + enemy.getUniqueId()),
+                "Only an opposing contestant receives an HP label, never self, allies or game master");
+        require(plain(labels.getFirst().label(), Locale.ENGLISH).equals("17/25 HP"),
+                "HP is rounded up and includes the current class maximum");
+        require(plain(labels.getFirst().label(), Locale.forLanguageTag("ru")).equals("17/25 ОЗ"),
+                "Enemy HP labels use the viewer's language");
+        require(labels.getFirst().location().distance(enemy.getLocation().clone().add(0, 2.1, 0)) < .000001,
+                "HP label follows the scaled player's actual head height");
+        Method placement = FinalsHighlights.class.getDeclaredMethod("placement", Player.class, FinalsHighlights.Marker.class);
+        placement.setAccessible(true);
+        Object distant = placement.invoke(null, f.viewer, labels.getFirst());
+        require(!(boolean) value(distant, "projected") && value(distant, "block") == null,
+                "Enemy HP never creates a distant direction proxy or glowing body");
+        require(FinalsHighlights.enemyHealthMarkers(f.viewer, players, f.teams, p -> false).isEmpty(),
+                "Expired reveal windows remove enemy HP");
+        f.active.remove(enemy.getUniqueId());
+        require(FinalsHighlights.enemyHealthMarkers(f.viewer, players, f.teams, p -> true).isEmpty(),
+                "Dead opponents have no HP label");
+        require(FinalsHighlights.enemyHealthMarkers(outsider, players, f.teams, p -> true).isEmpty(),
+                "An unteamed spectator does not receive enemy HP labels");
     }
 
     private static void cashboxProjection() throws Exception {
@@ -559,6 +591,10 @@ public final class FinalsHighlightsCheck {
                                     switch (method.getName()) {
                                         case "getUniqueId" -> id;
                                         case "getName", "toString" -> name;
+                                        case "getHealth" -> 16.2;
+                                        case "getMaxHealth" -> 25d;
+                                        case "getHeight" -> 1.8;
+                                        case "canSee" -> true;
                                         case "displayName", "name" -> Component.text(name);
                                         case "getLocation" -> locations.get(id);
                                         case "getEyeLocation" ->

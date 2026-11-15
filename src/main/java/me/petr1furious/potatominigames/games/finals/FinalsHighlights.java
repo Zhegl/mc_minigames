@@ -98,6 +98,14 @@ final class FinalsHighlights {
             long vaultSeconds, long cashoutSeconds, Collection<Player> players,
             Map<UUID, Integer> teams, Function<Player, Location> teammateLocation,
             Predicate<Player> downed, Location cashbox, UUID carrier) {
+        update(arena, phase, activeStation, vaultSeconds, cashoutSeconds, players, teams,
+                teammateLocation, downed, cashbox, carrier, ignored -> false);
+    }
+
+    void update(FinalsMapArena arena, FinalsState.Phase phase, int activeStation,
+            long vaultSeconds, long cashoutSeconds, Collection<Player> players,
+            Map<UUID, Integer> teams, Function<Player, Location> teammateLocation,
+            Predicate<Player> downed, Location cashbox, UUID carrier, Predicate<Player> hitHealth) {
         teammateGlow.update(arena.world(),
                 phase == FinalsState.Phase.FINISHED ? List.of() : players, teams);
         Set<UUID> present = new HashSet<>();
@@ -105,6 +113,7 @@ final class FinalsHighlights {
             List<Marker> markers = new ArrayList<>(markers(arena, phase, activeStation, vaultSeconds, cashoutSeconds,
                     player, players, teams, teammateLocation, downed));
             if (markers.isEmpty()) continue;
+            markers.addAll(enemyHealthMarkers(player, players, teams, hitHealth));
             Marker box = cashboxMarker(phase, cashbox);
             if (box != null && arena.world().equals(cashbox.getWorld())
                     && !player.getUniqueId().equals(carrier)) markers.add(box);
@@ -131,6 +140,27 @@ final class FinalsHighlights {
                 && phase != FinalsState.Phase.CARRIED) return null;
         return new Marker("cashbox", point.clone(), I18n.tr("finals.highlight.cashbox"),
                 NamedTextColor.GOLD, Material.GOLD_BLOCK);
+    }
+
+    @SuppressWarnings("deprecation") // Effective maximum, matching the teammate HP display.
+    static List<Marker> enemyHealthMarkers(Player viewer, Collection<Player> players,
+            Map<UUID, Integer> teams, Predicate<Player> revealed) {
+        Integer team = teams.get(viewer.getUniqueId());
+        if (team == null || !viewer.isOnline()) return List.of();
+        List<Marker> markers = new ArrayList<>();
+        for (Player target : players) {
+            Integer opposing = teams.get(target.getUniqueId());
+            if (opposing == null || team.equals(opposing) || !target.isOnline() || target.isDead()
+                    || !viewer.getWorld().equals(target.getWorld()) || !revealed.test(target)
+                    || !viewer.canSee(target)) continue;
+            int maximum = Math.max(1, (int) Math.ceil(target.getMaxHealth()));
+            int health = Math.clamp((int) Math.ceil(target.getHealth()), 0, maximum);
+            if (health == 0) continue;
+            markers.add(new Marker("enemy-health-" + target.getUniqueId(),
+                    target.getLocation().clone().add(0, target.getHeight() + .3, 0),
+                    I18n.tr("finals.highlight.enemy_health", health, maximum), NamedTextColor.RED, null));
+        }
+        return markers;
     }
 
     static List<Marker> markers(
@@ -264,7 +294,7 @@ final class FinalsHighlights {
                                 entity -> {
                                     configure(entity);
                                     entity.setBillboard(Display.Billboard.CENTER);
-                                    entity.setSeeThrough(true);
+                                    entity.setSeeThrough(!marker.key().startsWith("enemy-health-"));
                                     entity.setShadowed(true);
                                     entity.text(text);
                                 });
@@ -308,6 +338,7 @@ final class FinalsHighlights {
     }
 
     private static Location labelPosition(Marker marker) {
+        if (marker.key().startsWith("enemy-health-")) return marker.location().clone();
         return marker.location().clone().add(0, marker.block() == null ? 2.4 : 2, 0);
     }
 
@@ -315,6 +346,8 @@ final class FinalsHighlights {
         Location eye = viewer.getEyeLocation();
         Location label = labelPosition(marker);
         Location block = marker.block() == null ? null : blockPosition(marker);
+        if (marker.key().startsWith("enemy-health-"))
+            return new Placement(label, null, marker.label(), false);
         int clientDistance = viewer.getClientViewDistance();
         int sendDistance = viewer.getSendViewDistance();
         int chunks = Math.min(clientDistance > 0 ? clientDistance : 2, sendDistance > 0 ? sendDistance : 2);
