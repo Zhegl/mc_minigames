@@ -243,6 +243,12 @@ final class FinalsImportedArena implements FinalsMapArena {
     }
 
     @Override
+    public Double deathHeight() { return map.deathHeight(); }
+
+    @Override
+    public long timeOfDay() { return map.timeOfDay() == null ? 6000 : map.timeOfDay(); }
+
+    @Override
     public Location vault() {
         if (activeVault < 0)
             throw new IllegalStateException("Build the arena before using its vault");

@@ -90,6 +90,7 @@ public final class FinalsSessionCheck {
         vaultMovesOnlyAfterCashout();
         cashoutMovesOnlyAfterPayout();
         fixedCountdownAnchor();
+        mapDeathHeight();
         sharedTeamStartingPoints();
         mapPreparationGates();
         countdownLoadoutWindow();
@@ -1343,6 +1344,29 @@ public final class FinalsSessionCheck {
                 "mutating a source candidate cannot change the cached team start");
     }
 
+    private static void mapDeathHeight() throws Exception {
+        for (Double level : java.util.Arrays.asList(65.0, null, 60.0)) {
+            Fixture f = new Fixture();
+            FinalsMapArena configured = proxy(FinalsMapArena.class, (p, method, args) ->
+                    method.getName().equals("deathHeight") ? level : method.invoke(f.arena, args));
+            set(f.session, "arena", configured);
+            Location at = f.red.location.clone();
+            f.session.onPlayerMove(new PlayerMoveEvent(f.red.player, at, at.clone()));
+            check(f.red.health == 20, "Standing exactly at or above the death height is safe");
+            Location below = at.clone(); below.setY(64.99);
+            f.session.onPlayerMove(new PlayerMoveEvent(f.red.player, at, below));
+            check(f.red.health == (level != null && level == 65 ? 0 : 20),
+                    "Only the selected map's death height kills a player below it");
+        }
+        Fixture frozen = new Fixture();
+        set(frozen.session, "arena", proxy(FinalsMapArena.class, (p, method, args) ->
+                method.getName().equals("deathHeight") ? 66d : method.invoke(frozen.arena, args)));
+        callPlayerMethod(frozen.session, "freeze", frozen.red.player);
+        frozen.session.onPlayerMove(new PlayerMoveEvent(frozen.red.player, frozen.red.location,
+                frozen.red.location.clone().subtract(0, 1, 0)));
+        check(frozen.red.health == 20, "Countdown freeze takes precedence over the death floor");
+    }
+
     private static void fixedCountdownAnchor() throws Exception {
         Fixture f = new Fixture();
         f.red.walkSpeed = .3f;
@@ -1514,6 +1538,7 @@ public final class FinalsSessionCheck {
         final Player player;
         Location location;
         boolean dead;
+        double health = 20;
         Player killer;
         int sounds;
         int slot;
@@ -1590,6 +1615,7 @@ public final class FinalsSessionCheck {
                                             yield null;
                                         }
                                         case "isDead" -> dead;
+                                        case "setHealth" -> { health = (double) args[0]; yield null; }
                                         case "getKiller" -> killer;
                                         case "playSound" -> { sounds++; yield null; }
                                         case "setNoDamageTicks" -> null;

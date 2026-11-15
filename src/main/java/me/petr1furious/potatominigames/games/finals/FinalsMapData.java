@@ -149,6 +149,8 @@ final class FinalsMapData {
         String world;
         String folder;
         boolean imported;
+        Double deathHeight;
+        Integer timeOfDay;
         Point first, second;
         List<Point> vaults = new ArrayList<>();
         List<Point> cashouts = new ArrayList<>();
@@ -174,6 +176,8 @@ final class FinalsMapData {
             result.world = world;
             result.folder = folder;
             result.imported = imported;
+            result.deathHeight = deathHeight;
+            result.timeOfDay = timeOfDay;
             result.first = first;
             result.second = second;
             result.vaults = new ArrayList<>(vaults);
@@ -224,6 +228,8 @@ final class FinalsMapData {
         }
 
         void write(ConfigurationSection section) {
+            section.set("death-height", deathHeight);
+            section.set("time-of-day", timeOfDay);
             section.set("jump-pads", null);
             for (int i = 0; i < jumpPads.size(); i++) {
                 JumpPad pad = jumpPads.get(i);
@@ -257,6 +263,19 @@ final class FinalsMapData {
             draft.world = section.getString("world");
             draft.folder = section.getString("folder");
             draft.imported = section.getBoolean("imported");
+            if (section.contains("time-of-day")) {
+                Object time = section.get("time-of-day");
+                if (!(time instanceof Number number) || number.doubleValue() != number.intValue()
+                        || number.intValue() < 0 || number.intValue() > 23999)
+                    throw FinalsMaps.failure("time_invalid");
+                draft.timeOfDay = number.intValue();
+            }
+            if (section.contains("death-height")) {
+                Object height = section.get("death-height");
+                if (!(height instanceof Number number) || !Double.isFinite(number.doubleValue()))
+                    throw FinalsMaps.failure("death_height_invalid");
+                draft.deathHeight = number.doubleValue();
+            }
             draft.first = Point.read(section, "pos1");
             draft.second = Point.read(section, "pos2");
             ConfigurationSection pads = section.getConfigurationSection("jump-pads");
@@ -313,12 +332,24 @@ final class FinalsMapData {
             List<Point> vaults,
             List<Point> cashouts,
             List<JumpPad> jumpPads,
+            Double deathHeight,
+            Integer timeOfDay,
             String template) {
+        Saved(Bounds bounds, List<Point> red, List<Point> blue, List<Point> vaults,
+                List<Point> cashouts, List<JumpPad> jumpPads, Double deathHeight, String template) {
+            this(bounds, red, blue, vaults, cashouts, jumpPads, deathHeight, null, template);
+        }
+        Saved(Bounds bounds, List<Point> red, List<Point> blue, List<Point> vaults,
+                List<Point> cashouts, List<JumpPad> jumpPads, String template) {
+            this(bounds, red, blue, vaults, cashouts, jumpPads, null, template);
+        }
         Saved(Bounds bounds, List<Point> red, List<Point> blue, List<Point> vaults,
                 List<Point> cashouts, String template) {
             this(bounds, red, blue, vaults, cashouts, List.of(), template);
         }
         Saved {
+            if (timeOfDay != null && (timeOfDay < 0 || timeOfDay > 23999)) throw FinalsMaps.failure("time_invalid");
+            if (deathHeight != null && !Double.isFinite(deathHeight)) throw FinalsMaps.failure("death_height_invalid");
             red = List.copyOf(red);
             blue = List.copyOf(blue);
             vaults = List.copyOf(vaults);
@@ -380,7 +411,7 @@ final class FinalsMapData {
                 for (Point blue : draft.blue) {
                     if (red.distanceSquared(blue) < 16) throw FinalsMaps.failure("teams_close");
                 }
-            return new Saved(bounds, draft.red, draft.blue, draft.vaults, draft.cashouts, draft.jumpPads, template);
+            return new Saved(bounds, draft.red, draft.blue, draft.vaults, draft.cashouts, draft.jumpPads, draft.deathHeight, draft.timeOfDay, template);
         }
 
         private static void invalidPoints(

@@ -308,6 +308,20 @@ points and destinations. Targeted launches guide players along an arc using velo
 and stop when blocked by terrain. They do not teleport through buildings. Old maps
 without configured pads continue to work.
 
+Set a map's instant-death floor with `/finals map deathheight NAME 40`: contestants
+die when their feet move below Y=40 (exactly Y=40 is safe). Use
+`/finals map deathheight NAME off` to remove this custom floor, then
+`/finals map save NAME` to publish the change for future matches. `/finals map info NAME`
+shows the draft setting. Each playable map stores its own value, including areas
+created from the same imported world; changing map A never changes map B.
+Existing maps default to off, while normal arena-boundary deaths still apply.
+
+Use `/finals map time NAME night` to set the match's fixed time of day. Presets are
+`sunrise` (0), `day` (1000), `noon` (6000), `sunset` (12000), `night` (13000), and
+`midnight` (18000); any whole tick value from 0 to 23999 also works. `default`
+restores noon. Save the map afterward. Like death height, time belongs to each
+playable map and never changes the shared editor world or another area's setting.
+
 Native snapshots retain block data, chest
 contents and sign text, but exclude entities. Draft edits do not change the
 last saved snapshot until another successful save. Match destruction never edits

@@ -643,7 +643,7 @@ final class FinalsSession implements GameSession {
         world = arena.world();
         services.arena().applyStandardGameRules(world);
         world.setDifficulty(Difficulty.NORMAL);
-        world.setTime(6000);
+        world.setTime(arena.timeOfDay());
         world.setStorm(false);
         world.setGameRule(GameRules.PVP, true);
         world.setGameRule(GameRules.IMMEDIATE_RESPAWN, false);
@@ -1993,7 +1993,8 @@ final class FinalsSession implements GameSession {
             to.setPitch(event.getTo().getPitch());
             event.setTo(to);
             event.getPlayer().setVelocity(new Vector());
-        } else if (active(event.getPlayer()) && !arena.contains(event.getTo())) {
+        } else if (active(event.getPlayer()) && (!arena.contains(event.getTo())
+                || (arena.deathHeight() != null && event.getTo().getY() < arena.deathHeight()))) {
             // Protected floor prevents accidental void deaths; escaping the bounds costs a life.
             dropCashbox(event.getPlayer());
             event.getPlayer().setHealth(0);
