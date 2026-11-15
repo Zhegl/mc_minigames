@@ -47,13 +47,15 @@ sourceSets.main {
 
 tasks.processResources {
     val pluginVersion = version.toString()
+    val apiVersion = mc
     from("i18n/locales") {
         into("i18n")
     }
-    // Declared, or a version bump leaves the old plugin.yml in place.
+    // Declared, or a version bump leaves stale plugin metadata in place.
     inputs.property("version", pluginVersion)
-    filesMatching("plugin.yml") {
-        expand("version" to pluginVersion)
+    inputs.property("apiVersion", apiVersion)
+    filesMatching("paper-plugin.yml") {
+        expand("version" to pluginVersion, "apiVersion" to apiVersion)
     }
 }
 
@@ -91,6 +93,18 @@ val checkPillarsAdhd by tasks.registering(JavaExec::class) {
     dependsOn(checks.classesTaskName)
     classpath = checks.runtimeClasspath
     mainClass.set("me.petr1furious.potatominigames.games.pillars.AdhdModifierCheck")
+}
+
+val checkPillarsFlood by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.FloodModifierCheck")
+}
+
+val checkPillarsSky by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.PillarsSkyCheck")
 }
 
 val checkPartyPvp by tasks.registering(JavaExec::class) {
@@ -148,7 +162,7 @@ val checkPillarsPerks by tasks.registering(JavaExec::class) {
 }
 
 tasks.check {
-    dependsOn(checkPillarsPresets, checkSniperDuel, checkPillarsMath, checkPillarsShuffle, checkPillarsAdhd,
+    dependsOn(checkPillarsPresets, checkSniperDuel, checkPillarsMath, checkPillarsShuffle, checkPillarsAdhd, checkPillarsFlood, checkPillarsSky,
             checkPartyPvp, checkPartySumo, checkPartyArmsRace, checkPartySurvival, checkPartyRuntime, checkPvpClasses, checkPartyGroupCombat, checkPartyMiners, checkPillarsPerks)
 }
 

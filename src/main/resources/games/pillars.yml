@@ -142,6 +142,15 @@ modes:
     bossBar: true
     layout: circular
     perks: true
+  flood:
+    cooldownSeconds: 5
+    timeLimit: 5min
+    color: '#3399FF'
+    scoreboard: true
+    actionBar: false
+    bossBar: true
+    layout: circular
+    flood: true
   fusion:
     cooldownSeconds: 5
     timeLimit: 8min
@@ -263,28 +272,27 @@ items:
 
 # The arenas, one picked at random for each game. Each plays in a fresh copy of its slime
 # template (slime_worlds/pillars_<name>.slime unless `template:` says otherwise), at x/z.
-# `time` is a tick of the day or day/noon/sunset/night/midnight/sunrise, and an optional
-# `gamerules:` section sets game rules for the arena's games only. Time does not advance
-# unless an arena sets `advance_time: true` there.
+# An optional `gamerules:` section sets rules for the arena's games only.
+# Every game independently rolls a fixed day/night/custom sky; arena time is not used.
 # `/pillars arena import all` cuts the templates out of the old `pillars` world.
 arenas:
-  ice: {x: -704, z: -528, time: night}
-  cobble: {x: -352, z: -528, time: midnight}
+  ice: {x: -704, z: -528}
+  cobble: {x: -352, z: -528}
   lodestone: {x: 0, z: -528}
   grass: {x: 352, z: -528}
   magma: {x: 704, z: -528}
   honey: {x: -704, z: -176}
-  paleoak: {x: -352, z: -176, time: midnight}
-  soul: {x: 0, z: -176, time: midnight}
+  paleoak: {x: -352, z: -176}
+  soul: {x: 0, z: -176}
   snow: {x: 352, z: -176}
   bedrock: {x: 704, z: -176}
   slime: {x: -704, z: 176}
   tnt: {x: -352, z: 176}
-  coal: {x: 0, z: 176, time: midnight}
+  coal: {x: 0, z: 176}
   sulfur: {x: 352, z: 176}
   oak: {x: 704, z: 176}
   air: {x: -704, z: 528}
-  moss: {x: -352, z: 528, time: midnight}
+  moss: {x: -352, z: 528}
   resin: {x: 0, z: 528}
-  copper: {x: 352, z: 528, time: midnight}
-  purpur: {x: 704, z: 528, time: midnight}
+  copper: {x: 352, z: 528}
+  purpur: {x: 704, z: 528}

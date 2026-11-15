@@ -13,7 +13,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `perks`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `perks`, `flood`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. `flood` adds rising lethal water that shelters cannot block. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
@@ -1434,7 +1434,7 @@ are left intact. SUPERHOT cannot return frozen items from a previous set.
 
 `fusion` rolls its rules every game: chaos (random layout, chaos-speed items), shuffle (at
 item-shuffle's own pace outside ADHD bursts), tactical (with shuffle, everyone gets the same
-set), big_house and adhd, each with a 50% chance, perks with a 50% chance, and party or rave with 25% each. The values come from
+set), big_house, adhd, perks and flood, each with a 50% chance, and party or rave with 25% each. The values come from
 those modes' settings. The roll is announced at the start and shown in the summary.
 
 ## Pillars ADHD / СДВГ
@@ -1467,6 +1467,45 @@ Burst timing lives in `games/pillars.yml`: `adhd.meanSeconds` and
 /pillars test adhd
 ```
 
+## Pillars Flood
+
+`/play pillars flood` starts ordinary Pillars with a rising lethal flood. Add `flood`
+to a saved mix (`/pillars preset save rising tactical flood`), or enable it on another
+mode with `/pillars config modes.<mode>.flood true`. Fusion rolls it independently
+with a 50% chance.
+
+The initial water surface is **20 blocks below the player's feet on the pillar**.
+After the opening countdown, it rises **one block every ten seconds**. Contact with
+the surface or anything below it kills an alive participant, even if they stand
+still inside a solid box. Blocks, roofs, doors, sponges and temporary perk
+invulnerability do not provide shelter. Spectators and other game worlds are unaffected.
+
+Water is rendered with real source blocks in already loaded arena chunks. Solid
+terrain is retained, while the lethal height crosses it; no chunks are generated
+just for the flood. Layer painting has a fixed per-tick budget. The flood clock,
+listeners and pending work stop on failed startup or session end, and the core
+discards the temporary match world without changing its template.
+
+## Passive Pillars sky
+
+Every Pillars game, including built-in modes and player presets, independently
+chooses **day**, **night** or **custom sky** with a **one-third probability each**.
+The selected sky remains fixed for that game, with clear weather. Custom skies
+randomize the sky colour and star brightness using vanilla Minecraft environment
+attributes, without a client mod or resource pack. Stars themselves retain their
+vanilla colour; Minecraft does not expose an independent star-colour attribute.
+
+The custom draw independently selects one of 64 sky hues and one of four star
+brightness values (0.15, 0.30, 0.70, 0.90). A Paper bootstrap discovers the generated
+256-profile dimension/timeline datapack before registries are synchronized to
+vanilla clients. Only the match clone switches to the selected registered profile;
+no shared vanilla registry value or biome is edited.
+
+Sky selection replaces per-arena `time` and `advance_time` settings. Other arena
+gamerules still apply, but cannot override the passive sky's fixed clock/weather.
+Only the disposable Pillars world changes: the lobby, templates and other games
+retain their own settings.
+
 ## Player Pillars presets
 
 Every player can save up to **five** named, fixed Fusion mixes. Names are shared
@@ -1480,7 +1519,7 @@ Ownership and the limit use the player's UUID, including across restarts.
 /pillars preset delete duel
 ```
 
-Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`, `perks`.
+Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`, `perks`, `flood`.
 `party` and `rave` are mutually exclusive. With no modifiers, `save` creates plain
 Pillars with Fusion's base settings. Unlike Fusion, the selected modifiers always
 apply: there is no random roll. Their settings and precedence are the same as
@@ -1700,7 +1739,7 @@ segment at a time.
 /pillars config modes.chaos                  # one section
 /pillars config modes.chaos.layout random    # set: prints `path: old → new`
 /pillars config modes.chaos.layout default   # reset a declared setting, removing it from the file
-/pillars config arenas.lodestone.time night
+/pillars config modes.original.flood true   # enable rising lethal water on this mode
 /pillars config items.blacklist add bedrock  # flat lists: add / remove <entry>
 /pm config queues.pillars.chaos.maxPlayers 12
 /pm config gadgets.himars.cooldown 5
@@ -2105,6 +2144,10 @@ all sixteen spawn points, including the farthest-from-enemies selection.
 elimination and one-shot timeout penalties.
 `checkPillarsShuffle` checks dropped items and container stashes, cursor/crafting
 cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
+`checkPillarsFlood` checks exact rise boundaries and lethal contact without relying
+on player movement. `checkPillarsSky` checks equal profile selection and bounded
+custom colours/star intensity; `native-checks/pillars` exercises real water blocks,
+session contact/cleanup and the registered native sky data on a disposable server.
 `checkPillarsPerks` checks all twenty-five weighted outcomes and rarity, atomic TNT power/fuse/owner,
 decoy enemy-only one-shot triggers, damage cap and owner/terrain immunity,
 shuffled 3×3 anvil plans, face-connected and atomic transmutation, gravity duration/cooldown,

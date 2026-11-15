@@ -1,0 +1,5 @@
+name: PillarsEnvironmentSmoke
+version: '1.0'
+main: PillarsEnvironmentSmoke
+api-version: '26.3'
+depend: [PotatoMinigames]

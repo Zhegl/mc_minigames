@@ -49,8 +49,11 @@ public final class PillarsPresetsCheck {
                     () -> store.save(BOB, "Bob", "invalid", List.of("lucky")));
             store.delete(ALICE, "alice4");
             store.save(ALICE, "Alice", "replacement", List.of("big_house", "adhd"));
+            store.save(BOB, "Bob", "rising", List.of("flood", "tactical"));
             PillarsPresets loaded = new PillarsPresets(file, RESERVED);
             check(loaded.all().equals(store.all()), "Owners, names and modifiers must survive reload");
+            check(loaded.find("rising").modifiers().containsAll(List.of("flood", "tactical")),
+                    "Flood combines with existing modifiers and survives reload");
             expect(IllegalArgumentException.class,
                     () -> loaded.save(ALICE, "Alice", "sixth", List.of("chaos")));
             expect(UnsupportedOperationException.class, () -> loaded.find("mix").modifiers().add("chaos"));
