@@ -50,6 +50,7 @@ final class PerkItems {
             meta.getPersistentDataContainer().set(CHARGES, PersistentDataType.INTEGER, type.charges);
             meta.setEnchantmentGlintOverride(true); meta.setMaxStackSize(1); meta.setUnbreakable(true);
             if (type == PerkType.BOW) meta.addEnchant(Enchantment.PUNCH, 100, true);
+            if (type == PerkType.DRONE) meta.addEnchant(Enchantment.INFINITY, 1, true);
         });
         if (type == PerkType.BREAK) item.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
                 .consumeSeconds(3600).animation(ItemUseAnimation.BLOCK).hasConsumeParticles(false).build());
@@ -72,7 +73,7 @@ final class PerkItems {
             meta.displayName(title.color(color).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
             for (Component line : type.instructions) lore.add(line.color(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-            lore.add((type == PerkType.GRAVITY ? I18n.tr("pillars.effects.item.reusable")
+            lore.add(((type == PerkType.GRAVITY || type == PerkType.DRONE) ? I18n.tr("pillars.effects.item.reusable")
                     : I18n.tr("pillars.effects.item.charges", charges(item))).color(NamedTextColor.YELLOW)
                     .decoration(TextDecoration.ITALIC, false));
             if (type == PerkType.PLANKS && number(item, STARTED, 0) != 0)
@@ -81,7 +82,7 @@ final class PerkItems {
         });
     }
     static List<ItemStack> bundle(PerkType type) {
-        return type == PerkType.BOW ? List.of(create(type), new ItemStack(org.bukkit.Material.ARROW)) : List.of(create(type));
+        return (type == PerkType.BOW || type == PerkType.DRONE || type == PerkType.PUPPET) ? List.of(create(type), new ItemStack(org.bukkit.Material.ARROW)) : List.of(create(type));
     }
     static ItemStack cursedPumpkin() {
         ItemStack item = new ItemStack(org.bukkit.Material.CARVED_PUMPKIN);

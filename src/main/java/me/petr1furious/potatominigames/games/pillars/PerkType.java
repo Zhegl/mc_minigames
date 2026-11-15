@@ -32,7 +32,19 @@ enum PerkType {
     GRAVITY(Material.ENDER_EYE, "gravity", 1, false, 2),
     FAKE_BLOCK(Material.OAK_PLANKS, "fake_block", 4, false, 2),
     PILLS(Material.SUGAR, "pills", 1, false, 2),
-    DECOY(Material.ZOMBIE_SPAWN_EGG, "decoy", 1, false, 3);
+    DECOY(Material.ZOMBIE_SPAWN_EGG, "decoy", 1, false, 3),
+    TREE(Material.OAK_SAPLING, "tree", 1, false, 1),
+    AQUARIUM(Material.PUFFERFISH_BUCKET, "aquarium", 1, false, 1),
+    DRONE(Material.BOW, "drone", 1, false, 2),
+    AURA(Material.ECHO_SHARD, "aura", 1, false, 1),
+    INVULNERABILITY(Material.TOTEM_OF_UNDYING, "invulnerability", 1, false, 1),
+    MORPH(Material.COW_SPAWN_EGG, "morph", 1, false, 1),
+    METRO(Material.POWERED_RAIL, "metro", 1, false, 1),
+    PUPPET(Material.BOW, "puppet", 1, false, 2),
+    GENIE(Material.OAK_SIGN, "genie", 1, false, 2),
+    INFECTION(Material.SLIME_BLOCK, "infection", 1, false, 2),
+    LIGHTNING(Material.LIGHTNING_ROD, "lightning", 1, false, 1),
+    APOCALYPSE(Material.ROTTEN_FLESH, "apocalypse", 1, false, 2);
 
     final Material material;
     final Component title;

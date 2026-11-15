@@ -101,6 +101,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     private final Supplier<List<ItemStack>> ordinaryDraw;
     private final PerkTerrain terrain;
     private final PerkIllusions illusions;
+    private final PerkExpansion expansion;
     private final Map<UUID, Gift> gifts = new HashMap<>();
     private final Map<UUID, PerkRules.History<Location>> history = new HashMap<>();
     private final Map<UUID, Frozen> frozen = new HashMap<>();
@@ -129,6 +130,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         this.session = session; this.services = services; this.world = world; dropChance = chance; ordinaryDraw = draw;
         terrain = new PerkTerrain(world);
         illusions = new PerkIllusions(world);
+        expansion = new PerkExpansion(this, services.plugin(), world, session::perkPlayers, terrain);
         Bukkit.getPluginManager().registerEvents(this, services.plugin());
         ticker = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickSafely, 1, 1);
     }
@@ -140,15 +142,16 @@ final class PillarsPerks implements Listener, AutoCloseable {
         }
     }
     private boolean scoped(Player p) { return !closed && p.getWorld().equals(world) && session.isParticipant(p); }
-    private boolean alive(Player p) { return scoped(p) && session.hasStarted() && session.isInGame(p) && !p.isDead() && p.isOnline(); }
-    private boolean active(Player p) { return alive(p) && p.getGameMode() == GameMode.SURVIVAL && !blocked(p); }
-    private boolean blocked(Player p) { return frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()); }
-    boolean immuneToVoid(Player p) { return !closed && blocked(p); }
+    boolean alive(Player p) { return scoped(p) && session.hasStarted() && session.isInGame(p) && !p.isDead() && p.isOnline(); }
+    boolean active(Player p) { return alive(p) && p.getGameMode() == GameMode.SURVIVAL && !blocked(p); }
+    private boolean blocked(Player p) { return expansion.blocked(p) || frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()); }
+    boolean immuneToVoid(Player p) { return !closed && (frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()) || expansion.invulnerable(p)); }
     boolean isGhost(Player p) { return ghosts.containsKey(p.getUniqueId()); }
-    private static void message(Player p, String key, Object... args) {
+    static void message(Player p, String key, Object... args) {
         p.sendActionBar(I18n.tr("pillars.effects.feedback." + key, args).color(NamedTextColor.LIGHT_PURPLE));
     }
-    private boolean fits(Location at) {
+    double deathHeight() { return session.deathHeight(); }
+    boolean fits(Location at) {
         if (!at.getWorld().equals(world) || at.getY() < session.deathHeight() || at.getY() >= world.getMaxHeight() - 2
                 || !world.getWorldBorder().isInside(at)) return false;
         // Check the whole player body, not just the centre of its feet/head blocks.
@@ -158,7 +161,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
                     if (!world.getBlockAt(x, y, z).isPassable()) return false;
         return true;
     }
-    private void teleport(Player p, Location at) {
+    void teleport(Player p, Location at) {
         internalTeleport = true;
         try { p.teleport(at); } finally { internalTeleport = false; }
         p.setVelocity(new Vector()); p.setFallDistance(0);
@@ -180,7 +183,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
             List<ItemStack> bundle = new ArrayList<>();
             if (kind != null) PerkItems.tag(item, PerkItems.SERIAL, UUID.randomUUID().toString());
             bundle.add(item);
-            if (kind == PerkType.BOW && i + 1 < stacks.size() && stacks.get(i + 1).getType() == Material.ARROW) bundle.add(stacks.get(++i).clone());
+            if ((kind == PerkType.BOW || kind == PerkType.DRONE || kind == PerkType.PUPPET) && i + 1 < stacks.size() && stacks.get(i + 1).getType() == Material.ARROW) bundle.add(stacks.get(++i).clone());
             String id = UUID.randomUUID().toString();
             for (ItemStack part : bundle) {
                 PerkItems.tag(part, PerkItems.GIFT, id);
@@ -222,7 +225,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     boolean give(Player p, PerkType type) { if (!active(p)) return false; grant(p, PerkItems.bundle(type)); return true; }
     private static boolean same(ItemStack a, String serial) { return serial != null && serial.equals(PerkItems.string(a, PerkItems.SERIAL)); }
-    private void consume(Player p, EquipmentSlot slot, String serial) {
+    void consume(Player p, EquipmentSlot slot, String serial) {
         ItemStack held = p.getInventory().getItem(slot);
         if (!same(held, serial)) return;
         int remaining = PerkItems.charges(held) - 1;
@@ -257,6 +260,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         tick++;
         terrain.tick(tick);
         illusions.tick();
+        expansion.tick(tick);
         decoys.values().removeIf(d -> {
             if (d.entity().isValid() && tick < d.until()) return false;
             d.entity().remove(); return true;
@@ -418,7 +422,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         terrain.cage(state.at(), state.until());
         p.sendMessage(I18n.tr("pillars.effects.feedback.frozen").color(NamedTextColor.AQUA));
     }
-    private Player rayTarget(Player p, double distance) {
+    Player rayTarget(Player p, double distance) {
         RayTraceResult ray = world.rayTrace(p.getEyeLocation(), p.getEyeLocation().getDirection(), distance,
                 FluidCollisionMode.NEVER, true, .2, e -> e instanceof Player other && !other.equals(p) && active(other));
         return ray != null && ray.getHitEntity() instanceof Player target ? target : null;
@@ -453,7 +457,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         for (ItemStack leftover : thief.getInventory().addItem(PerkItems.forPlayer(taken, thief)).values()) world.dropItem(thief.getLocation(), leftover);
         hook.remove(); message(thief, "steal_success"); message(victim, "steal_victim");
     }
-    private void track(Entity entity, Player p, long lifetime) {
+    void track(Entity entity, Player p, long lifetime) {
         entity.setPersistent(false); entities.add(new Tracked(entity, p.getUniqueId(), tick + lifetime));
     }
     private boolean spawnRoom(Player p, int amount) {
@@ -489,7 +493,9 @@ final class PillarsPerks implements Listener, AutoCloseable {
     private boolean transmute(Player p) {
         RayTraceResult hit = p.rayTraceBlocks(PerkRules.BUILD_RANGE, FluidCollisionMode.NEVER);
         if (hit == null || hit.getHitBlock() == null) { message(p, "transmute_target"); return false; }
-        int count = terrain.transmute(hit.getHitBlock(), tick, ThreadLocalRandom.current());
+        int count = terrain.transmute(hit.getHitBlock(), tick, ThreadLocalRandom.current(),
+                p.getInventory().getItemInOffHand().getType().isBlock() && !p.getInventory().getItemInOffHand().getType().isAir()
+                        ? p.getInventory().getItemInOffHand().getType() : null);
         if (count <= 0) {
             message(p, count < 0 ? "transmute_too_large" : "block_protected");
             return false;
@@ -648,6 +654,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     void disconnected(Player p) { playerGone(p, true); }
     void playerGone(Player p) { playerGone(p, false); }
     private void playerGone(Player p, boolean keepFreeze) {
+        expansion.playerGone(p);
         UUID id = p.getUniqueId(); endGhost(id, p); if (!keepFreeze) frozen.remove(id); channels.remove(id); history.remove(id); gifts.remove(id);
         endGravity(id, p);
         phantomNoises.remove(id);
@@ -677,7 +684,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         }
         if (e.getHand() != EquipmentSlot.HAND) { e.setCancelled(true); return; }
         if (PerkItems.charges(e.getItem()) <= 0) { e.setCancelled(true); return; }
-        if (type == PerkType.BOW || type == PerkType.STEAL) {
+        if (type == PerkType.BOW || type == PerkType.DRONE || type == PerkType.PUPPET || type == PerkType.STEAL) {
             e.setUseInteractedBlock(Event.Result.DENY); e.setUseItemInHand(Event.Result.ALLOW); return;
         }
         String serial = PerkItems.string(e.getItem(), PerkItems.SERIAL);
@@ -742,9 +749,9 @@ final class PillarsPerks implements Listener, AutoCloseable {
                 if (!ball.isValid()) yield false;
                 track(ball, p, 120); yield true;
             }
-            default -> false;
+            default -> expansion.use(p, type, e);
         };
-        if (success) { if (type != PerkType.GRAVITY) consumeHand(p, serial); usedAt.put(p.getUniqueId(), tick); }
+        if (success) { if (type != PerkType.GRAVITY && type != PerkType.DRONE) consumeHand(p, serial); usedAt.put(p.getUniqueId(), tick); }
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void stopUsing(PlayerStopUsingItemEvent e) { if (scoped(e.getPlayer())) channels.remove(e.getPlayer().getUniqueId()); }
@@ -799,6 +806,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         if (blocked(p)) { e.setCancelled(true); return; }
         PerkType type = PerkItems.type(e.getBow());
         if (type == PerkType.CROSSBOW) { e.setCancelled(true); return; }
+        if (type == PerkType.DRONE || type == PerkType.PUPPET) { expansion.bow(e, p, type); return; }
         if (type != PerkType.BOW) return;
         if (!active(p)) { e.setCancelled(true); return; }
         if (!spawnRoom(p, 1)) { e.setCancelled(true); return; }
@@ -826,8 +834,8 @@ final class PillarsPerks implements Listener, AutoCloseable {
             if (decoyBlastOwner.equals(p.getUniqueId())) e.setCancelled(true);
             else e.setDamage(PerkRules.decoyDamage(e.getDamage()));
         }
-        if (blocked(p)) e.setCancelled(true);
-        if (e instanceof EntityDamageByEntityEvent hit) { Player source = attacker(hit.getDamager()); if (source != null && scoped(source) && blocked(source)) e.setCancelled(true); }
+        if (frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()) || expansion.invulnerable(p)) e.setCancelled(true);
+        if (e instanceof EntityDamageByEntityEvent hit) { Player source = attacker(hit.getDamager()); if (source != null && scoped(source) && (frozen.containsKey(source.getUniqueId()) || ghosts.containsKey(source.getUniqueId()))) e.setCancelled(true); }
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void anchoredHit(EntityDamageByEntityEvent e) {
@@ -841,20 +849,22 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void knockback(io.papermc.paper.event.entity.EntityKnockbackEvent e) {
-        if (e.getEntity() instanceof Player p && scoped(p) && (blocked(p) || anchors.containsKey(p.getUniqueId()))) e.setCancelled(true);
+        if (e.getEntity() instanceof Player p && scoped(p) && (blocked(p) || expansion.invulnerable(p) || anchors.containsKey(p.getUniqueId()))) e.setCancelled(true);
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void legacyKnockback(org.bukkit.event.entity.EntityKnockbackEvent e) {
-        if (e.getEntity() instanceof Player p && scoped(p) && (blocked(p) || anchors.containsKey(p.getUniqueId()))) e.setCancelled(true);
+        if (e.getEntity() instanceof Player p && scoped(p) && (blocked(p) || expansion.invulnerable(p) || anchors.containsKey(p.getUniqueId()))) e.setCancelled(true);
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void velocity(PlayerVelocityEvent e) {
         if (!scoped(e.getPlayer())) return;
         Anchor anchor = anchors.get(e.getPlayer().getUniqueId());
-        if (frozen.containsKey(e.getPlayer().getUniqueId())) e.setVelocity(new Vector());
+        if (expansion.invulnerable(e.getPlayer())) e.setCancelled(true);
+        else if (frozen.containsKey(e.getPlayer().getUniqueId())) e.setVelocity(new Vector());
         else if (anchor != null) e.setVelocity(anchor.velocity().clone());
     }
     void hold(org.bukkit.event.player.PlayerMoveEvent e) {
+        expansion.hold(e);
         Frozen state = frozen.get(e.getPlayer().getUniqueId());
         if (state != null) { Location at = state.at().clone(); at.setYaw(e.getTo().getYaw()); at.setPitch(e.getTo().getPitch()); e.setTo(at); }
     }
@@ -947,7 +957,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void projectilePermission(ProjectileLaunchEvent e) {
-        if (e.getEntity().getShooter() instanceof Player p && scoped(p) && blocked(p)) e.setCancelled(true);
+        if (e.getEntity().getShooter() instanceof Player p && scoped(p) && blocked(p) && !expansion.controlProjectile(e.getEntity())) e.setCancelled(true);
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void mobDeath(EntityDeathEvent e) {
@@ -957,6 +967,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     @Override public void close() {
         if (closed) return;
+        expansion.close();
         closed = true; ticker.cancel(); HandlerList.unregisterAll(this);
         for (UUID id : List.copyOf(gravity.keySet())) endGravity(id, Bukkit.getPlayer(id));
         for (UUID id : List.copyOf(ghosts.keySet())) endGhost(id);

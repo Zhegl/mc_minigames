@@ -1510,9 +1510,9 @@ Enable it on another built-in mode with `/pillars config modes.<mode>.perks true
 Sniper Duel keeps its five logs and sixth crossbow; perks can replace later drops.
 
 Each item draw has a **20%** chance to become a special perk instead. Configure
-`perks.dropChance` in `games/pillars.yml` for the next session. The twenty-three ordinary
+`perks.dropChance` in `games/pillars.yml` for the next session. The thirty-five ordinary
 perks have weight 4 each; the two legendary weapons have weight 1 each. Each
-legendary therefore has a **0.213%** chance per item draw at the default setting,
+legendary therefore has a **0.141%** chance per item draw at the default setting,
 four times rarer than each ordinary perk. Tactical presets share perk kinds and
 ordinary item rolls, with separate item instances/charges per player.
 
@@ -1530,7 +1530,7 @@ Active items use the main hand; normal items with the same material have no perk
 | Clock / Отмотка | Right-click to return to the position from 60 ticks ago. Requires three seconds of recorded history and a clear destination. Health, items and charges are never rolled back. One use. |
 | Brick / Карманный домик | Right-click for a wooden house only 3×3 externally: one-player interior, two blocks of headroom, door, windows and torch. Existing blocks are preserved; a blocked footprint refuses the cast. One use. |
 | Blue ice / Ледяной луч | Right-click a ray up to 32 blocks. A hit encases the opponent in protected ice for four seconds; they cannot move, attack, use items or take damage. One attempt, including misses. |
-| Legendary bow / До свидания | Punch 100, one arrow included. The bow breaks after its single shot, including a miss. |
+| Legendary bow / До свидания | Extreme knockback, including crouching targets, one arrow included. The bow breaks after its single shot, including a miss. |
 | Legendary crossbow / TNT-почта | Right-click to throw primed TNT; three shots, two-second fuse. No ordinary ammunition required. |
 | Leather boots / Плотник | First equip starts a five-second timer: permanent planks appear underfoot, including over the void. Removing, stealing or re-equipping never restarts the timer. Afterwards the boots retain ordinary leather protection. |
 | Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for three seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
@@ -1540,12 +1540,34 @@ Active items use the main hand; normal items with the same material have no perk
 | Carved pumpkin / Проклятая тыква | Right-click to throw a pumpkin straight along your view. A direct hit puts a carved pumpkin with Curse of Binding on an active opponent's head. Their previous helmet goes into their inventory, or drops at their feet if full. The projectile disappears on impact without exploding. One throw, including misses. |
 | TNT / Атомная бомба | Right-click a block to place already primed TNT in the adjacent free cell. Four-second fuse; native explosion power 16 instead of ordinary TNT's 4, increasing blast range fourfold. It damages players and terrain, including its owner, while respecting protected perk terrain. One use. |
 | Stick / Тяжёлый прогноз | Aim at a block up to 192 blocks away and right-click. After one second, nine damaging anvils fall from 24 blocks above the target in shuffled order, three ticks apart: one per cell of a 3×3 square. They land as ordinary anvils without dropping items if placement fails. One use. |
-| Amethyst shard / Алхимик | Right-click a block within six blocks. All touching blocks, connected through faces rather than diagonals, turn into one randomly selected material. Containers release their contents; protected ice and liquids are excluded. Includes bedrock. Components larger than 4096 blocks or reaching unloaded chunks are refused before any changes, preserving the charge. One use. |
+| Amethyst shard / Алхимик | Right-click a block within six blocks. All touching blocks, connected through faces rather than diagonals, turn into the block material held in the offhand, or one randomly selected material if the offhand holds no block. Containers release their contents; protected ice and liquids are excluded. Includes bedrock. Components larger than 4096 blocks or reaching unloaded chunks are refused before any changes, preserving the charge. One use. |
 | Nether star / Благословение | Right-click for 60 seconds of Fire Resistance, Resistance I, Strength II, Regeneration II and Absorption IV. One use. |
 | Eye of ender / Перевёртыш | Right-click to reverse only your own gravity for three seconds, then recharge for fifteen seconds. Reusable; copies and item transfers cannot bypass the user's cooldown. Normal gravity is restored on expiry, elimination, disconnect and stop. |
 | Oak planks / Блок-обманка | Four right-click placements. Looks like ordinary planks to everyone, but the world remains air and players fall straight through. Build within six blocks, including extending from another fake block's visible face. Left-click a fake to remove it without drops. Real construction replaces the visual; remaining visuals disappear when their builder leaves or the match stops. |
 | Sugar / Подозрительные таблетки | Right-click to affect one random active opponent, never yourself. For 60 seconds only that player hears phantom footsteps, landings, attacks, arrows or a TNT fuse from random positions nearby, at four-to-six-second intervals. No damage or actual entities. Reapplication refreshes one schedule instead of stacking; death, disconnect and match end clear it. No eligible opponent preserves the charge. One use. |
 | Zombie egg / Двойник | Right-click a nearby block to summon a stationary mannequin with your skin, name, armour and held items. Opponent melee/projectile hits trigger one small explosion: power 1.5, damage capped at two hearts before armour, no fire or terrain damage, owner immune. Owner hits and environmental damage never trigger it. Copied gear cannot be removed and never drops. One egg; at most two active copies per owner, lasting 60 seconds or until owner exit/match end. |
+
+New perks also use the ordinary weighted pool and `/pillars perk <id>`:
+
+| ID | Effect |
+| --- | --- |
+| `tree` | Right-click a nearby block to grow an oak with a nine-block trunk and a broad persistent canopy. Existing builds remain intact. |
+| `aquarium` | Aim at an opponent within 32 blocks: a breakable 5×5×5 glass aquarium, water and two pufferfish appear for 20 seconds. Existing blocks remain intact. |
+| `drone` | Reusable bow, arrow supplied. Fire a slow, gravity-free arrow and steer with the mouse while the camera follows it. Five-second player cooldown, maximum eight-second flight; sneak, impact or damage to your body ends control. Arrows are not consumed. Your body remains vulnerable at the firing position. |
+| `aura` | Ten seconds of repelling opponents within 4.5 blocks. |
+| `invulnerability` | Ten seconds without damage or knockback, including the death-height check. |
+| `morph` | Become one of ten random mobs for 15 seconds. Other players see the mob with your name, and hits on it damage you. This changes appearance, not your abilities. |
+| `metro` | A 2×10 loop in your facing direction with powered straight rails, curved corners and three rideable minecarts. Requires free space ahead. Carts last 60 seconds; the railway stays. |
+| `puppet` | One-shot bow, arrow supplied. A hit gives five seconds of movement/jump/look control over the victim and a camera through their eyes. Both bodies remain vulnerable; damage to the controller ends control. |
+| `genie` | Place a sign and write an English item registry name. Grants one ordinary item with the nearest Levenshtein name; spaces and `minecraft:` are accepted, ties resolve alphabetically. One wish per sign, owned by its caster. |
+| `infection` | Place a slime seed. Every second each surviving infection block grows into one random adjacent air cell, up to 512 blocks per seed and eight active seeds per match. One active seed per player, 60-second lifetime. Blocks are breakable; existing terrain is preserved. |
+| `lightning` | One targeted lightning strike within 48 blocks removes half the opponent's maximum health before absorption, ignoring armour/resistance. Invulnerability still protects. |
+| `apocalypse` | Aim at a block within 192 blocks: 36 adult zombies rain over a 6×6 area, 24 blocks above it, with random 0.5–5-second delays. They gain slow falling within five blocks of terrain. Zombies last 60 seconds, drop no loot and may attack the caster too. Maximum 144 pending/live zombies per match. |
+
+Remote cameras use the Mojang-named Paper camera packet while keeping players in survival.
+Unsupported camera runtimes refuse a drone shot or control attempt instead of changing game modes.
+Remote control, disguises and pending spawns are cleared on exit. Temporary terrain is restored on expiry or match end.
+The bows share the native bow material but have separate persistent perk identities.
 
 Special effects, entities, history and pending block leases are scoped to the match
 and cleaned on stop. Temporary terrain never overwrites existing blocks or deletes
@@ -1558,7 +1580,7 @@ disconnect and stop; reconnecting never grants extra charges.
 For live testing, admins in a running perks match can use `/pillars perk <type>`:
 `save`, `reroll`, `steal`, `ghost`, `anchor`, `jump`, `rewind`, `house`, `freeze`,
 `bow`, `crossbow`, `planks`, `break`, `sheep`, `smoke`, `fireball`, `pumpkin`,
-`atomic_bomb`, `anvil_rain`, `transmute`, `blessing`, `gravity`, `fake_block`, `pills`, `decoy` (tab completion).
+`atomic_bomb`, `anvil_rain`, `transmute`, `blessing`, `gravity`, `fake_block`, `pills`, `decoy`, plus the new IDs above (tab completion).
 This grants the item to the command sender after the countdown. Multiplayer
 balance and client interactions still require live playtesting.
 
