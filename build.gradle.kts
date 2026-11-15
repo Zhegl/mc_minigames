@@ -257,6 +257,7 @@ for ((taskName, checkClass) in mapOf(
     "checkFinalsGadgets" to "FinalsGadgetsCheck",
     "checkFinalsEquipment" to "FinalsEquipmentCheck",
     "checkFinalsMaps" to "FinalsMapsCheck",
+    "checkFinalsMapJumpPads" to "FinalsMapJumpPadsCheck",
     "checkFinalsMapPreview" to "FinalsMapPreviewCheck",
     "checkFinalsHighlights" to "FinalsHighlightsCheck",
     "checkFinalsKills" to "FinalsKillsCheck",

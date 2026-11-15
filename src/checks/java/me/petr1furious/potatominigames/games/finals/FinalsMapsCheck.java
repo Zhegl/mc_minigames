@@ -38,10 +38,36 @@ public final class FinalsMapsCheck {
         fullHeight();
         vaultPersistence();
         cashoutPersistence();
+        jumpPadPersistence();
         arenaCopies();
         atomicReplacementLocks();
         imports();
         System.out.println("FinalsMapsCheck passed");
+    }
+
+    private static void jumpPadPersistence() throws Exception {
+        Draft draft = draft();
+        Point origin = new Point(8.5, 65, 8.5, 0, 0), target = new Point(-8.5, 70, 8.5, 90, 0);
+        draft.jumpPads.add(new JumpPad(origin, true, null));
+        fails(() -> Saved.from(draft, "pads.slime"), "An unfinished targeted pad cannot be saved");
+        draft.jumpPads.set(0, new JumpPad(origin, true, target));
+        draft.jumpPads.add(new JumpPad(new Point(8.5, 65, -8.5, 0, 0), false, null));
+        Saved saved = Saved.from(draft, "pads.slime");
+        YamlConfiguration yaml = new YamlConfiguration();
+        draft.write(yaml);
+        YamlConfiguration loaded = new YamlConfiguration();
+        loaded.loadFromString(yaml.saveToString());
+        require(Saved.from(Draft.read(loaded), "pads.slime").equals(saved), "Both pad types and targets round-trip with saved maps");
+        Draft copy = draft.copy(); copy.jumpPads.clear();
+        require(draft.jumpPads.size() == 2 && saved.jumpPads().size() == 2, "Draft pad edits cannot alter saved pads");
+        draft.jumpPads.removeLast(); draft.write(yaml);
+        require(Draft.read(yaml).jumpPads.size() == 1, "Removed pad entries do not survive YAML rewrite");
+        draft.jumpPads.add(draft.jumpPads.getFirst());
+        fails(() -> Saved.from(draft, "pads.slime"), "Duplicate pads cannot be saved");
+        draft.jumpPads.clear();
+        draft.jumpPads.add(new JumpPad(origin, true, new Point(100, 65, 100, 0, 0)));
+        fails(() -> Saved.from(draft, "pads.slime"), "Targets outside the playable selection cannot be saved");
+        require(Saved.from(draft(), "old.slime").jumpPads().isEmpty(), "Existing maps remain compatible without pads");
     }
 
     private static void cashoutPersistence() throws Exception {

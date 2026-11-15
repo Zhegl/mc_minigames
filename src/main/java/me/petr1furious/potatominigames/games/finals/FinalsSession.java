@@ -61,6 +61,7 @@ final class FinalsSession implements GameSession {
     private final FinalsCashoutMusic cashoutMusic;
     private final FinalsTeamWipes teamWipes = new FinalsTeamWipes();
     private final Map<UUID, Location> teamRespawnPositions = new HashMap<>();
+    private final Map<Integer, Location> startingSpawns = new HashMap<>();
     private final Map<UUID, Long> gadgetSicknessUntil = new HashMap<>();
     private final Map<UUID, Location> deathLocations = new HashMap<>();
     private final Map<UUID, Integer> roster = new LinkedHashMap<>();
@@ -82,6 +83,7 @@ final class FinalsSession implements GameSession {
     private FinalsHighlights highlights;
     private FinalsTabList tabList;
     private FinalsCashoutPhysics cashouts;
+    private FinalsMapJumpPads mapJumpPads;
     private FinalsDropInput dropInput;
     private FinalsRevives revives;
     private FinalsRespawnInput respawnInput;
@@ -567,6 +569,7 @@ final class FinalsSession implements GameSession {
         } catch (CommandFailure | RuntimeException error) {
             if (arena != null) arena.cancelBuild();
             if (cashouts != null) cashouts.clear();
+            if (mapJumpPads != null) mapJumpPads.clear();
             if (highlights != null) highlights.clear();
             if (tabList != null) tabList.clear();
             if (dropInput != null) dropInput.clear();
@@ -577,6 +580,7 @@ final class FinalsSession implements GameSession {
             if (gameEvents != null) gameEvents.clear();
             teamWipes.clear();
             teamRespawnPositions.clear();
+            startingSpawns.clear();
             releaseAll();
             if (weapons != null) weapons.clear();
             if (gadgets != null) gadgets.clear();
@@ -654,6 +658,7 @@ final class FinalsSession implements GameSession {
         weapons = new FinalsWeapons(combat);
         gadgets = new FinalsGadgets(combat);
         cashouts = new FinalsCashoutPhysics(arena);
+        mapJumpPads = new FinalsMapJumpPads(arena);
         highlights = new FinalsHighlights(services.plugin());
         tabList = new FinalsTabList(services.plugin());
         if (gameMaster != null) gameEvents = new FinalsGameEvents(gameEventsContext());
@@ -815,6 +820,17 @@ final class FinalsSession implements GameSession {
         return index;
     }
 
+    private Location spawnLocation(UUID id) {
+        int team = roster.get(id);
+        if (state != null) return arena.spawn(team, spawnIndex(id));
+        // Pick once per team so loadout changes and countdown rejoins keep the same anchor.
+        return startingSpawns.computeIfAbsent(team, ignored -> {
+            List<Location> candidates = arena.spawnLocations(team);
+            return candidates.get(java.util.concurrent.ThreadLocalRandom.current()
+                    .nextInt(candidates.size())).clone();
+        }).clone();
+    }
+
     private void spawn(Player player) {
         spawn(player, true);
     }
@@ -878,7 +894,7 @@ final class FinalsSession implements GameSession {
         }
         inventory.setHeldItemSlot(0);
         Location shared = teamRespawnPositions.get(id);
-        teleport(player, shared == null ? arena.spawn(roster.get(id), spawnIndex(id)) : shared.clone());
+        teleport(player, shared == null ? spawnLocation(id) : shared.clone());
         teamRespawnPositions.remove(id);
         teamWipes.spawn(id);
         gadgetSicknessUntil.remove(id);
@@ -1154,6 +1170,7 @@ final class FinalsSession implements GameSession {
             }
         }
         if (weapons != null) weapons.tick();
+        if (mapJumpPads != null) mapJumpPads.tick(services.participants().onlinePlayers(), this::fighting, tick);
         if (revives != null) revives.tick();
         if (gadgets != null) gadgets.tick();
         if (gameEvents != null) gameEvents.tick();
@@ -1326,6 +1343,7 @@ final class FinalsSession implements GameSession {
         if (arena != null) arena.cancelBuild();
         if (ticker != null) ticker.cancel();
         if (cashouts != null) cashouts.clear();
+        if (mapJumpPads != null) mapJumpPads.clear();
         if (highlights != null) highlights.clear();
         if (tabList != null) tabList.clear();
         if (dropInput != null) dropInput.clear();
@@ -1360,6 +1378,7 @@ final class FinalsSession implements GameSession {
         respawnAt.clear();
         teamWipes.clear();
         teamRespawnPositions.clear();
+        startingSpawns.clear();
         gadgetSicknessUntil.clear();
         deathLocations.clear();
         protectedUntil.clear();

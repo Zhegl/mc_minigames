@@ -273,7 +273,9 @@ saved snapshots, and are visible only to the editor who enabled them. Use
 Before the cashbox opens, the vault has a green outline. Both cashout stations have
 gold outlines while the cashbox is available or carried; after depositing it, only
 the occupied cashout is highlighted. Labels remain visible through walls and follow
-falling stations. Teammates have private outlines and name markers visible only to
+falling stations. Distant cashouts show a bold A or B above their timer and distance,
+using a nearby direction marker so the letter remains readable beyond entity render range.
+Teammates have private outlines and name markers visible only to
 their allies, including a marker at their death location while they respawn. Normal
 overhead player names are hidden during Finals. Visibility is still subject to the
 server's entity tracking and the client's rendering distance.
@@ -285,11 +287,28 @@ their normal names when the match ends. Kills persist through respawns and recon
 
 Every match starts with an 18-second loadout selection window. The loadout menu
 opens automatically, movement and combat remain locked, and changes apply immediately.
+Each team starts together at one randomly chosen point from its configured spawns.
+That point stays fixed through countdown loadout changes and reconnects.
 You can close it and reopen it with the slot 9 item. The menu closes when play begins.
 `games/finals.yml` can extend `countdownSeconds` up to 60; values below 18 use 18 seconds.
 
 Setup requires admin permission. Saving validates bounds, safe spawn support,
-headroom and objective spacing. Native snapshots retain block data, chest
+headroom and objective spacing. Map jump pads can connect rooftops:
+
+- Stand on the launch block and use `/finals map jumppad NAME up` for a vertical
+  launch at three times the Medium gadget's vertical velocity (3.15 blocks/tick).
+- Use `/finals map jumppad NAME targeted` for a targeted pad. Stand at its destination
+  and run `/finals map jumppadtarget NAME NUMBER`, using its preview number.
+- `/finals map jumppadremove NAME NUMBER` removes that pad. Removal renumbers later pads.
+- Save with `/finals map save NAME`. Both endpoints must be safe standing locations
+  inside the selected map. A targeted pad without a destination cannot be saved.
+
+Pads appear as protected slime blocks in matches; setup previews identify launch
+points and destinations. Targeted launches guide players along an arc using velocity,
+and stop when blocked by terrain. They do not teleport through buildings. Old maps
+without configured pads continue to work.
+
+Native snapshots retain block data, chest
 contents and sign text, but exclude entities. Draft edits do not change the
 last saved snapshot until another successful save. Match destruction never edits
 the imported source or saved template. There are no plugin-imposed map dimensions,

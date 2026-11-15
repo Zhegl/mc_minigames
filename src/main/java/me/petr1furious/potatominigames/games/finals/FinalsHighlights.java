@@ -309,6 +309,9 @@ final class FinalsHighlights {
 
         // A nearby private proxy remains tracked even when the objective's chunk is not sent.
         // Never load distant chunks just to display a direction marker.
+        boolean cashout = marker.key().startsWith("cashout-");
+        // Keep station letters readable instead of shrinking with the real objective distance.
+        if (cashout) radius = Math.min(radius, 8);
         radius = Math.min(radius, distance);
         if (distance > 0) direction.multiply(1 / distance);
         Location projected = eye.clone().add(direction.clone().multiply(radius));
@@ -320,8 +323,12 @@ final class FinalsHighlights {
         projected.setYaw(0);
         projected.setPitch(0);
         long actualDistance = Math.round(viewer.getLocation().distance(marker.location()));
+        Component caption = cashout
+                ? I18n.tr("finals.highlight.cashout_distant", marker.key().equals("cashout-0") ? "A" : "B",
+                        marker.label(), actualDistance)
+                : I18n.tr("finals.highlight.distant", marker.label(), actualDistance);
         return new Placement(projected, block == null ? null : projected.clone().add(0, -.5, 0),
-                I18n.tr("finals.highlight.distant", marker.label(), actualDistance), true);
+                caption, true);
     }
 
     private static Placement separate(Placement placement, List<Location> occupied) {

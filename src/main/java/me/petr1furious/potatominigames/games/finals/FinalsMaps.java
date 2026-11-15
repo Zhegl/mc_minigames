@@ -335,6 +335,30 @@ public final class FinalsMaps {
         points.remove(number - 1);
     }
 
+    public void jumpPad(String name, Location location, boolean targeted) {
+        update(name, location, draft -> {
+            Point point = Point.of(location).centered();
+            if (draft.jumpPads.stream().anyMatch(p -> p.origin().sameBlock(point))) throw failure("pad_duplicate");
+            draft.jumpPads.add(new JumpPad(point, targeted, null));
+        });
+    }
+
+    public void jumpPadTarget(String name, int number, Location location) {
+        update(name, location, draft -> {
+            if (number < 1 || number > draft.jumpPads.size()) throw failure("point_number", number, draft.jumpPads.size());
+            JumpPad pad = draft.jumpPads.get(number - 1);
+            if (!pad.targeted()) throw failure("pad_not_targeted");
+            draft.jumpPads.set(number - 1, new JumpPad(pad.origin(), true, Point.of(location).centered()));
+        });
+    }
+
+    public void jumpPadRemove(String name, int number) {
+        update(name, null, draft -> {
+            if (number < 1 || number > draft.jumpPads.size()) throw failure("point_number", number, draft.jumpPads.size());
+            draft.jumpPads.remove(number - 1);
+        });
+    }
+
     public void save(String name) {
         SaveWork work = beginSave(name);
         try {
@@ -449,6 +473,7 @@ public final class FinalsMaps {
                         previous.blue(),
                         previous.vaults(),
                         previous.cashouts(),
+                        previous.jumpPads(),
                         filename);
         Path target = templates.resolve(filename), temporary = templates.resolve(filename + ".tmp");
         final SaveWork work;
@@ -606,6 +631,8 @@ public final class FinalsMaps {
         invalidStandingPoints(world, saved.blue(), "blue_spawn", invalid);
         invalidStandingPoints(world, saved.vaults(), "vault", invalid);
         invalidStandingPoints(world, saved.cashouts(), "cashout", invalid);
+        invalidStandingPoints(world, saved.jumpPads().stream().map(JumpPad::origin).toList(), "pad", invalid);
+        invalidStandingPoints(world, saved.jumpPads().stream().map(p -> p.target() == null ? p.origin() : p.target()).toList(), "pad_target", invalid);
         if (!invalid.isEmpty())
             throw failure(
                     "unsafe_points",
@@ -757,6 +784,7 @@ public final class FinalsMaps {
                 snapshot.blue = entry.saved.blue();
                 snapshot.vaults = entry.saved.vaults();
                 snapshot.cashouts = entry.saved.cashouts();
+                snapshot.jumpPads = entry.saved.jumpPads();
                 snapshot.write(section);
                 section.set("template", entry.saved.template());
             }

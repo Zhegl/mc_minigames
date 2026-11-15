@@ -37,7 +37,7 @@ public final class FinalsMapCommands {
                 Commands.literal("map")
                         .requires(source ->
                                 source.getSender().hasPermission(GameCommands.ADMIN_PERMISSION))
-                        .executes(ctx -> run(ctx, c -> send(c, "help")));
+                        .executes(ctx -> run(ctx, c -> { send(c, "help"); send(c, "pad_help"); }));
         map.then(
                 Commands.literal("list")
                         .executes(ctx ->
@@ -322,6 +322,25 @@ public final class FinalsMapCommands {
                                                                                 maps.info(
                                                                                         name(
                                                                                                 c)))))));
+        var pad = nameArgument();
+        for (String kind : new String[] {"up", "targeted"})
+            pad.then(Commands.literal(kind).executes(ctx -> run(ctx, c -> {
+                maps.jumpPad(name(c), GameCommands.requirePlayer(c).getLocation(), kind.equals("targeted"));
+                send(c, "pad_added", name(c));
+                showPreview(c);
+            })));
+        map.then(Commands.literal("jumppad").then(pad));
+        map.then(Commands.literal("jumppadtarget").then(nameArgument().then(
+                Commands.argument("number", IntegerArgumentType.integer(1)).executes(ctx -> run(ctx, c -> {
+                    maps.jumpPadTarget(name(c), IntegerArgumentType.getInteger(c, "number"), GameCommands.requirePlayer(c).getLocation());
+                    send(c, "updated", name(c));
+                    showPreview(c);
+                })))));
+        map.then(Commands.literal("jumppadremove").then(nameArgument().then(
+                Commands.argument("number", IntegerArgumentType.integer(1)).executes(ctx -> run(ctx, c -> {
+                    maps.jumpPadRemove(name(c), IntegerArgumentType.getInteger(c, "number"));
+                    send(c, "updated", name(c));
+                })))));
         root.then(map);
     }
 

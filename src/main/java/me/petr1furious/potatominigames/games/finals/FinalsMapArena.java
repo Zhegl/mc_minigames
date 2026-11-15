@@ -26,7 +26,14 @@ public interface FinalsMapArena {
 
     Location spawn(int team, int memberIndex);
 
+    /** All starting-position candidates for one team. */
+    default List<Location> spawnLocations(int team) {
+        return List.of(spawn(team, 0));
+    }
+
     Location vault();
+
+    default List<FinalsMapJumpPads.Pad> jumpPads() { return List.of(); }
 
     /** All configured candidates, including the currently active vault. */
     List<Location> vaultLocations();
