@@ -29,7 +29,8 @@ same layout during live play or the post-round collection period. Existing void
 death handling remains in effect. A mode-specific site check rejects B.
 
 All **15 T starts and 5 CT starts** are shared with Classic. T remains on the
-street at Y=82; CT remains in its covered spawn at Y=75, below Short. Before the
+street at Y=82; CT starts deeper in its covered recess at Y=75.5 on the original
+slab floor, below Short. Before the
 first round, every candidate is checked against the mode boundary and native
 feet/head/floor collision; shuffling cannot select an out-of-zone fallback.
 Spawns are selected by current faction after side swaps, so halftime uses the

@@ -18,9 +18,9 @@ rhino:
   mineFuseSeconds: 8
   mineSpawnSeconds: 4
 miners:
-  preparationSeconds: 15
+  preparationSeconds: 25
   combatSeconds: 180
-  finaleSeconds: 60
+  finaleSeconds: 120
 
 colorFloor:
   stages: 12
@@ -42,9 +42,9 @@ partyGames:
   rounds: 6
   intermissionSeconds: 4
   armsRaceSeconds: 180
-  minersPreparationSeconds: 15
-  minersCombatSeconds: 90
-  minersFinaleSeconds: 30
+  minersPreparationSeconds: 25
+  minersCombatSeconds: 120
+  minersFinaleSeconds: 60
 
 magicBattle:
   roundSeconds: 180

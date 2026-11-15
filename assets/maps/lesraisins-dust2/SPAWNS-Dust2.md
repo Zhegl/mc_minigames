@@ -14,8 +14,8 @@ conversion of Valve's spawn entities. In particular, the T groups are compressed
 to avoid the Minecraft recreation's parked car and masonry.
 
 - T: fifteen positions, feet Y=82, X=-1.5..1.5, Z=21.5..38.5 (shifted three blocks toward +Z on the Minecraft plan).
-- CT: five positions, feet Y=75, X=93.5..97.5, Z=60.5..66.5, inside the original roofed underpass. Y=82 at these X/Z coordinates is Short, not CT Spawn.
-- T faces into the map; CT faces the CT-mid/B-side exit from the spawn area.
+- CT: five positions, feet Y=75.5, X=102.5..103.5, Z=60.5..68.5, deeper inside the roofed recess east of the through-passage, on its original bottom slabs. Y=82 at these X/Z coordinates is Short, not CT Spawn.
+- T faces into the map; CT faces west out of the recess toward the passage.
 - Pools are independently shuffled once per round, including after halftime.
   Teams use the first slots without replacement, with at most five players each.
 - Buy areas are fixed around these spawn regions, independent of the shuffled
@@ -28,10 +28,10 @@ floor support, separation and buy-zone membership for every candidate position.
 ## Respawn surface correction
 
 The source map contains hollow volumes below some thin street decks. T starts
-at Y=82 rather than inside the foundation at Y=78. CT is different: Y=75 is the
-real covered underpass with its original floor at Y=74 and roof at Y=80. Raising
+at Y=82 rather than inside the foundation at Y=78. CT is different: the through-passage has feet Y=75, while the recessed spawn
+has feet Y=75.5 on original bottom slabs at Y=75, with its roof at Y=80. Raising
 CT to Y=82 incorrectly placed the team on Short. Its five slots and buy zone now
-use the lower passage; the buy zone excludes Short above it.
+use the recessed lower spawn; the buy zone excludes Short above it.
 
 Deathmatch derives points from reachable surfaces, including slabs and stairs,
 but only selects exposed surfaces at Y>=79 (the B platform is Y=79). Lower
@@ -44,5 +44,18 @@ and floor support and skip obstructed candidates before choosing a spawn.
 
 Regression assertions distinguish the T street from the covered CT underpass,
 check the roof and exclude Short from the CT buy zone. Native spawn selection is
-exercised by `native-checks/cs/CsSpawnSmoke.java`. The CT correction is awaiting
-the next PR validation run.
+exercised by `native-checks/cs/CsSpawnSmoke.java`. The latest recessed CT correction is validated below.
+
+## Recessed CT start adjustment
+
+All five CT starts now sit behind the main through-passage, with their buy zone
+restricted to X=100..105, Y=75..79, Z=58..71. Classic and Wingman share the new
+points; Deathmatch also uses them as its curated lower fallback candidates.
+Half-slab starts check the upper feet space, full headroom and native support
+instead of rejecting the slab as a full block. No map blocks are changed.
+Validated on 2026-11-15: `checkCounterStrike` passed 6,679 assertions, including
+connected routes from every spawn in Wingman. A spawn-only fixture on Paper
+26.3 #249 passed 3,437 native assertions: all Classic, Wingman and Deathmatch
+starts are inside the map, supported by native floors and clear for a full
+0.6×1.8 player collision box. The fixture also checks obstructed-slot fallback
+and physical Wingman seals. No connected-client session was used.

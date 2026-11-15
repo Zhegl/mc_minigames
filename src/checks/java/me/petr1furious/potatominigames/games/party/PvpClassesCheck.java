@@ -52,7 +52,9 @@ public final class PvpClassesCheck {
             }
             check(healing > 0 && healing <= 3, "Each kit has limited healing");
             check(kit.armor().helmet() != null && kit.armor().chestplate() != null && kit.armor().leggings() != null && kit.armor().boots() != null, "All four armour slots assigned");
-            check(kit.primaryWeapon() != null && kit.cooldown >= (kit == PvpClass.THUNDERER ? 3 : 14) && kit.cooldown <= 24, "Every class has a weapon and bounded ability cooldown");
+            check(kit.primaryWeapon() != null && kit.cooldown >=
+                    (kit == PvpClass.THUNDERER ? 3 : kit == PvpClass.LANCER ? 10 : 14)
+                    && kit.cooldown <= 24, "Every class has a weapon and bounded ability cooldown");
         }
         check(PvpClass.ALCHEMIST.potions().stream().mapToInt(PvpClass.PotionSlot::amount).sum() == 14, "Mage has fourteen starting potions");
         check(PvpClass.ALCHEMIST.potions().stream().map(PvpClass.PotionSlot::kind).distinct().count() == 7, "Mage has seven potion types");
@@ -68,6 +70,7 @@ public final class PvpClassesCheck {
         check(PvpClass.AERONAUT.supplies().stream().anyMatch(slot -> slot.material() == Material.STONE_SWORD), "Aerial knight can fight on the ground");
         check(PvpClass.CRYOMANCER.supplies().stream().anyMatch(slot -> slot.material() == Material.SNOWBALL && slot.amount() == 16), "Cryomancer starts with sixteen projectiles");
         check(PvpClass.LANCER.primaryWeapon() == Material.NETHERITE_SPEAR, "Lancer uses the native netherite spear");
+        check(PvpClass.LANCER.cooldown == 10, "Spur has the halved ten-second cooldown");
         check(PvpClass.LANCER.supplies().stream().anyMatch(slot -> slot.material() == Material.STONE_SWORD), "Lancer retains a backup after losing their horse");
         check(PvpClass.LANCER.armor().chestplate() == Material.LEATHER_CHESTPLATE, "Mounted mobility has a light-armour tradeoff");
         check(PvpClass.SHADOW.primaryWeapon() == Material.DIAMOND_SWORD, "Shadow has the requested diamond sword");

@@ -410,6 +410,7 @@ final class CsSession implements GameSession, Listener {
         world.setStorm(false);
         world.setThundering(false);
         world.setGameRule(GameRules.PVP, true);
+        world.setGameRule(GameRules.LOCATOR_BAR, false);
         world.setGameRule(GameRules.IMMEDIATE_RESPAWN, false);
         world.setGameRule(GameRules.ADVANCE_TIME, false);
         world.setGameRule(GameRules.ADVANCE_WEATHER, false);

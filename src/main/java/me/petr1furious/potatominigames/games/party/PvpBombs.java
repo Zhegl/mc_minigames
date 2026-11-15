@@ -41,6 +41,7 @@ final class PvpBombs {
     static final float POWER = 2;
     static final double MAX_DAMAGE = 16, DAMAGE_MULTIPLIER = 1.4, MINERS_MAX_DAMAGE = 10;
     static final double IMPACT_RADIUS = .49; // Half of native TNT's 0.98-block collision box.
+    static final double IMPACT_DAMAGE_MULTIPLIER = .5;
     private static final NamespacedKey KEY = new NamespacedKey("potatominigames", "pvp_bomb");
     static final class Cooldowns {
         private final int throwCooldown;
@@ -58,7 +59,9 @@ final class PvpBombs {
         void clear() { handReady.clear(); throwReady.clear(); }
     }
 
-    private record Bomb(Player owner, TNTPrimed entity, boolean airstrike, Location previous) {}
+    private record Bomb(
+            Player owner, TNTPrimed entity, boolean airstrike, Location previous,
+            boolean detonatedOnImpact) {}
 
     private final Map<UUID, Bomb> bombs = new HashMap<>();
     private final Cooldowns cooldowns;
@@ -193,11 +196,12 @@ final class PvpBombs {
                         false,
                         thrown && impactTarget != null
                                 ? entity.getLocation().add(0, entity.getHeight() / 2, 0)
-                                : null));
+                                : null,
+                        false));
     }
 
     void trackAirstrike(Player owner, TNTPrimed entity) {
-        bombs.put(entity.getUniqueId(), new Bomb(owner, entity, true, null));
+        bombs.put(entity.getUniqueId(), new Bomb(owner, entity, true, null, false));
     }
 
     Player owner(Entity entity) {
@@ -215,10 +219,13 @@ final class PvpBombs {
     }
     double blastDamage(Entity entity, double raw) {
         Bomb bomb = entity == null ? null : bombs.get(entity.getUniqueId());
-        return Math.clamp(
+        double damage = Math.clamp(
                 raw * damageMultiplier,
                 0,
                 bomb != null && bomb.airstrike() ? PvpAirstrike.MAX_DAMAGE : damageLimit);
+        return bomb != null && bomb.detonatedOnImpact()
+                ? damage * IMPACT_DAMAGE_MULTIPLIER
+                : damage;
     }
     void maintain(Plugin plugin) {
         if (cleanup == null) cleanup = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
@@ -235,6 +242,8 @@ final class PvpBombs {
                 Location hit =
                         impact(before, at, entity -> impactTarget.test(bomb.owner(), entity));
                 if (hit != null) {
+                    bombs.put(tnt.getUniqueId(), new Bomb(
+                            bomb.owner(), tnt, bomb.airstrike(), before, true));
                     // Keep the tracked native TNT and source: one ordinary blast, correct
                     // armour/terrain handling and same-tick trade attribution, no extra damage hit.
                     tnt.teleport(hit.subtract(0, tnt.getHeight() / 2, 0));

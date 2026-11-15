@@ -181,7 +181,8 @@ final class ArmsRaceSession implements PartyRoundSession {
                         text("arms.rules", NamedTextColor.GOLD));
         services.messages()
                 .broadcast(
-                        text("arms.progression_rules", NamedTextColor.GRAY, weapons.size()));
+                        text("arms.progression_rules", NamedTextColor.GRAY,
+                                weapons.size(), weapons.getLast().title));
         if (services.isTest())
             services.messages()
                     .broadcast(

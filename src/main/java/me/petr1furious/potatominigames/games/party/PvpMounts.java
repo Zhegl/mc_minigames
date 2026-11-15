@@ -47,7 +47,7 @@ final class PvpMounts {
             mount.getAttribute(Attribute.MOVEMENT_SPEED).setBaseValue(SPEED);
             mount.setJumpStrength(JUMP);
             mount.getInventory().setSaddle(new ItemStack(Material.SADDLE));
-            mount.getInventory().setArmor(null);
+            mount.getInventory().setArmor(new ItemStack(Material.IRON_HORSE_ARMOR));
         });
         track(owner, horse);
         horse.addPassenger(owner);
