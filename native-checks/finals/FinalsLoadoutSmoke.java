@@ -179,6 +179,19 @@ public final class FinalsLoadoutSmoke {
                 call(session,"spawn",player.player);
                 call(loadouts,"open",player.player);
             }
+            Map<UUID,Integer> startingRoster=(Map<UUID,Integer>)get(session,"roster");
+            Map<Integer,Location> startingPoints=new HashMap<>();
+            for(FakePlayer player:players.values()) {
+                int team=startingRoster.get(player.id);
+                Location actual=player.player.getLocation();
+                Location first=startingPoints.putIfAbsent(team,actual.clone());
+                require(first==null||first.equals(actual),
+                        "The actual initial spawn places every teammate at the same team starting point");
+                require(((List<?>)call(get(session,"arena"),"spawnLocations",team)).contains(actual),
+                        "The actual shared starting point belongs to the team's configured spawn candidates");
+            }
+            require(startingPoints.size()==2&&!startingPoints.get(0).equals(startingPoints.get(1)),
+                    "The two teams retain separate initial spawn locations");
             require((long)get(session,"countdownEnd")==360L,"A legacy five-second setting still grants the complete eighteen-second loadout window");
             Map<UUID,Integer> killsBeforeCountdown=(Map<UUID,Integer>)call(get(session,"kills"),"snapshot");
             require(killsBeforeCountdown.isEmpty(),"A prepared match starts with no carried-over kills");
@@ -208,6 +221,8 @@ public final class FinalsLoadoutSmoke {
             close(light.attribute.getAttribute(Attribute.MAX_HEALTH).getBaseValue(),35,"Countdown GUI class change applies immediately");
             close(light.attribute.getAttribute(Attribute.SCALE).getBaseValue(),1.25,"Countdown GUI applies Heavy body size immediately");
             close((float)call(frozen.get(light.id),"walkSpeed"),.17,"Countdown class change saves Heavy speed while frozen");
+            require(light.player.getLocation().equals(startingPoints.get(startingRoster.get(light.id))),
+                    "Applying a countdown loadout keeps the player at the shared team starting point");
             withPlayerLookup(session,"onParticipantQuit",heavy.player);
             restored(heavy);
             require(((Map<?,?>)get(session,"classes")).get(heavy.id).toString().equals("HEAVY"),
@@ -216,6 +231,8 @@ public final class FinalsLoadoutSmoke {
             require(heavy.menuOpens==2&&(boolean)call(type("FinalsLoadouts"),"viewing",heavy.player),
                     "Rejoining during the countdown automatically reopens the loadout menu");
             close(heavy.walkSpeed,0,"A countdown rejoin remains frozen for the rest of the selection window");
+            require(heavy.player.getLocation().equals(startingPoints.get(startingRoster.get(heavy.id))),
+                    "A countdown rejoin returns to the same shared team starting point");
             set(session,"tick",358L);
             withPlayerLookup(session,"tick");
             require((long)get(session,"tick")==359L&&get(session,"state")==null,

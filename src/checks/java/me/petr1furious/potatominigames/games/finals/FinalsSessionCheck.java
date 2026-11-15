@@ -90,6 +90,8 @@ public final class FinalsSessionCheck {
         vaultMovesOnlyAfterCashout();
         cashoutMovesOnlyAfterPayout();
         fixedCountdownAnchor();
+        mapDeathHeight();
+        sharedTeamStartingPoints();
         mapPreparationGates();
         countdownLoadoutWindow();
         cashboxThrowDirection();
@@ -1270,6 +1272,101 @@ public final class FinalsSessionCheck {
                 "the winning payout ends the match without replacing its station");
     }
 
+    private static void sharedTeamStartingPoints() throws Exception {
+        Fixture f = new Fixture();
+        UUID redMate = new UUID(1, 5);
+        Map<UUID, Integer> roster = map(f.session, "roster");
+        roster.clear();
+        roster.put(RED, 0);
+        roster.put(redMate, 0);
+        roster.put(BLUE, 1);
+        roster.put(BLUE_MATE, 1);
+        var spawnIndex = FinalsSession.class.getDeclaredMethod("spawnIndex", UUID.class);
+        spawnIndex.setAccessible(true);
+        var spawnLocation = FinalsSession.class.getDeclaredMethod("spawnLocation", UUID.class);
+        spawnLocation.setAccessible(true);
+        set(f.session, "state", null);
+        Location redStart = (Location) spawnLocation.invoke(f.session, RED);
+        Location blueStart = (Location) spawnLocation.invoke(f.session, BLUE);
+        check(redStart.equals(spawnLocation.invoke(f.session, redMate)),
+                "all red teammates start at the same position during the loadout countdown");
+        check(blueStart.equals(spawnLocation.invoke(f.session, BLUE_MATE)),
+                "all blue teammates start at the same position during the loadout countdown");
+        check(!redStart.equals(blueStart), "opposing teams retain distinct starting positions");
+        List<Location> redCandidates = new ArrayList<>(), blueCandidates = new ArrayList<>();
+        for (int index = 0; index < 8; index++) {
+            redCandidates.add(f.arena.spawn(0, index));
+            blueCandidates.add(f.arena.spawn(1, index));
+        }
+        check(redCandidates.contains(redStart) && blueCandidates.contains(blueStart),
+                "each shared starting position belongs to that team's full configured candidate set");
+        Location returned = (Location) spawnLocation.invoke(f.session, redMate);
+        returned.add(100, 20, -100);
+        returned.setYaw(42);
+        check(redStart.equals(spawnLocation.invoke(f.session, RED)),
+                "mutating a returned starting Location cannot move the cached team anchor");
+        map(f.session, "classes").put(redMate, FinalsClass.HEAVY);
+        map(f.session, "classes").put(BLUE_MATE, FinalsClass.LIGHT);
+        set(f.session, "tick", 359L);
+        check(redStart.equals(spawnLocation.invoke(f.session, redMate))
+                        && blueStart.equals(spawnLocation.invoke(f.session, BLUE_MATE)),
+                "countdown loadout changes keep each teammate at the shared team anchor");
+        f.connected().remove(BLUE_MATE);
+        f.connected().add(BLUE_MATE);
+        check(blueStart.equals(spawnLocation.invoke(f.session, BLUE_MATE)),
+                "reconnecting during the countdown retains the shared team starting point");
+
+        set(f.session, "state", f.state);
+        check((int) spawnIndex.invoke(f.session, RED) == 0 && (int) spawnIndex.invoke(f.session, redMate) == 1
+                        && (int) spawnIndex.invoke(f.session, BLUE) == 0 && (int) spawnIndex.invoke(f.session, BLUE_MATE) == 1,
+                "normal match respawns retain each teammate's original per-team spawn index");
+        for (var entry : roster.entrySet()) check(
+                spawnLocation.invoke(f.session, entry.getKey()).equals(
+                        f.arena.spawn(entry.getValue(), (int) spawnIndex.invoke(f.session, entry.getKey()))),
+                "ordinary later respawns keep the configured per-member position instead of the random start cache");
+        f.connected().clear();
+        f.session.onEnd(me.petr1furious.potatominigames.core.game.EndReason.ABORTED);
+        check(map(f.session, "startingSpawns").isEmpty(), "ending the match clears its random starting-point cache");
+
+        Fixture custom = new Fixture();
+        set(custom.session, "state", null);
+        Location selected = new Location(custom.world.world, 11, 70, -4, 35, 15);
+        FinalsMapArena candidates = proxy(FinalsMapArena.class, (receiver, method, args) -> {
+            if (method.getName().equals("spawnLocations")) return List.of(selected);
+            return method.invoke(custom.arena, args);
+        });
+        set(custom.session, "arena", candidates);
+        Location selectedCopy = selected.clone();
+        check(spawnLocation.invoke(custom.session, RED).equals(selectedCopy),
+                "starting selection uses the map's declared candidates instead of assuming generated spawn indices");
+        selected.add(20, 4, 8);
+        check(spawnLocation.invoke(custom.session, RED).equals(selectedCopy),
+                "mutating a source candidate cannot change the cached team start");
+    }
+
+    private static void mapDeathHeight() throws Exception {
+        for (Double level : java.util.Arrays.asList(65.0, null, 60.0)) {
+            Fixture f = new Fixture();
+            FinalsMapArena configured = proxy(FinalsMapArena.class, (p, method, args) ->
+                    method.getName().equals("deathHeight") ? level : method.invoke(f.arena, args));
+            set(f.session, "arena", configured);
+            Location at = f.red.location.clone();
+            f.session.onPlayerMove(new PlayerMoveEvent(f.red.player, at, at.clone()));
+            check(f.red.health == 20, "Standing exactly at or above the death height is safe");
+            Location below = at.clone(); below.setY(64.99);
+            f.session.onPlayerMove(new PlayerMoveEvent(f.red.player, at, below));
+            check(f.red.health == (level != null && level == 65 ? 0 : 20),
+                    "Only the selected map's death height kills a player below it");
+        }
+        Fixture frozen = new Fixture();
+        set(frozen.session, "arena", proxy(FinalsMapArena.class, (p, method, args) ->
+                method.getName().equals("deathHeight") ? 66d : method.invoke(frozen.arena, args)));
+        callPlayerMethod(frozen.session, "freeze", frozen.red.player);
+        frozen.session.onPlayerMove(new PlayerMoveEvent(frozen.red.player, frozen.red.location,
+                frozen.red.location.clone().subtract(0, 1, 0)));
+        check(frozen.red.health == 20, "Countdown freeze takes precedence over the death floor");
+    }
+
     private static void fixedCountdownAnchor() throws Exception {
         Fixture f = new Fixture();
         f.red.walkSpeed = .3f;
@@ -1441,6 +1538,7 @@ public final class FinalsSessionCheck {
         final Player player;
         Location location;
         boolean dead;
+        double health = 20;
         Player killer;
         int sounds;
         int slot;
@@ -1517,6 +1615,7 @@ public final class FinalsSessionCheck {
                                             yield null;
                                         }
                                         case "isDead" -> dead;
+                                        case "setHealth" -> { health = (double) args[0]; yield null; }
                                         case "getKiller" -> killer;
                                         case "playSound" -> { sounds++; yield null; }
                                         case "setNoDamageTicks" -> null;

@@ -187,6 +187,9 @@ final class FinalsImportedArena implements FinalsMapArena {
     }
 
     private void finishBuild() {
+        for (JumpPad pad : map.jumpPads())
+            world.getBlockAt(pad.origin().bx(), pad.origin().by() - 1, pad.origin().bz())
+                    .setType(Material.SLIME_BLOCK, false);
         vaultBlocks =
                 map.vaults().stream()
                         .map(point ->
@@ -226,6 +229,24 @@ final class FinalsImportedArena implements FinalsMapArena {
         List<Point> points = team == 0 ? map.red() : map.blue();
         return points.get(Math.floorMod(memberIndex, points.size())).at(world);
     }
+
+    @Override
+    public List<Location> spawnLocations(int team) {
+        if (team < 0 || team > 1) throw new IllegalArgumentException("Team must be 0 or 1");
+        return (team == 0 ? map.red() : map.blue()).stream().map(point -> point.at(world)).toList();
+    }
+
+    @Override
+    public List<FinalsMapJumpPads.Pad> jumpPads() {
+        return map.jumpPads().stream().map(p -> new FinalsMapJumpPads.Pad(
+                p.origin().at(world), p.target() == null ? null : p.target().at(world))).toList();
+    }
+
+    @Override
+    public Double deathHeight() { return map.deathHeight(); }
+
+    @Override
+    public long timeOfDay() { return map.timeOfDay() == null ? 6000 : map.timeOfDay(); }
 
     @Override
     public Location vault() {
@@ -311,6 +332,9 @@ final class FinalsImportedArena implements FinalsMapArena {
         if (block == null || !contains(block.getLocation()) || block.getY() <= map.bounds().minY())
             return false;
         for (Point spawn : concat(map.red(), map.blue())) if (protects(block, spawn)) return false;
+        for (JumpPad pad : map.jumpPads())
+            if (block.getX() == pad.origin().bx() && block.getY() == pad.origin().by() - 1
+                    && block.getZ() == pad.origin().bz()) return false;
         for (Point objective : map.vaults()) {
             if (protects(block, objective)) return false;
         }

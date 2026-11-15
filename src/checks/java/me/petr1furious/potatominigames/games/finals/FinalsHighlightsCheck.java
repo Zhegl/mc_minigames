@@ -154,6 +154,20 @@ public final class FinalsHighlightsCheck {
         Object afterFall = placement.invoke(null, fixture.viewer, marker);
         require(((Location) value(afterFall, "label")).getY() < ((Location) value(beforeFall, "label")).getY(),
                 "Distant cashout projection follows its falling direction");
+        fixture.arena.stations[1] = new Location(fixture.arena.world, -2000, 80, 150);
+        Map<String, Object> stations = keyed(fixture.view(FinalsState.Phase.CARRIED));
+        for (int station = 0; station < 2; station++) {
+            Object projected = placement.invoke(null, fixture.viewer, stations.get("cashout-" + station));
+            Component caption = (Component) value(projected, "text");
+            String letter = station == 0 ? "A" : "B";
+            require(plain(caption, Locale.ENGLISH).startsWith(letter + "\n"),
+                    "Distant cashouts display their identifying letter on its own line");
+            require(plain(caption, Locale.forLanguageTag("ru")).startsWith(letter + "\n")
+                            && plain(caption, Locale.forLanguageTag("ru")).contains("блоков"),
+                    "The station letter is retained alongside localized distance text");
+            require(fixture.viewer.getEyeLocation().distance((Location) value(projected, "label")) <= 8.000001,
+                    "Far cashout letters stay close enough to read regardless of objective distance");
+        }
     }
 
     private static void timedObjectiveLabels() throws Exception {

@@ -138,14 +138,24 @@ final class FinalsMapData {
         }
     }
 
+    record JumpPad(Point origin, boolean targeted, Point target) {
+        JumpPad {
+            if (origin == null || (!targeted && target != null))
+                throw FinalsMaps.failure("invalid_position");
+        }
+    }
+
     static final class Draft {
         String world;
         String folder;
         boolean imported;
+        Double deathHeight;
+        Integer timeOfDay;
         Point first, second;
         List<Point> vaults = new ArrayList<>();
         List<Point> cashouts = new ArrayList<>();
         List<Point> red = new ArrayList<>(), blue = new ArrayList<>();
+        List<JumpPad> jumpPads = new ArrayList<>();
 
         void fullHeight(int minY, int maxYExclusive) {
             if (maxYExclusive <= minY) throw FinalsMaps.failure("bounds");
@@ -166,12 +176,15 @@ final class FinalsMapData {
             result.world = world;
             result.folder = folder;
             result.imported = imported;
+            result.deathHeight = deathHeight;
+            result.timeOfDay = timeOfDay;
             result.first = first;
             result.second = second;
             result.vaults = new ArrayList<>(vaults);
             result.cashouts = new ArrayList<>(cashouts);
             result.red = new ArrayList<>(red);
             result.blue = new ArrayList<>(blue);
+            result.jumpPads = new ArrayList<>(jumpPads);
             return result;
         }
 
@@ -215,6 +228,16 @@ final class FinalsMapData {
         }
 
         void write(ConfigurationSection section) {
+            section.set("death-height", deathHeight);
+            section.set("time-of-day", timeOfDay);
+            section.set("jump-pads", null);
+            for (int i = 0; i < jumpPads.size(); i++) {
+                JumpPad pad = jumpPads.get(i);
+                ConfigurationSection entry = section.createSection("jump-pads." + i);
+                pad.origin().write(entry, "origin");
+                entry.set("targeted", pad.targeted());
+                if (pad.target() != null) pad.target().write(entry, "target");
+            }
             section.set("world", world);
             section.set("folder", folder);
             section.set("imported", imported);
@@ -240,8 +263,28 @@ final class FinalsMapData {
             draft.world = section.getString("world");
             draft.folder = section.getString("folder");
             draft.imported = section.getBoolean("imported");
+            if (section.contains("time-of-day")) {
+                Object time = section.get("time-of-day");
+                if (!(time instanceof Number number) || number.doubleValue() != number.intValue()
+                        || number.intValue() < 0 || number.intValue() > 23999)
+                    throw FinalsMaps.failure("time_invalid");
+                draft.timeOfDay = number.intValue();
+            }
+            if (section.contains("death-height")) {
+                Object height = section.get("death-height");
+                if (!(height instanceof Number number) || !Double.isFinite(number.doubleValue()))
+                    throw FinalsMaps.failure("death_height_invalid");
+                draft.deathHeight = number.doubleValue();
+            }
             draft.first = Point.read(section, "pos1");
             draft.second = Point.read(section, "pos2");
+            ConfigurationSection pads = section.getConfigurationSection("jump-pads");
+            if (pads != null) for (int i = 0; i < pads.getKeys(false).size(); i++) {
+                ConfigurationSection entry = pads.getConfigurationSection("" + i);
+                if (entry == null) throw FinalsMaps.failure("invalid_position");
+                draft.jumpPads.add(new JumpPad(Point.read(entry, "origin"),
+                        entry.getBoolean("targeted"), Point.read(entry, "target")));
+            }
             if (section.contains("vaults")) {
                 ConfigurationSection candidates = section.getConfigurationSection("vaults");
                 if (candidates == null) throw FinalsMaps.failure("invalid_position");
@@ -288,12 +331,30 @@ final class FinalsMapData {
             List<Point> blue,
             List<Point> vaults,
             List<Point> cashouts,
+            List<JumpPad> jumpPads,
+            Double deathHeight,
+            Integer timeOfDay,
             String template) {
+        Saved(Bounds bounds, List<Point> red, List<Point> blue, List<Point> vaults,
+                List<Point> cashouts, List<JumpPad> jumpPads, Double deathHeight, String template) {
+            this(bounds, red, blue, vaults, cashouts, jumpPads, deathHeight, null, template);
+        }
+        Saved(Bounds bounds, List<Point> red, List<Point> blue, List<Point> vaults,
+                List<Point> cashouts, List<JumpPad> jumpPads, String template) {
+            this(bounds, red, blue, vaults, cashouts, jumpPads, null, template);
+        }
+        Saved(Bounds bounds, List<Point> red, List<Point> blue, List<Point> vaults,
+                List<Point> cashouts, String template) {
+            this(bounds, red, blue, vaults, cashouts, List.of(), template);
+        }
         Saved {
+            if (timeOfDay != null && (timeOfDay < 0 || timeOfDay > 23999)) throw FinalsMaps.failure("time_invalid");
+            if (deathHeight != null && !Double.isFinite(deathHeight)) throw FinalsMaps.failure("death_height_invalid");
             red = List.copyOf(red);
             blue = List.copyOf(blue);
             vaults = List.copyOf(vaults);
             cashouts = List.copyOf(cashouts);
+            jumpPads = List.copyOf(jumpPads);
         }
 
         static Saved from(Draft draft, String template) {
@@ -314,6 +375,14 @@ final class FinalsMapData {
             invalidPoints(bounds, draft.blue, "blue_spawn", invalid);
             invalidPoints(bounds, draft.vaults, "vault", invalid);
             invalidPoints(bounds, stations, "cashout", invalid);
+            for (int i = 0; i < draft.jumpPads.size(); i++) {
+                JumpPad pad = draft.jumpPads.get(i);
+                if (pad.targeted() && pad.target() == null) throw FinalsMaps.failure("pad_target_missing", i + 1);
+                for (int j = 0; j < i; j++)
+                    if (pad.origin().sameBlock(draft.jumpPads.get(j).origin())) throw FinalsMaps.failure("pad_duplicate");
+            }
+            invalidPoints(bounds, draft.jumpPads.stream().map(JumpPad::origin).toList(), "pad", invalid);
+            invalidPoints(bounds, draft.jumpPads.stream().map(p -> p.target() == null ? p.origin() : p.target()).toList(), "pad_target", invalid);
             if (!invalid.isEmpty())
                 throw FinalsMaps.failure(
                         "outside",
@@ -342,7 +411,7 @@ final class FinalsMapData {
                 for (Point blue : draft.blue) {
                     if (red.distanceSquared(blue) < 16) throw FinalsMaps.failure("teams_close");
                 }
-            return new Saved(bounds, draft.red, draft.blue, draft.vaults, draft.cashouts, template);
+            return new Saved(bounds, draft.red, draft.blue, draft.vaults, draft.cashouts, draft.jumpPads, draft.deathHeight, draft.timeOfDay, template);
         }
 
         private static void invalidPoints(
