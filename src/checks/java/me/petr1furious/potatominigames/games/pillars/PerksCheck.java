@@ -21,14 +21,14 @@ import org.bukkit.configuration.file.YamlConfiguration;
 /** Exercises the production weighted pool, timers, provenance counts and actual temporary block writes. */
 public final class PerksCheck {
     public static void main(String[] args) throws Exception {
-        catalogue(); atomicBomb(); decoys(); shapes(); gravity(); phantoms(); history(); channel(); reroll(); terrain(); transmute(); illusions(); integration();
-        System.out.println("Pillars perks: 25 weighted items, atomic TNT, enemy-triggered decoys with owner/terrain immunity and capped damage, shuffled 3x3 anvil rain, complete connected transmutation, personal gravity cooldown, opponent-only phantom sounds/timing, bounded rewind/channel/reroll rules, temporary terrain and queue/preset integration passed");
+        catalogue(); immunity(); layouts(); wishes(); atomicBomb(); decoys(); shapes(); gravity(); phantoms(); history(); channel(); reroll(); terrain(); transmute(); illusions(); integration();
+        System.out.println("Pillars perks: 37 weighted items, atomic TNT, enemy-triggered decoys with owner/terrain immunity and capped damage, shuffled 3x3 anvil rain, complete connected transmutation, personal gravity cooldown, opponent-only phantom sounds/timing, bounded rewind/channel/reroll rules, temporary terrain and queue/preset integration passed");
     }
     private static void catalogue() {
-        check(PerkType.values().length == 25, "All twenty-five perks are present");
+        check(PerkType.values().length == 37, "All thirty-seven perks are present");
         Map<PerkType, Integer> counts = new HashMap<>();
         for (int roll = 0; roll < PerkType.totalWeight(); roll++) counts.merge(PerkType.atWeight(roll), 1, Integer::sum);
-        check(counts.size() == 25 && PerkType.totalWeight() == 94, "No unreachable outcomes or gaps in the weighted draw");
+        check(counts.size() == 37 && PerkType.totalWeight() == 142, "No unreachable outcomes or gaps in the weighted draw");
         check(Arrays.stream(PerkType.values()).filter(t -> t.legendary).count() == 2, "Exactly the bow and TNT crossbow are legendary");
         for (PerkType type : PerkType.values()) {
             check(counts.get(type) == (type.legendary ? 1 : 4), "Each legendary is four times rarer than each ordinary perk");
@@ -36,7 +36,8 @@ public final class PerksCheck {
         }
         check(PerkType.REROLL.charges == 3 && PerkType.ANCHOR.charges == 3 && PerkType.JUMP.charges == 3, "Three-use items retain exactly three charges");
         check(PerkType.BOW.charges == 1 && PerkType.FREEZE.charges == 1, "One-shot bow and one-attempt ice ray are finite");
-        check(Arrays.stream(PerkType.values()).map(t -> t.material).distinct().count() == 25, "All twenty-five perk icons are distinct");
+        check(PerkType.DRONE.material == Material.BOW && PerkType.PUPPET.material == Material.BOW,
+                "Special bows share the native bow material and use persistent tags for identity");
         check(PerkType.PUMPKIN.charges == 1 && PerkType.PUMPKIN.material == Material.CARVED_PUMPKIN,
                 "The throwable pumpkin is a finite, distinct perk");
         check(PerkType.ATOMIC_BOMB.charges == 1 && PerkType.ATOMIC_BOMB.material == Material.TNT,
@@ -45,6 +46,82 @@ public final class PerksCheck {
         check(PerkRules.BLESSING_TICKS == 1200, "Blessing lasts a full minute");
         check(PerkType.PILLS.charges == 1 && PerkType.PILLS.material == Material.SUGAR, "Pills use one charge and their own icon");
         check(PerkType.DECOY.charges == 1 && PerkType.DECOY.material == Material.ZOMBIE_SPAWN_EGG, "One decoy egg summons one copy");
+    }
+    private static void immunity() {
+        FakeWorld f = new FakeWorld(); UUID id = UUID.randomUUID();
+        var player = (org.bukkit.entity.Player) Proxy.newProxyInstance(org.bukkit.entity.Player.class.getClassLoader(),
+                new Class<?>[]{org.bukkit.entity.Player.class}, (p, m, a) -> switch (m.getName()) {
+                    case "getUniqueId" -> id; case "getWorld" -> f.world;
+                    default -> throw new AssertionError(m.getName());
+                });
+        var source = (org.bukkit.damage.DamageSource) Proxy.newProxyInstance(org.bukkit.damage.DamageSource.class.getClassLoader(),
+                new Class<?>[]{org.bukkit.damage.DamageSource.class}, (p, m, a) -> null);
+        var effects = new PerkExpansion(null, null, f.world, List::of, new PerkTerrain(f.world), listener -> {});
+        check(!effects.invulnerable(player), "Players start without shield immunity");
+        check(effects.use(player, PerkType.INVULNERABILITY, null), "Shield activates on use");
+        check(effects.invulnerable(player) && !effects.blocked(player), "Invulnerability protects without disabling player actions");
+        for (var cause : List.of(org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL,
+                org.bukkit.event.entity.EntityDamageEvent.DamageCause.VOID,
+                org.bukkit.event.entity.EntityDamageEvent.DamageCause.ENTITY_EXPLOSION)) {
+            var event = new org.bukkit.event.entity.EntityDamageEvent(player, cause, source, 20);
+            effects.damage(event); check(event.isCancelled(), "Shield cancels environmental and explosive damage");
+        }
+        effects.tick(200);
+        check(!effects.invulnerable(player), "Shield expires exactly at ten seconds");
+        var event = new org.bukkit.event.entity.EntityDamageEvent(player, org.bukkit.event.entity.EntityDamageEvent.DamageCause.FALL, source, 20);
+        effects.damage(event); check(!event.isCancelled(), "Damage resumes after expiry");
+        effects.close(); effects.close();
+    }
+    private static void layouts() {
+        var tree = PerkLayouts.tree();
+        for (int y = 0; y <= 8; y++) check(tree.get(new PerkShapes.Cell(0, y, 0)) == Material.OAK_LOG, "Tree trunk is continuous");
+        check(tree.size() > 150 && tree.values().contains(Material.OAK_LEAVES), "Tree has a broad usable canopy");
+        check(tree.keySet().stream().allMatch(c -> c.y() >= 0 && c.y() <= 9 && Math.abs(c.x()) <= 4 && Math.abs(c.z()) <= 4),
+                "Tree placement stays in its bounded footprint");
+        var faces = List.of(org.bukkit.block.BlockFace.NORTH, org.bukkit.block.BlockFace.SOUTH,
+                org.bukkit.block.BlockFace.EAST, org.bukkit.block.BlockFace.WEST);
+        for (var face : faces) {
+            var tracks = PerkLayouts.metro(face);
+            check(tracks.size() == 20 && tracks.stream().map(PerkLayouts.Track::base).distinct().count() == 20,
+                    "Every rotated metro fills exactly twenty unique cells");
+            check(tracks.stream().filter(PerkLayouts.Track::powered).count() == 16, "Sixteen straight rails are powered, four corners curve");
+            Map<PerkShapes.Cell, PerkLayouts.Track> cells = new HashMap<>();
+            for (var track : tracks) cells.put(track.base(), track);
+            var visited = new HashSet<PerkShapes.Cell>();
+            var current = tracks.getFirst(); org.bukkit.block.BlockFace entering = null;
+            do {
+                check(visited.add(current.base()), "The rail loop has no premature cycles");
+                var exits = railExits(current.shape());
+                var exit = entering == exits.get(0) ? exits.get(1) : exits.get(0);
+                var at = current.base();
+                var next = cells.get(new PerkShapes.Cell(at.x() + exit.getModX(), at.y(), at.z() + exit.getModZ()));
+                check(next != null && railExits(next.shape()).contains(exit.getOppositeFace()), "Every rail connects reciprocally to its neighbour");
+                entering = exit.getOppositeFace(); current = next;
+            } while (!current.base().equals(tracks.getFirst().base()));
+            check(visited.size() == 20, "Minecarts can traverse the complete 2x10 loop in every orientation");
+        }
+        var rain = PerkLayouts.zombieRain();
+        check(rain.size() == 36 && new HashSet<>(rain).size() == 36, "Zombie rain has exactly 36 distinct spawn columns");
+        check(rain.stream().allMatch(c -> c.y() == 24 && c.x() >= -3 && c.x() < 3 && c.z() >= -3 && c.z() < 3),
+                "Zombie rain occupies a 6x6 area 24 blocks above the target");
+    }
+    private static List<org.bukkit.block.BlockFace> railExits(org.bukkit.block.data.Rail.Shape shape) {
+        var n = org.bukkit.block.BlockFace.NORTH; var s = org.bukkit.block.BlockFace.SOUTH;
+        var e = org.bukkit.block.BlockFace.EAST; var w = org.bukkit.block.BlockFace.WEST;
+        return switch (shape) {
+            case NORTH_SOUTH -> List.of(n, s); case EAST_WEST -> List.of(e, w);
+            case NORTH_EAST -> List.of(n, e); case NORTH_WEST -> List.of(n, w);
+            case SOUTH_EAST -> List.of(s, e); case SOUTH_WEST -> List.of(s, w);
+            default -> throw new AssertionError("Unexpected sloping metro track");
+        };
+    }
+    private static void wishes() {
+        check(PerkWish.distance("kitten", "sitting") == 3, "Levenshtein counts substitutions and insertions");
+        check(PerkWish.distance("", "bow") == 3 && PerkWish.distance("bow", "bow") == 0, "Empty and exact names");
+        var candidates = List.of(Material.AIR, Material.STONE, Material.DIAMOND_SWORD, Material.IRON_SWORD, Material.BOW);
+        check(PerkWish.closest("minecraft:diamond sword", candidates) == Material.DIAMOND_SWORD, "English names and namespace normalize");
+        check(PerkWish.closest("diamnd_sword", candidates) == Material.DIAMOND_SWORD, "Misspellings select the closest item");
+        check(PerkWish.closest("air", candidates) != Material.AIR, "Genie only grants real inventory items");
     }
     private static void decoys() {
         UUID ownerId = new UUID(0, 1), enemyId = new UUID(0, 2);
@@ -239,6 +316,10 @@ public final class PerksCheck {
         check(f.get(0, 200, 0) == f.get(1, 200, 0) && f.get(1, 200, 0) == f.get(1, 201, 0),
                 "The whole component becomes one shared random material");
         check(f.get(2, 202, 1) == Material.STONE, "Diagonal and disconnected blocks remain unchanged");
+        check(terrain.transmute(f.block(0, 200, 0), 0, new java.util.Random(7), Material.BLUE_ICE) == 3,
+                "An offhand block explicitly chooses the transmutation material");
+        check(f.get(0, 200, 0) == Material.BLUE_ICE && f.get(1, 201, 0) == Material.BLUE_ICE,
+                "Every connected block uses the selected material");
         FakeWorld huge = new FakeWorld(); PerkTerrain hugeTerrain = new PerkTerrain(huge.world);
         for (int x = 0; x <= PerkRules.CONNECTED_LIMIT; x++) huge.set(x, 200, 0, Material.STONE);
         int before = huge.writes;

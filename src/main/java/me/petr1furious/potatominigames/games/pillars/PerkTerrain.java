@@ -93,6 +93,9 @@ final class PerkTerrain {
         while (it.hasNext()) { Lease lease = it.next(); if (tick >= lease.until()) { restore(lease); it.remove(); } }
     }
     int transmute(Block start, long tick, java.util.random.RandomGenerator random) {
+        return transmute(start, tick, random, null);
+    }
+    int transmute(Block start, long tick, java.util.random.RandomGenerator random, Material selected) {
         boolean[] unloaded = {false};
         var cells = PerkShapes.connected(new PerkShapes.Cell(start.getX(), start.getY(), start.getZ()), c -> {
             if (c.y() < world.getMinHeight() || c.y() >= world.getMaxHeight()) return false;
@@ -106,7 +109,7 @@ final class PerkTerrain {
         Material original = start.getType();
         boolean uniform = cells.stream().allMatch(c -> world.getBlockAt(c.x(), c.y(), c.z()).getType() == original);
         var choices = java.util.Arrays.stream(palette).filter(m -> !uniform || m != original).toList();
-        Material material = choices.get(random.nextInt(choices.size()));
+        Material material = selected == null ? choices.get(random.nextInt(choices.size())) : selected;
         for (var c : cells) {
             Block b = world.getBlockAt(c.x(), c.y(), c.z());
             // Preserve stored loot before replacing container blocks.
