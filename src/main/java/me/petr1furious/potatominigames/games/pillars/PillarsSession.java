@@ -139,6 +139,7 @@ final class PillarsSession implements GameSession {
     private BukkitTask floodTask;
     private Location floodPosition;
     private PillarsSky sky;
+    private PillarsReplays replays;
     /** Item Frenzy divides the item cooldown by this. */
     private int itemSpeed = 1;
 
@@ -172,6 +173,7 @@ final class PillarsSession implements GameSession {
     public void onStart() throws CommandFailure {
         try { start(); }
         catch (CommandFailure | RuntimeException error) {
+            if (replays != null) replays.close();
             closeFlood();
             if (sky != null) sky.close();
             if (perks != null) perks.close();
@@ -275,6 +277,11 @@ final class PillarsSession implements GameSession {
             floodPosition = center.clone();
             Bukkit.getPluginManager().registerEvents(flood, services.plugin());
             floodTask = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickFlood, 1L, 1L);
+        }
+
+        replays = PillarsReplays.open(services.plugin(), world, modeId);
+        if (replays != null) {
+            for (PillarPlayer pillarPlayer : alive) replays.start(pillarPlayer.player());
         }
 
         if (mode.bossBar.get()) {
@@ -1261,6 +1268,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onParticipantQuit(Player player) {
+        if (replays != null) replays.stop(player);
         if (perks != null) perks.disconnected(player);
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         if (pillarPlayer == null || ending || !alive.contains(pillarPlayer)) {
@@ -1293,6 +1301,7 @@ final class PillarsSession implements GameSession {
             if (!alive.contains(pillarPlayer)) {
                 // Grace expired while away.
                 placeEliminated(pillarPlayer);
+                if (replays != null) replays.start(player);
                 return;
             }
             if (perks != null && !perks.isGhost(player) && player.getGameMode() == GameMode.SPECTATOR) {
@@ -1309,6 +1318,7 @@ final class PillarsSession implements GameSession {
                 player.setFallDistance(0);
             }
             pillarPlayer.disconnectedAt = null;
+            if (replays != null) replays.start(player);
             announce(I18n.tr("pillars.play.reconnected", player.getName()).color(NamedTextColor.YELLOW));
             updateHud();
         });
@@ -1316,6 +1326,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onParticipantLeave(Player player) {
+        if (replays != null) replays.stop(player);
         if (perks != null) perks.playerGone(player);
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         player.setInvulnerable(false);
@@ -1436,6 +1447,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onEnd(EndReason reason) {
+        if (replays != null) replays.close();
         closeFlood();
         if (sky != null) sky.close();
         if (perks != null) perks.close();

@@ -42,6 +42,7 @@ import me.petr1furious.potatominigames.games.cs.CsGame;
 import me.petr1furious.potatominigames.games.party.PartyGame;
 import me.petr1furious.potatominigames.games.dummy.DummyGame;
 import me.petr1furious.potatominigames.games.pillars.PillarsGame;
+import me.petr1furious.potatominigames.games.pillars.PillarsReplays;
 import me.petr1furious.potatominigames.games.warfare.WarfareGame;
 import me.petr1furious.potatominigames.i18n.I18n;
 
@@ -143,6 +144,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         if (sessions != null) {
             sessions.stopAll(EndReason.ABORTED);
         }
+        PillarsReplays.awaitSaves();
         I18n.unregister();
     }
 }

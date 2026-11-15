@@ -1529,6 +1529,58 @@ gamerules still apply, but cannot override the passive sky's fixed clock/weather
 Only the disposable Pillars world changes: the lobby, templates and other games
 retain their own settings.
 
+## Pillars replays
+
+With [Flashback Server](https://modrinth.com/plugin/flashback-server) installed,
+every Pillars match automatically records its participants, including all built-in
+modes and player presets. The integration uses the public recording API without
+bundling the recorder. Flashback Server **1.2.4** is verified on ASP **26.3**;
+without an enabled compatible recorder, Pillars still works but logs that
+recording is unavailable.
+
+Recording starts after the players enter the arena, includes the countdown and
+continues after elimination while they watch the match. Leaving or disconnecting
+saves that player's segment; reconnecting starts the next numbered segment.
+Normal completion, forced stop and start failure close owned recordings before
+restoring Flood/sky, returning players or unloading the arena. Graceful plugin
+shutdown waits for pending saves. Lobby players and unrelated games are not
+automatically recorded; manually started recordings are not taken over.
+
+Files are local compressed packet/state replays, **not video or CoreProtect audit
+logs**, grouped by UTC match timestamp and mode:
+
+```text
+plugins/FlashbackServer/replays/pillars/<match>/<player-uuid>-part1.flashback
+```
+
+Each file contains one participant's perspective and received terrain, not an
+omniscient world log. It remains usable after the temporary arena is deleted;
+outbound client-only Flood water is recorded too. The recorder can include
+supported messages sent during the match, so keep replay files private.
+No automatic retention/deletion is added. Configure the recorder explicitly:
+
+```yaml
+clips:
+  auto-clip-on-death: false
+telemetry:
+  enabled: false
+```
+
+Players need no mod to play or be recorded. To view a downloaded `.flashback`
+file, use [Flashback](https://modrinth.com/mod/flashback) on a matching Minecraft
+26.3 Fabric client, with its required Fabric API. This is not an in-server vanilla
+replay viewer. Operators can decode-check a file with
+`/replay verify pillars/<match>/<player-uuid>-part1.flashback`
+(`flashbackserver.replay`, OP by default).
+
+The native fixture `native-checks/pillars/PillarsReplaySmoke.java` verifies real
+packet encoding, quit/rejoin segments, forced and natural completion, deleted
+arenas, movement, block changes and client-only Flood packets. Its five-second
+two-player Flood sample saved approximately **96 KiB per perspective**; this is
+not a size or memory estimate for a full match. Full recordings buffer data in
+RAM until saving: a JVM crash loses an unfinished recording. Decode verification
+does not replace checking rendered playback in the Fabric client.
+
 ## Player Pillars presets
 
 Every player can save up to **five** named, fixed Fusion mixes. Names are shared
