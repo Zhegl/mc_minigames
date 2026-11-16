@@ -22,6 +22,16 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 ### The Finals
 
+**Tutorial:** `/finals tutorial` starts a private solo practice arena, even while a
+normal Finals match is running. Players open a vault, pick up and deposit a cashbox,
+watch a short practice payout, steal an enemy cashout, try all three classes, and
+change their weapon, gadget and specialization using the real loadout menu.
+Practice choices apply immediately and leave saved loadouts untouched. Use
+`/finals tutorial help` to repeat instructions or `/play leave` to exit.
+The first Finals queue attempt offers **Play tutorial** or **Continue queueing**;
+the suggestion is remembered in the player's persistent data. Closing the popup
+cancels that queue attempt. The tutorial remains replayable through its command.
+
 Join with `/play finals` or use the lobby compass. Two players can play against
 each other; the queue supports 2–12 players split between red and blue teams.
 This is a Minecraft adaptation using vanilla items, sounds and particles; no

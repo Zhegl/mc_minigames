@@ -133,7 +133,8 @@ public final class FinalsLoadoutSmoke {
         lookupProxy=proxy;
         try {
             Object registry=make("me.petr1furious.potatominigames.core.player.ParticipantRegistry");
-            for(FakePlayer player:players.values())call(registry,"add",player.player);
+            boolean tutorialOnly=Boolean.getBoolean("finals.smoke.tutorialOnly");
+            for(FakePlayer player:players.values())if(!tutorialOnly||player==light)call(registry,"add",player.player);
             Field unsafeField=sun.misc.Unsafe.class.getDeclaredField("theUnsafe");unsafeField.setAccessible(true);
             Object active=((sun.misc.Unsafe)unsafeField.get(null)).allocateInstance(type("me.petr1furious.potatominigames.core.session.ActiveSession"));
             set(active,"phase",value("me.petr1furious.potatominigames.core.session.GamePhase","RUNNING"));
@@ -163,7 +164,9 @@ public final class FinalsLoadoutSmoke {
                 Object weapon=((List<?>)call(type("FinalsWeapon"),"byClass",role)).getFirst();
                 choices.put(entry.getKey().id,make("FinalsLoadouts$Choice",role,weapon));
             }
-            session=make("FinalsSession",services,config,null,loadouts);
+            if(tutorialOnly)call(loadouts,"beginPractice",light.id);
+            session=tutorialOnly ? make("FinalsSession",services,config,null,loadouts,true)
+                    : make("FinalsSession",services,config,null,loadouts);
             // World creation and mutation require the real CraftServer. As in the original
             // fixture, fake participant transports are spawned explicitly after real startup.
             call(session,"onStart");
@@ -171,6 +174,10 @@ public final class FinalsLoadoutSmoke {
             require(ticker!=null,"Prepared startup installs the production match ticker");
             call(ticker,"cancel");
             require((boolean)call(ticker,"isCancelled"),"Manual countdown checks disable the scheduled ticker to avoid interference");
+            if(tutorialOnly) {
+                tutorialChecks(loadouts,light,config);
+                return assertions;
+            }
             require(((Map<?,?>)get(session,"roster")).size()==players.size(),"Real onStart builds the full participant roster");
             require((boolean)get(session,"revivalMode"),"The actual initial six-player roster enables three-v-three revival rules");
             require(get(session,"world") instanceof World,"Real onStart creates the native match world");
@@ -311,8 +318,122 @@ public final class FinalsLoadoutSmoke {
             if(session!=null)try{withPlayerLookup(session,"onEnd",value("me.petr1furious.potatominigames.core.game.EndReason","ABORTED"));}catch(Exception error){smoke.getLogger().warning("Loadout smoke cleanup: "+error);}
             serverField.set(null,originalServer);
             if(worlds!=null)call(worlds,"destroyVoid","finals");
+            if(worlds!=null)call(worlds,"destroyVoid","finals_tutorial_"+light.id);
             for(FakePlayer player:players.values())player.attribute.remove();
         }
+    }
+
+    @SuppressWarnings("unchecked") private void tutorialChecks(Object loadouts,FakePlayer player,Object config)throws Exception {
+        require(((Map<?,?>)get(session,"roster")).size()==1,"Tutorial uses a solo roster");
+        require(!(boolean)get(session,"revivalMode"),"Tutorial does not enable competitive team revivals");
+        require(get(session,"arena").getClass().getSimpleName().equals("FinalsTutorialArena"),"Tutorial builds its own compact arena");
+        require(((World)get(session,"world")).getName().endsWith(player.id.toString()),"Each learner owns a distinct world so concurrent tutorials cannot reset one another");
+        Object saved=((Map<UUID,Object>)get(loadouts,"choices")).get(player.id);
+        for(String helper:List.of("highlights","tabList")) {
+            Object presentation=get(session,helper);if(presentation!=null)call(presentation,"clear");set(session,helper,null);
+        }
+        call(session,"spawn",player.player);call(session,"releaseAll");
+        ((Map<?,?>)get(session,"protectedUntil")).clear();
+        Object arena=get(session,"arena"), tutorial=get(session,"tutorial");
+        Object state=make("FinalsState",get(session,"roster"),1L,get(session,"rules"));
+        set(session,"state",state);set(session,"tick",1L);
+        call(tutorial,"start",player.player,1L);
+        require(call(tutorial,"step").toString().equals("OPEN"),"Tutorial starts with real vault exercise");
+        Location vault=(Location)call(arena,"vault");player.location=vault.clone().add(0,0,2);
+        var open=new PlayerInteractEvent(player.player,Action.RIGHT_CLICK_BLOCK,null,vault.getBlock(),org.bukkit.block.BlockFace.SOUTH,EquipmentSlot.HAND);
+        call(session,"onPlayerInteract",open);
+        require(call(state,"phase").toString().equals("VAULT_OPENING"),"Real right-click starts vault unlock");
+        call(tutorial,"tick",player.player,state,1L);
+        require(call(tutorial,"step").toString().equals("OPEN"),"Unlock countdown must finish before pickup lesson");
+        set(session,"tick",101L);call(session,"advanceObjective");call(tutorial,"tick",player.player,state,101L);
+        require(call(tutorial,"step").toString().equals("CARRY"),"Unlocked vault advances to pickup");
+        call(session,"ensureCashbox");player.location=vault.clone().add(0,1,0);
+        withPlayerLookup(session,"ensureCashbox");call(tutorial,"tick",player.player,state,101L);
+        require(player.id.equals(call(state,"carrier"))&&call(tutorial,"step").toString().equals("DEPOSIT"),"Actual cashbox proximity pickup advances tutorial");
+        player.location=((Location)call(arena,"station",1)).add(0,0,2);
+        call(session,"interactStation",player.player,1);call(tutorial,"tick",player.player,state,101L);
+        require(call(tutorial,"step").toString().equals("PAYOUT"),"Station B is valid for real deposit lesson");
+        set(session,"tick",301L);call(session,"advanceObjective");
+        require(call(tutorial,"tick",player.player,state,301L).toString().equals("ENEMY_CASHOUT"),"Real payout requests scripted stealing exercise");
+        call(session,"tutorialEnemyCashout",player.player);state=get(session,"state");
+        require(call(state,"ownerTeam").equals(1)&&call(state,"station").equals(0),"Scripted enemy owns real station A");
+        player.location=((Location)call(arena,"station",0)).add(0,0,2);player.sneaking=true;
+        call(session,"interactStation",player.player,0);
+        require(((Map<?,?>)call(state,"stealDeadlines")).containsKey(player.id),"Sneak and interact begins real steal channel");
+        require(!(boolean)call(state,"completeSteal",player.id,400L),"Steal cannot complete early");
+        require((boolean)call(state,"completeSteal",player.id,401L),"Full real channel transfers ownership");
+        require(call(tutorial,"tick",player.player,state,401L).toString().equals("CLEAR_OBJECTIVE"),"Stealing unlocks class lessons");
+        player.sneaking=false;set(session,"tick",401L);
+        set(session,"state",make("FinalsState",get(session,"roster"),401L,get(session,"rules")));
+        for(String role:List.of("LIGHT","MEDIUM","HEAVY")) {
+            call(loadouts,"open",player.player);
+            click(loadouts,player,role.equals("LIGHT")?11:role.equals("MEDIUM")?13:15);
+            require(((Map<?,?>)get(session,"classes")).get(player.id).toString().equals(role),"Class changes apply instantly in tutorial");
+            player.player.closeInventory();
+            call(tutorial,"tick",player.player,get(session,"state"),402L);
+            require(call(tutorial,"step").toString().equals(role),"Class selection alone does not complete movement exercise");
+            player.mode=GameMode.SPECTATOR;player.location.add(4,0,0);
+            call(tutorial,"tick",player.player,get(session,"state"),402L);
+            require(call(tutorial,"step").toString().equals(role),"Spectator movement cannot complete a class exercise");
+            player.mode=GameMode.SURVIVAL;player.location.subtract(4,0,0);
+            call(tutorial,"tick",player.player,get(session,"state"),402L);
+            player.location.add(3,0,0);call(tutorial,"tick",player.player,get(session,"state"),403L);
+        }
+        require(call(tutorial,"step").toString().equals("WEAPON"),"All three class movement exercises completed");
+        call(loadouts,"open",player.player);click(loadouts,player,29);
+        call(tutorial,"tick",player.player,get(session,"state"),404L);
+        require(call(tutorial,"step").toString().equals("WEAPON"),"Must close loadout menu before proceeding");
+        player.player.closeInventory();call(tutorial,"tick",player.player,get(session,"state"),405L);
+        require(call(tutorial,"step").toString().equals("GADGET"),"Real weapon GUI edit advances lesson");
+        call(loadouts,"open",player.player,0);
+        List<?> options=(List<?>)call(type("FinalsGadgetState$Kind"),"gadgets",value("FinalsClass","HEAVY"));
+        click(loadouts,player,options.indexOf(value("FinalsGadgetState$Kind","SMOKE_GRENADE")));
+        player.player.closeInventory();call(tutorial,"tick",player.player,get(session,"state"),406L);
+        require(call(tutorial,"step").toString().equals("SPECIALIZATION"),"Real gadget picker advances lesson");
+        call(loadouts,"open",player.player);click(loadouts,player,22);
+        player.player.closeInventory();call(tutorial,"tick",player.player,get(session,"state"),407L);
+        require(call(tutorial,"step").toString().equals("DONE"),"Specialization selection completes every exercise");
+        require(call(tutorial,"tick",player.player,get(session,"state"),567L).toString().equals("FINISH"),"Completion gives time to read before cleanup");
+        require(((Map<?,?>)get(loadouts,"choices")).get(player.id).equals(saved),"Tutorial never mutates saved loadout");
+        tutorialPromptChecks(loadouts,player,config);
+        withPlayerLookup(session,"onEnd",value("me.petr1furious.potatominigames.core.game.EndReason","ABORTED"));
+        require(call(loadouts,"choice",player.id).equals(saved),"Leaving restores saved kit selection");
+        require(((Map<?,?>)get(loadouts,"practiceChoices")).isEmpty(),"Cleanup releases temporary kit");
+        restored(player);
+        smoke.getLogger().info("FINALS_TUTORIAL_SMOKE_PASS: "+assertions+" native tutorial assertions");
+    }
+
+    private void tutorialPromptChecks(Object loadouts,FakePlayer player,Object config)throws Exception {
+        Object tutorials=make("FinalsTutorials",main,config,loadouts);
+        try {
+            Object manager=get(main,"sessions");set(tutorials,"sessions",manager);
+            require((boolean)call(tutorials,"suggest",player.player,(Runnable)()->{}),"First queue offers tutorial popup");
+            Inventory first=player.top;
+            require(first.getSize()==27&&first.getItem(11).getType()==Material.KNOWLEDGE_BOOK
+                    &&first.getItem(15).getType()==Material.GOLD_BLOCK,"Popup provides tutorial and continue buttons");
+            nativeText(first.getItem(11));nativeText(first.getItem(15));
+            var drag=new InventoryDragEvent(player.view,new ItemStack(Material.STONE),new ItemStack(Material.STONE),false,Map.of(0,new ItemStack(Material.STONE)));
+            call(tutorials,"drag",drag);require(drag.isCancelled(),"Prompt inventory rejects item dragging");
+            var bottom=new InventoryClickEvent(player.view,InventoryType.SlotType.CONTAINER,30,ClickType.SHIFT_LEFT,InventoryAction.MOVE_TO_OTHER_INVENTORY);
+            call(tutorials,"click",bottom);require(bottom.isCancelled(),"Prompt blocks shift-click transfers");
+            player.player.closeInventory();
+            require(!(boolean)call(tutorials,"suggest",player.player,(Runnable)()->{}),"Closing first suggestion does not prompt repeatedly");
+            Object restarted=make("FinalsTutorials",main,config,loadouts);
+            try {
+                set(restarted,"sessions",manager);
+                require(!(boolean)call(restarted,"suggest",player.player,(Runnable)()->{}),"Seen flag survives service recreation in player persistent data");
+            } finally { org.bukkit.event.HandlerList.unregisterAll((org.bukkit.event.Listener)restarted); }
+        } finally {org.bukkit.event.HandlerList.unregisterAll((org.bukkit.event.Listener)tutorials);}
+        Object manager=get(main,"sessions");
+        Object finals=call(manager,"game","finals");
+        Object onboarding=get(finals,"tutorials");Object queues=get(onboarding,"queues");
+        player.player.getPersistentDataContainer().remove((NamespacedKey)get(onboarding,"seen"));
+        Object queue=((Optional<?>)call(queues,"find",finals,"default")).orElseThrow();
+        call(queues,"join",player.player,queue);
+        require(player.top.getItem(11)!=null&&player.top.getItem(11).getType()==Material.KNOWLEDGE_BOOK,
+                "Actual public queue join routes through the Finals suggestion");
+        require(!(boolean)call(queue,"contains",player.id),"Prompt waits for a choice before queue membership changes");
+        player.player.closeInventory();
     }
 
     private void cashoutConfigChecks()throws Exception {
@@ -1129,7 +1250,7 @@ public final class FinalsLoadoutSmoke {
         final InventoryView view;
         final Player player;
         Inventory top=fallback;Locale locale=Locale.ENGLISH;
-        Location location;GameMode mode=GameMode.SURVIVAL;float walkSpeed,flySpeed;int held,menuOpens;
+        Location location;GameMode mode=GameMode.SURVIVAL;float walkSpeed,flySpeed;int held,menuOpens;boolean sneaking;
         ItemStack offhand=new ItemStack(Material.AIR),chest;
         Scoreboard scoreboard=Bukkit.getScoreboardManager().getMainScoreboard();
         FakePlayer(String name,World world,double originalHealth,float originalWalk,float originalFly){
@@ -1161,7 +1282,8 @@ public final class FinalsLoadoutSmoke {
                 case "setGameMode"->{mode=(GameMode)a[0];yield null;}
                 case "getWalkSpeed"->walkSpeed;case "getFlySpeed"->flySpeed;
                 case "setWalkSpeed"->{walkSpeed=(float)a[0];yield null;}case "setFlySpeed"->{flySpeed=(float)a[0];yield null;}
-                case "isOnline"->true;case "isDead","isSneaking"->false;
+                case "isOnline"->true;case "isDead"->false;case "isSneaking"->sneaking;
+                case "getPersistentDataContainer"->attribute.getPersistentDataContainer();
                 case "getKiller"->null;
                 case "getAttribute"->attribute.getAttribute((Attribute)a[0]);case "getHealth"->attribute.getHealth();
                 case "setHealth"->{attribute.setHealth((double)a[0]);yield null;}
