@@ -320,3 +320,5 @@ map.preview.disabled: "Map previews disabled."
 map.error.preview_world: "Enter this map's editor before showing previews."
 
 highlight.cashbox: "◆ Cashbox"
+
+highlight.enemy_health: "<arg:0>/<arg:1> HP"

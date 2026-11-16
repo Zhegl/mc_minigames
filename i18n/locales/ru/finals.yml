@@ -320,3 +320,5 @@ map.preview.disabled: "Предпросмотр карты выключен."
 map.error.preview_world: "Перейдите в мир настройки этой карты, прежде чем включать предпросмотр."
 
 highlight.cashbox: "◆ Кэшбокс"
+
+highlight.enemy_health: "<arg:0>/<arg:1> ОЗ"

@@ -282,6 +282,9 @@ Teammates have private outlines and name markers visible only to
 their allies, including a marker at their death location while they respawn. Normal
 overhead player names are hidden during Finals. Visibility is still subject to the
 server's entity tracking and the client's rendering distance.
+After a contestant takes damage, opponents see their current/max HP above their
+head for five seconds. Further damage refreshes the timer. These HP labels stay
+behind walls, disappear on death, and do not create distant direction markers.
 
 The Tab player list shows each contestant's equipped class and match kill count.
 Only teammates (including yourself) see current/max HP or a respawning indicator.

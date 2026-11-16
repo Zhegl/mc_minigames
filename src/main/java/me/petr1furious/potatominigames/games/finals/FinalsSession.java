@@ -49,6 +49,7 @@ final class FinalsSession implements GameSession {
     private boolean applyingCombatDamage;
     private boolean applyingBulletDamage;
     private final FinalsBulletKnockback bulletKnockback = new FinalsBulletKnockback();
+    private final FinalsHitHealth hitHealth = new FinalsHitHealth(this::fighting, () -> this.tick);
     private final FinalsRegeneration regeneration = new FinalsRegeneration(this::fighting, () -> this.tick);
     private Location damageOrigin;
 
@@ -581,6 +582,7 @@ final class FinalsSession implements GameSession {
             if (respawnInput != null) respawnInput.clear();
             bulletKnockback.close();
             regeneration.close();
+            hitHealth.close();
             if (gameEvents != null) gameEvents.clear();
             teamWipes.clear();
             teamRespawnPositions.clear();
@@ -660,6 +662,7 @@ final class FinalsSession implements GameSession {
         preparing = false;
         bulletKnockback.start(services.plugin());
         regeneration.start(services.plugin());
+        hitHealth.start(services.plugin());
         FinalsCombatContext combat = combatContext();
         weapons = new FinalsWeapons(combat);
         gadgets = new FinalsGadgets(combat);
@@ -764,7 +767,7 @@ final class FinalsSession implements GameSession {
                         ? revives.location(player.getUniqueId())
                         : deathLocations.getOrDefault(player.getUniqueId(), player.getLocation()),
                 player -> downed(player.getUniqueId()), cashboxHighlightPoint(),
-                state == null ? null : state.carrier());
+                state == null ? null : state.carrier(), hitHealth::visible);
     }
 
     private Location cashboxHighlightPoint() {
@@ -881,6 +884,7 @@ final class FinalsSession implements GameSession {
         player.setGlowing(false);
         player.setSaturation(20);
         regeneration.reset(id, tick);
+        hitHealth.forget(id);
         respawnAt.remove(id);
         kills.spawn(id);
         deathLocations.remove(id);
@@ -1407,6 +1411,7 @@ final class FinalsSession implements GameSession {
         if (respawnInput != null) respawnInput.clear();
         bulletKnockback.close();
         regeneration.close();
+        hitHealth.close();
         if (gameEvents != null) gameEvents.clear();
         releaseAll();
         if (weapons != null) weapons.clear();
@@ -1842,6 +1847,7 @@ final class FinalsSession implements GameSession {
         updateStealSiren();
         deathLocations.put(id, player.getLocation().clone());
         regeneration.forget(id);
+        hitHealth.forget(id);
         if (weapons != null) weapons.forget(id);
         if (gadgets != null) gadgets.forget(id);
         clearOrdnance(id);
@@ -2132,6 +2138,7 @@ final class FinalsSession implements GameSession {
         dropCashbox(player);
         connected.remove(id);
         regeneration.forget(id);
+        hitHealth.forget(id);
         if (revives != null) revives.disconnected(id, permanent);
         if (respawnInput != null) respawnInput.remove(id);
         if (dropInput != null) dropInput.remove(id);

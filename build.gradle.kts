@@ -268,6 +268,7 @@ tasks.check { dependsOn(checkFinalsSession) }
 for ((taskName, checkClass) in mapOf(
     "checkFinalsWeapons" to "FinalsWeaponsCheck",
     "checkFinalsRegeneration" to "FinalsRegenerationCheck",
+    "checkFinalsHitHealth" to "FinalsHitHealthCheck",
     "checkFinalsGadgets" to "FinalsGadgetsCheck",
     "checkFinalsEquipment" to "FinalsEquipmentCheck",
     "checkFinalsMaps" to "FinalsMapsCheck",
