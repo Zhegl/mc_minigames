@@ -11,7 +11,7 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 ## Want to play?
 
-Install [Potato Launcher](https://github.com/Petr1Furious/potato-minigames) and follow instructions in launcher's repo to connect with minigames' server instance via [instance manifest](https://mc.emptiness.observer:14885/data/instance_manifest.json) (requires Telegram account).
+Install [Potato Launcher](https://github.com/Petr1Furious/potato-launcher) and follow instructions in launcher's repo to connect with minigames' server instance via [instance manifest](https://mc.emptiness.observer:14885/data/instance_manifest.json) (requires Telegram account).
 
 ## Games
 
