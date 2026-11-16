@@ -52,6 +52,7 @@ public final class PartyGame implements Minigame {
                 "color_floor",
                 "anvils",
                 "build_memory",
+                "gartic_phone",
                 "tool_race",
                 "parkour_race",
                 "hole_in_the_wall",
@@ -108,6 +109,7 @@ public final class PartyGame implements Minigame {
             case "hole_in_the_wall" -> Material.SLIME_BLOCK;
             case "party_games" -> Material.FIREWORK_ROCKET;
             case "build_memory" -> Material.BRICKS;
+            case "gartic_phone" -> Material.WRITABLE_BOOK;
             default -> icon();
         };
     }
@@ -122,6 +124,7 @@ public final class PartyGame implements Minigame {
                                         "color_floor",
                                         "anvils",
                                         "build_memory",
+                                        "gartic_phone",
                                         "tool_race",
                                         "parkour_race",
                                         "hole_in_the_wall",
@@ -139,6 +142,7 @@ public final class PartyGame implements Minigame {
     @Override
     public GameSession createSession(SessionServices services, String mode) {
         if (mode.equals("pvp_select")) return new DuelSession(services, config, false, true, true);
+        if (mode.equals("gartic_phone")) return new GarticPhoneSession(services, config);
         if (mode.equals("one_shot"))
             return new OneShotSession(services, config, PartyRoundContext.standalone(services));
         if (mode.equals("parkour_race"))

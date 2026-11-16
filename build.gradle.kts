@@ -204,6 +204,14 @@ val checkPartyGames by tasks.registering(JavaExec::class) {
     classpath = checks.runtimeClasspath
     mainClass.set("me.petr1furious.potatominigames.games.party.PartyGamesCheck")
 }
+
+val checkGarticPhone by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.party.GarticPhoneCheck")
+}
+
+tasks.check { dependsOn(checkGarticPhone) }
 tasks.check { dependsOn(checkPartyGames) }
 val checkPartyArenas by tasks.registering(JavaExec::class) {
     dependsOn(checks.classesTaskName)
