@@ -369,7 +369,7 @@ only the previous contribution is visible. The match has one turn per player,
 with at least three turns for two-player games and solo practice. Each completed
 chain is revealed in order with its authors. There is no winner or point award.
 
-Build in a private, enclosed **11×8×11** plot with flight. Right-click to place;
+Build in Creative mode in a private, enclosed **11×8×11** plot. Right-click to place;
 left-click to instantly erase. Right-click the **chest in slot 8** to choose from
 50 blocks; selecting one puts it in slot 1 and keeps the six recent blocks beside
 it. Blocks refill automatically. Right-click the **emerald in slot 9** to lock

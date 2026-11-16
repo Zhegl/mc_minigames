@@ -207,7 +207,7 @@ final class GarticPhoneSession extends PartySurvivalSession {
   private void resetPlayer(Player player, boolean building) {
     player.closeInventory();
     player.setItemOnCursor(null);
-    services.playerState().resetForRound(player, building ? GameMode.SURVIVAL : GameMode.ADVENTURE);
+    services.playerState().resetForRound(player, building ? GameMode.CREATIVE : GameMode.ADVENTURE);
     player.setAllowFlight(true);
     player.setFlying(true);
     teleport(player, arena.spawn(player.getUniqueId()));
