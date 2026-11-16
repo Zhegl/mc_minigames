@@ -6,6 +6,21 @@ import java.util.*;
 
 public final class PartyGamesCheck {
     public static void main(String[] args) {
+        var game = new PartyGame((PartyConfig) null);
+        check(!game.ballots("party_games").isEmpty(), "Tournament length is selectable");
+        check(game.ballots("pvp").isEmpty(), "Standalone games have no tournament length vote");
+        check(PartyGamesSession.roundCount("small", 12, 15) == 4, "Small overrides configured length with four rounds");
+        check(PartyGamesSession.roundCount("medium", 12, 15) == 6, "Medium has six rounds");
+        check(PartyGamesSession.roundCount("large", 4, 15) == 9, "Large has nine rounds");
+        check(PartyGamesSession.roundCount("marathon", 6, 15) == 15, "Marathon plays every eligible game");
+        check(PartyGamesSession.roundCount("marathon", 6, 7) == 7, "Marathon follows the configured pool");
+        check(PartyGamesSession.roundCount("large", 6, 3) == 3, "Short pools never repeat games to fill a length");
+        check(PartyGamesSession.roundCount(null, 11, 15) == 11, "Direct starts without a length preserve admin configuration");
+        try {
+            PartyGamesSession.roundCount("unknown", 6, 15);
+            throw new AssertionError("Unknown match length accepted");
+        } catch (IllegalArgumentException expected) {
+        }
         UUID a = new UUID(0, 1), b = new UUID(0, 2), c = new UUID(0, 3);
         var s = new PartyGamesState(List.of(a, b, c), PartyGamesState.MODES, new Random(1));
         check(

@@ -1,0 +1,23 @@
+gradle.projectsEvaluated {
+    def p = gradle.rootProject
+    if (p.providers.gradleProperty('mc').getOrElse('26.3') != '26.2') {
+        throw new GradleException('This pinned MockBukkit fixture requires -Pmc=26.2')
+    }
+    def runtime = p.configurations.create('partyMenuMockRuntime')
+    p.dependencies.add(runtime.name, 'org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.116.1')
+    def cp = p.sourceSets.checks.runtimeClasspath + runtime
+    def destination = p.layout.buildDirectory.dir('party-menu-mock/classes')
+    def compile = p.tasks.register('compilePartyMenuMock', JavaCompile) {
+        dependsOn p.tasks.checksClasses
+        source = p.files('mock-checks/party-menu/PartyMenuMockCheck.java')
+        classpath = cp
+        destinationDirectory.set(destination)
+        javaCompiler.set(p.javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) })
+    }
+    p.tasks.register('checkPartyMenuMock', JavaExec) {
+        dependsOn compile
+        classpath = cp + p.files(destination)
+        mainClass.set('me.petr1furious.potatominigames.core.queue.PartyMenuMockCheck')
+        javaLauncher.set(p.javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) })
+    }
+}

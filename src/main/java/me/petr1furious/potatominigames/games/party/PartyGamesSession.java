@@ -49,6 +49,20 @@ final class PartyGamesSession extends PartyRoundForwarder {
         return s.color(NamedTextColor.GOLD);
     }
 
+    /** Fixed match sizes never repeat a game when an admin supplies a smaller pool. */
+    static int roundCount(String length, int configuredRounds, int poolSize) {
+        int requested = switch (length) {
+            case null -> configuredRounds;
+            case "small" -> 4;
+            case "medium" -> 6;
+            case "large" -> 9;
+            case "marathon" -> poolSize;
+            default -> throw I18n.exception("core.ballot.unknown_choice", I18n.tr("core.ballot.length"),
+                    length, "small, medium, large, marathon");
+        };
+        return Math.min(requested, poolSize);
+    }
+
     @Override
     protected GameSession delegate() {
         return phase == Phase.ACTIVE && context != null && !context.ended() ? child : null;
@@ -68,7 +82,7 @@ final class PartyGamesSession extends PartyRoundForwarder {
                             .map(String::trim)
                             .toList();
             state = new PartyGamesState(new ArrayList<>(names.keySet()), pool, new Random());
-            roundCount = Math.min(config.partyRounds.get(), pool.size());
+            roundCount = roundCount(services.option("length"), config.partyRounds.get(), state.schedule().size());
             intermission = config.partyIntermission.get();
             options =
                     new PartyRoundOptions(

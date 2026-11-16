@@ -387,15 +387,7 @@ public final class QueueService implements Listener {
 
         Optional<ActiveSession> running = sessions.sessionOf(queue.game);
         if (running.isPresent()) {
-            if (current.isPresent() && current.get() == running.get()) {
-                throw new CommandFailure(I18n.tr("core.queue.already_spectating"));
-            }
-            Queue previous = byPlayer.get(player.getUniqueId());
-            if (previous != null) {
-                remove(player, previous);
-            }
-            current.ifPresent(session -> session.dropSpectator(player));
-            running.get().spectate(player);
+            transferSpectator(player, running.get(), current);
             return;
         }
 
@@ -415,6 +407,29 @@ public final class QueueService implements Listener {
         QUEUE.send(player, I18n.tr("core.queue.joined", queue.displayName(), queue.countText(), memberButtons(queue))
                 .color(NamedTextColor.GREEN));
         announce(queue, player, true);
+    }
+
+    /** Explicit spectator entry does not depend on an enabled queue. */
+    public void spectate(Player player, Minigame game) throws CommandFailure {
+        ActiveSession running = sessions.sessionOf(game)
+                .orElseThrow(() -> new CommandFailure(I18n.tr("core.session.not_running")));
+        Optional<ActiveSession> current = sessions.sessionOf(player);
+        if (current.isPresent() && current.get().isParticipant(player)) {
+            throw new CommandFailure(I18n.tr("core.queue.already_playing", current.get().displayName()));
+        }
+        touch(player);
+        transferSpectator(player, running, current);
+    }
+
+    private void transferSpectator(Player player, ActiveSession running, Optional<ActiveSession> current)
+            throws CommandFailure {
+        if (current.isPresent() && current.get() == running) {
+            throw new CommandFailure(I18n.tr("core.queue.already_spectating"));
+        }
+        Queue previous = byPlayer.get(player.getUniqueId());
+        if (previous != null) remove(player, previous);
+        current.ifPresent(session -> session.dropSpectator(player));
+        running.spectate(player);
     }
 
     /** Leaves the queue or stops spectating. */

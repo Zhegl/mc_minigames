@@ -1,6 +1,7 @@
 package me.petr1furious.potatominigames.games.party;
 
 import me.petr1furious.potatominigames.core.config.ConfigRegistry;
+import me.petr1furious.potatominigames.core.game.Ballot;
 import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.Minigame;
 import me.petr1furious.potatominigames.core.game.SessionServices;
@@ -81,8 +82,16 @@ public final class PartyGame implements Minigame {
     }
 
     @Override
+    public List<Ballot> ballots(String mode) {
+        if (!mode.equals("party_games")) return List.of();
+        return List.of(new Ballot("length", "match length",
+                () -> List.of("small", "medium", "large", "marathon"), () -> "medium",
+                List.of(Material.LIME_DYE, Material.YELLOW_DYE, Material.ORANGE_DYE, Material.NETHER_STAR)));
+    }
+
+    @Override
     public Material icon() {
-        return Material.IRON_SWORD;
+        return Material.FIREWORK_ROCKET;
     }
 
     @Override
@@ -97,10 +106,17 @@ public final class PartyGame implements Minigame {
     @Override
     public Material icon(String mode) {
         return switch (mode) {
+            case "pvp" -> Material.IRON_SWORD;
+            case "sumo" -> Material.PISTON;
+            case "arms_race" -> Material.CROSSBOW;
+            case "tnt_run" -> Material.TNT;
+            case "mob_count" -> Material.PIG_SPAWN_EGG;
+            case "rhino" -> Material.RAVAGER_SPAWN_EGG;
             case "one_shot" -> Material.BOW;
             case "parkour_race" -> Material.CLOCK;
             case "magic_battle" -> Material.BLAZE_ROD;
-            case "miners", "tool_race" -> Material.DIAMOND_PICKAXE;
+            case "miners" -> Material.DIAMOND_PICKAXE;
+            case "tool_race" -> Material.IRON_PICKAXE;
             case "color_floor" -> Material.LIME_CONCRETE;
             case "pvp_ffa" -> Material.DIAMOND_SWORD;
             case "pvp_select" -> Material.NETHER_STAR;
