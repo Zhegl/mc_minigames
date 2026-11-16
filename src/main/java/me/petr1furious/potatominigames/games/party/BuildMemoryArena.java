@@ -111,9 +111,24 @@ final class BuildMemoryArena {
                     fence.setFace(
                             face,
                             neighbor.getType().name().endsWith("_FENCE")
-                                    || neighbor.getType().isOccluding());
+                                    || neighbor.getType().isOccluding()
+                                    || neighbor.getBlockData()
+                                                    instanceof org.bukkit.block.data.type.Gate gate
+                                            && (face.getModX() != 0
+                                                    ? gate.getFacing().getModZ() != 0
+                                                    : gate.getFacing().getModX() != 0));
                 }
                 block.setBlockData(fence, false);
+            } else if (block.getType() == Material.IRON_BARS
+                    && data instanceof org.bukkit.block.data.MultipleFacing bars) {
+                for (var face : bars.getAllowedFaces()) {
+                    Block neighbor = block.getRelative(face);
+                    bars.setFace(
+                            face,
+                            neighbor.getType() == Material.IRON_BARS
+                                    || neighbor.getType().isOccluding());
+                }
+                block.setBlockData(bars, false);
             } else if (block.getType() == Material.REDSTONE_LAMP
                     && data instanceof org.bukkit.block.data.Lightable lamp) {
                 lamp.setLit(

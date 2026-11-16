@@ -10,7 +10,14 @@ import java.util.*;
 
 record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     static final int FULL_MODELS = 14;
-    static final int MODEL_COUNT = 26;
+    static final int MODEL_COUNT = 50;
+
+    static List<Integer> smallModels() {
+        var models = new ArrayList<Integer>();
+        for (int model = 14; model < 20; model++) models.add(model);
+        for (int model = 26; model < MODEL_COUNT; model++) models.add(model);
+        return List.copyOf(models);
+    }
 
     record Cell(int x, int y, int z) {}
 
@@ -23,7 +30,7 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     }
 
     private static List<Integer> tier(int stage) {
-        if (stage <= 2) return List.of(14, 15, 16, 17, 18, 19);
+        if (stage <= 2) return smallModels();
         if (stage == 3) return List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
         if (stage <= 5) return List.of(20, 21);
         if (stage <= 7) return List.of(22, 23);
@@ -52,8 +59,8 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     }
 
     static BuildMemoryPattern generate(int stage, int model, Random random) {
-        if (stage <= 2 && (model < FULL_MODELS || model >= 20))
-            model = FULL_MODELS + Math.floorMod(model, 6);
+        if (stage <= 2 && !smallModels().contains(model))
+            model = smallModels().get(Math.floorMod(model, smallModels().size()));
         String wood = List.of("OAK", "SPRUCE", "BIRCH", "CHERRY").get(random.nextInt(4));
         Material planks = Material.valueOf(wood + "_PLANKS"),
                 fence = Material.valueOf(wood + "_FENCE"),
@@ -69,6 +76,11 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
                                 Material.GREEN_TERRACOTTA)
                         .get(random.nextInt(4));
         Material light = random.nextBoolean() ? Material.LANTERN : Material.SOUL_LANTERN;
+        if (model >= 26)
+            return (model < 38
+                            ? BuildMemoryFurnitureModels.generate(model, wood, stone, accent, light)
+                            : BuildMemoryGardenModels.generate(model, wood, stone, accent, light))
+                    .rotate(random.nextInt(4));
         Builder b = new Builder();
         Component title;
         switch (model) {
@@ -402,7 +414,7 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
         return new BuildMemoryPattern(title, rotated);
     }
 
-    private static final class Builder {
+    static final class Builder {
         final Map<Cell, MemoryBlock> blocks = new LinkedHashMap<>();
 
         void put(Material m, int x, int y, int z, String... properties) {
