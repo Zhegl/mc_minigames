@@ -2,10 +2,10 @@ package me.petr1furious.potatominigames.games.party;
 
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.i18n.I18n;
+
 import net.kyori.adventure.text.Component;
 
 import org.bukkit.Location;
-import org.bukkit.Sound;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
@@ -13,14 +13,12 @@ import org.bukkit.entity.PiglinAbstract;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.UUID;
 
 final class MobCountSession extends PartySurvivalSession {
     private enum Phase {
         COUNT,
+        READY,
         ANSWER,
         DROP
     }
@@ -30,7 +28,6 @@ final class MobCountSession extends PartySurvivalSession {
     private Phase phase = Phase.COUNT;
     private long phaseEnd;
     private final List<Entity> mobs = new ArrayList<>();
-    private final Set<UUID> failed = new HashSet<>();
     private final int countSeconds, answerSeconds, rounds;
 
     MobCountSession(SessionServices services, PartyConfig config) {
@@ -68,7 +65,7 @@ final class MobCountSession extends PartySurvivalSession {
 
     @Override
     int durationSeconds() {
-        return rounds * (countSeconds + answerSeconds + 3) + 20;
+        return rounds * (countSeconds + answerSeconds + 6) + 20;
     }
 
     @Override
@@ -120,20 +117,44 @@ final class MobCountSession extends PartySurvivalSession {
                 entity.setPersistent(true);
                 mobs.add(entity);
             }
-        announceTitle(I18n.tr("party.rounds.mob_count.round", round.number()),
-                I18n.tr("party.rounds.mob_count.count"), 2);
+        announceTitle(
+                I18n.tr("party.rounds.mob_count.round", round.number()),
+                I18n.tr("party.rounds.mob_count.count"),
+                2);
     }
 
     @Override
     void playTick(long elapsed) {
-        if (elapsed < phaseEnd) return;
+        if (elapsed < phaseEnd) {
+            if (phase == Phase.READY && (phaseEnd - elapsed) % 20 == 0) {
+                announceTitle(
+                        Component.text(round.target()),
+                        I18n.tr("party.rounds.mob_count.ready", (phaseEnd - elapsed) / 20),
+                        1);
+                for (Player player : alivePlayers())
+                    player.playSound(
+                            player.getLocation(), "minecraft:block.note_block.hat", .6f, 1.2f);
+            }
+            return;
+        }
         switch (phase) {
             case COUNT -> {
                 mobs.forEach(Entity::remove);
                 mobs.clear();
                 // Starting over a gap must not kill someone before the choice phase begins.
-                for (Player player : alivePlayers())
+                for (Player player : alivePlayers()) {
                     teleport(player, arena.nearest(player.getLocation()));
+                    freezeMovement(player);
+                }
+                phase = Phase.READY;
+                phaseEnd = elapsed + 60;
+                announceTitle(
+                        Component.text(round.target()),
+                        I18n.tr("party.rounds.mob_count.ready", 3),
+                        3);
+            }
+            case READY -> {
+                releaseMovement();
                 arena.removeGlass();
                 phase = Phase.ANSWER;
                 phaseEnd = elapsed + answerSeconds * 20L;
@@ -145,27 +166,28 @@ final class MobCountSession extends PartySurvivalSession {
             }
             case ANSWER -> {
                 standings.holdResults(true);
-                failed.clear();
-                for (Player player : alivePlayers()) {
-                    if (!arena.correct(player.getLocation(), round))
-                        failed.add(player.getUniqueId());
-                    player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, .8f, 1);
-                }
-                if (context.embedded())
-                    for (Player player : alivePlayers())
-                        if (failed.contains(player.getUniqueId())) eliminate(player);
+                for (Player player : alivePlayers())
+                    player.playSound(
+                            player.getLocation(), "minecraft:block.note_block.bell", .8f, 1);
+                // Only support disappears. The common height check eliminates actual falls,
+                // so jumping or reaching another surviving platform can still save a player.
                 arena.removeWrong(round);
                 phase = Phase.DROP;
                 phaseEnd = elapsed + 60;
                 announceTitle(
-                        I18n.tr("party.rounds.mob_count.answer", round.answer().title, round.target()),
+                        I18n.tr(
+                                "party.rounds.mob_count.answer",
+                                round.answer().title,
+                                round.target()),
                         I18n.tr("party.rounds.mob_count.wrong_disappear"),
                         2);
             }
             case DROP -> {
-                for (Player player : alivePlayers())
-                    if (failed.contains(player.getUniqueId())) eliminate(player);
-                failed.clear();
+                // Do not restore the floor or teleport someone out of a fall that is still
+                // resolving.
+                if (alivePlayers().stream()
+                        .anyMatch(player -> player.getLocation().getY() < MobCountArena.FLOOR + 1))
+                    return;
                 standings.holdResults(false);
                 if (standings.survivors().isEmpty()
                         || !services.isTest() && standings.survivors().size() == 1) return;
@@ -180,8 +202,18 @@ final class MobCountSession extends PartySurvivalSession {
         long left = Math.max(0, (phaseEnd - elapsed() + 19) / 20);
         return switch (phase) {
             case COUNT -> I18n.tr("party.rounds.mob_count.status.count", round.number(), left);
-            case ANSWER -> I18n.tr("party.rounds.mob_count.status.answer", round.number(), round.target(), left);
-            case DROP -> I18n.tr("party.rounds.mob_count.status.drop", round.number(), round.answer().title);
+            case READY -> I18n.tr("party.rounds.mob_count.status.ready", round.number(), left);
+            case ANSWER ->
+                    I18n.tr(
+                            "party.rounds.mob_count.status.answer",
+                            round.number(),
+                            round.target(),
+                            left);
+            case DROP ->
+                    I18n.tr(
+                            "party.rounds.mob_count.status.drop",
+                            round.number(),
+                            round.answer().title);
         };
     }
 
