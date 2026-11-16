@@ -128,7 +128,7 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
 
     long arenaTime() {
         return switch (id) {
-            case "tool_race", "anvils", "color_floor", "build_memory" -> 6000L;
+            case "tool_race", "anvils", "color_floor", "build_memory", "mob_count" -> 6000L;
             default -> 18000L;
         };
     }
@@ -246,6 +246,14 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
         }
         player.setFallDistance(0);
         player.setVelocity(new org.bukkit.util.Vector());
+    }
+
+    final void freezeMovement(Player player) {
+        countdownFreeze.freeze(player);
+    }
+
+    final void releaseMovement() {
+        countdownFreeze.releaseAll();
     }
 
     final void announceTitle(Component main, Component subtitle, int seconds) {

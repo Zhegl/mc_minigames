@@ -7,7 +7,7 @@ final class AnvilRound {
     private boolean raining, done;
 
     AnvilRound(int players) {
-        this(players, 120, 200, 10, 3);
+        this(players, 120, 200, 10, 1);
     }
 
     AnvilRound(int players, int rainTicks, int moveTicks, int waves, int pvpWave) {

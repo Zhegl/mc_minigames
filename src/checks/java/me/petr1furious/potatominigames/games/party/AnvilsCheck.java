@@ -15,6 +15,7 @@ public final class AnvilsCheck {
     public static void main(String[] args) throws Exception {
         AnvilRound r = new AnvilRound(12);
         r.start(0);
+        check(r.pvpEnabled(), "PvP is enabled from the first wave");
         check(!r.raining() && r.shelters() == 4, "Four shelters before first rain");
         r.advance(199);
         check(!r.raining(), "Full ten seconds to cross the larger arena");
@@ -26,9 +27,9 @@ public final class AnvilsCheck {
                 "Second wave keeps four shelters");
         check(r.remaining(320) == 9, "Second relocation is one second shorter");
         r.advance(500);
-        check(!r.pvpEnabled(), "Second wave still has no PvP");
+        check(r.pvpEnabled(), "PvP stays enabled on the second wave");
         r.advance(620);
-        check(r.pvpEnabled(), "PvP from third wave");
+        check(r.pvpEnabled(), "PvP stays enabled on later waves");
         for (int players : new int[] {1, 4, 12}) {
             var round = new AnvilRound(players);
             round.start(0);

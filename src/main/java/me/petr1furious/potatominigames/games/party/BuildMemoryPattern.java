@@ -8,11 +8,42 @@ import org.bukkit.Material;
 
 import java.util.*;
 
-record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
+record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks, int size) {
     static final int FULL_MODELS = 14;
-    static final int MODEL_COUNT = 26;
+    static final int MODEL_COUNT = 108;
+
+    static List<Integer> smallModels() {
+        var models = new ArrayList<Integer>();
+        for (int model = 14; model < 20; model++) models.add(model);
+        for (int model = 26; model < 50; model++) models.add(model);
+        for (int model = 90; model < 96; model++) models.add(model);
+        return List.copyOf(models);
+    }
+
+    static List<Integer> mediumModels() {
+        var models = new ArrayList<Integer>();
+        for (int model = 0; model < FULL_MODELS; model++) models.add(model);
+        for (int model = 50; model < 66; model++) models.add(model);
+        for (int model = 96; model < 102; model++) models.add(model);
+        return List.copyOf(models);
+    }
+
+    static List<Integer> advancedModels() {
+        var models = new ArrayList<Integer>();
+        for (int model = 20; model < 26; model++) models.add(model);
+        for (int model = 66; model < 90; model++) models.add(model);
+        for (int model = 102; model < MODEL_COUNT; model++) models.add(model);
+        return List.copyOf(models);
+    }
 
     record Cell(int x, int y, int z) {}
+
+    BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
+        this(
+                title,
+                blocks,
+                blocks.keySet().stream().anyMatch(c -> c.x() >= 5 || c.z() >= 5) ? 7 : 5);
+    }
 
     BuildMemoryPattern {
         blocks = Map.copyOf(blocks);
@@ -23,11 +54,11 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     }
 
     private static List<Integer> tier(int stage) {
-        if (stage <= 2) return List.of(14, 15, 16, 17, 18, 19);
-        if (stage == 3) return List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
-        if (stage <= 5) return List.of(20, 21);
-        if (stage <= 7) return List.of(22, 23);
-        return List.of(24, 25);
+        if (stage <= 2) return smallModels();
+        if (stage == 3) return mediumModels();
+        if (stage <= 5) return List.of(20, 21, 66, 67, 68, 69, 70, 71, 72, 73, 102, 103);
+        if (stage <= 7) return List.of(22, 23, 25, 74, 75, 76, 77, 78, 79, 80, 104, 105);
+        return List.of(24, 81, 82, 83, 84, 85, 86, 87, 88, 89, 106, 107);
     }
 
     static List<Integer> deck(Random random) {
@@ -35,10 +66,19 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
         for (int stage = 1; stage <= 8; stage++) {
             List<Integer> candidates = new ArrayList<>(tier(stage));
             candidates.removeAll(models);
+            if (stage == 3) {
+                int openingSize =
+                        models.stream()
+                                .mapToInt(m -> generate(1, m, new Random(0)).blocks().size())
+                                .max()
+                                .orElse(0);
+                candidates.removeIf(
+                        m -> generate(3, m, new Random(0)).blocks().size() < openingSize);
+            }
             models.add(candidates.get(random.nextInt(candidates.size())));
         }
         // Keep the opening and the first advanced pair in ascending order of block count.
-        for (int start : new int[] {0, 3}) {
+        for (int start : new int[] {0, 3, 5}) {
             if (generate(start + 1, models.get(start), new Random(0)).blocks().size()
                     > generate(start + 2, models.get(start + 1), new Random(0)).blocks().size())
                 Collections.swap(models, start, start + 1);
@@ -52,8 +92,8 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     }
 
     static BuildMemoryPattern generate(int stage, int model, Random random) {
-        if (stage <= 2 && (model < FULL_MODELS || model >= 20))
-            model = FULL_MODELS + Math.floorMod(model, 6);
+        if (stage <= 2 && !smallModels().contains(model))
+            model = smallModels().get(Math.floorMod(model, smallModels().size()));
         String wood = List.of("OAK", "SPRUCE", "BIRCH", "CHERRY").get(random.nextInt(4));
         Material planks = Material.valueOf(wood + "_PLANKS"),
                 fence = Material.valueOf(wood + "_FENCE"),
@@ -69,6 +109,26 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
                                 Material.GREEN_TERRACOTTA)
                         .get(random.nextInt(4));
         Material light = random.nextBoolean() ? Material.LANTERN : Material.SOUL_LANTERN;
+        if (model >= 90)
+            return BuildMemoryMaterialModels.generate(model, random)
+                    .rotate(random.nextInt(4))
+                    .centered();
+        if (model >= 50)
+            return (model < 66
+                            ? BuildMemoryMediumModels.generate(model, wood, stone, accent, light)
+                            : model < 78
+                                    ? BuildMemoryLargeModels.generate(
+                                            model, wood, stone, accent, light)
+                                    : BuildMemoryComplexModels.generate(
+                                            model, wood, stone, accent, light))
+                    .rotate(random.nextInt(4))
+                    .centered();
+        if (model >= 26)
+            return (model < 38
+                            ? BuildMemoryFurnitureModels.generate(model, wood, stone, accent, light)
+                            : BuildMemoryGardenModels.generate(model, wood, stone, accent, light))
+                    .rotate(random.nextInt(4))
+                    .centered();
         Builder b = new Builder();
         Component title;
         switch (model) {
@@ -364,11 +424,28 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
             }
             default -> throw new IllegalArgumentException("Unknown model: " + model);
         }
-        return new BuildMemoryPattern(title, b.blocks).rotate(random.nextInt(4));
+        return new BuildMemoryPattern(title, b.blocks).rotate(random.nextInt(4)).centered();
     }
 
-    int size() {
-        return blocks.keySet().stream().anyMatch(c -> c.x() >= 5 || c.z() >= 5) ? 7 : 5;
+    BuildMemoryPattern centered() {
+        return centered(size);
+    }
+
+    BuildMemoryPattern centered(int workspaceSize) {
+        if (workspaceSize != 5 && workspaceSize != 7)
+            throw new IllegalArgumentException("Build size must be 5 or 7");
+        if (blocks.isEmpty()) return new BuildMemoryPattern(title, blocks, workspaceSize);
+        int minX = blocks.keySet().stream().mapToInt(Cell::x).min().orElseThrow();
+        int maxX = blocks.keySet().stream().mapToInt(Cell::x).max().orElseThrow();
+        int minZ = blocks.keySet().stream().mapToInt(Cell::z).min().orElseThrow();
+        int maxZ = blocks.keySet().stream().mapToInt(Cell::z).max().orElseThrow();
+        if (maxX - minX >= workspaceSize || maxZ - minZ >= workspaceSize)
+            throw new IllegalArgumentException("Model does not fit in the workspace");
+        int dx = (workspaceSize - (maxX - minX + 1)) / 2 - minX;
+        int dz = (workspaceSize - (maxZ - minZ + 1)) / 2 - minZ;
+        Map<Cell, MemoryBlock> centered = new LinkedHashMap<>();
+        blocks.forEach((c, block) -> centered.put(new Cell(c.x() + dx, c.y(), c.z() + dz), block));
+        return new BuildMemoryPattern(title, centered, workspaceSize);
     }
 
     Map<Material, Integer> inventory() {
@@ -399,10 +476,10 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
             }
             rotated.put(new Cell(x, c.y, z), block.rotate(turns));
         });
-        return new BuildMemoryPattern(title, rotated);
+        return new BuildMemoryPattern(title, rotated, size);
     }
 
-    private static final class Builder {
+    static final class Builder {
         final Map<Cell, MemoryBlock> blocks = new LinkedHashMap<>();
 
         void put(Material m, int x, int y, int z, String... properties) {
