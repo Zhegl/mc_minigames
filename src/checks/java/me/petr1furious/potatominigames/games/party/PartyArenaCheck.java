@@ -99,6 +99,13 @@ public final class PartyArenaCheck {
                 refund.size() == 2 && refund.stream().anyMatch(b -> b.item() == Material.OAK_SIGN),
                 "Removing support refunds sign as well");
         check(memory.capture(owner).isEmpty(), "No floating attachment or dropped item remains");
+        for (int model : BuildMemoryPattern.smallModels()) {
+            var small = BuildMemoryPattern.generate(1, model, new Random(model));
+            memory.show(owner, small);
+            check(
+                    small.matches(memory.capture(owner)),
+                    "Every small sample survives arena rendering: " + model);
+        }
         w = new WorldMap();
         ToolRaceTrack track = new ToolRaceTrack(ids, ToolRaceTrack.generate(new Random(7)));
         ToolRaceArena shafts = new ToolRaceArena(w.world, ids);

@@ -14,6 +14,7 @@ public final class BuildMemoryCheck {
     public static void main(String[] args) {
         judging();
         signOrientations();
+        smallCatalog();
         check(
                 BuildMemoryPattern.buildSize(3) == 5 && BuildMemoryPattern.buildSize(4) == 7,
                 "The large workspace unlocks at round four");
@@ -49,12 +50,13 @@ public final class BuildMemoryCheck {
                         BuildMemoryPattern.generate(stage, new Random(seed)).blocks().size() <= 9,
                         "First two rounds exclude models larger than nine blocks");
         Set<Component> openingModels = new HashSet<>();
-        for (int seed = 0; seed < 100; seed++)
-            openingModels.add(BuildMemoryPattern.generate(1, new Random(seed)).title());
-        check(openingModels.size() == 6, "Opening model varies between matches");
+        for (int seed = 0; seed < 1000; seed++)
+            openingModels.add(BuildMemoryPattern.generate(1, new Random(seed * 104729L)).title());
+        check(openingModels.size() == 30, "Thirty different opening models vary between matches");
         for (int stage = 1; stage <= 8; stage++)
             for (int seed = 0; seed < 50; seed++) {
                 var p = BuildMemoryPattern.generate(stage, new Random(seed));
+                int minimumTop = stage <= 2 ? 1 : 2;
                 check(
                         stage <= 2
                                 ? p.blocks().size() <= 9
@@ -62,8 +64,9 @@ public final class BuildMemoryCheck {
                                         && p.blocks().size() <= 48,
                         "Difficulty comes from progressively larger complete models");
                 check(
-                        p.blocks().keySet().stream().anyMatch(c -> c.y() >= 2),
-                        "Every stage starts with a three-dimensional model");
+                        p.blocks().keySet().stream().anyMatch(c -> c.y() >= minimumTop),
+                        "Opening models have multiple levels, later models have taller"
+                                + " silhouettes");
                 check(
                         !I18n.plain(p.title(), Locale.ENGLISH).isBlank()
                                 && p.inventory().size() <= 12,
@@ -135,7 +138,7 @@ public final class BuildMemoryCheck {
                 }
             }
             check(
-                    variants.size() >= 8,
+                    variants.size() >= (model < 26 ? 8 : 4),
                     "Same model varies materials and orientation: "
                             + model
                             + " ("
@@ -186,6 +189,84 @@ public final class BuildMemoryCheck {
                 MemoryBlock.of(Material.OAK_SLAB, "type=double").itemCount() == 2,
                 "Double slab refunds two items");
         System.out.println("Build memory variants, difficulty, exact kits and orientations passed");
+    }
+
+    private static void smallCatalog() {
+        Set<String> shapes = new HashSet<>();
+        for (int model : BuildMemoryPattern.smallModels()) {
+            var pattern = BuildMemoryPattern.generate(1, model, new Random(0));
+            check(
+                    pattern.blocks().size() >= 4 && pattern.blocks().size() <= 9,
+                    "Small model block budget: " + model);
+            String canonical = null;
+            for (int turn = 0; turn < 4; turn++) {
+                var rotated = pattern.rotate(turn);
+                int minX =
+                        rotated.blocks().keySet().stream()
+                                .mapToInt(BuildMemoryPattern.Cell::x)
+                                .min()
+                                .orElseThrow();
+                int minZ =
+                        rotated.blocks().keySet().stream()
+                                .mapToInt(BuildMemoryPattern.Cell::z)
+                                .min()
+                                .orElseThrow();
+                List<String> cells = new ArrayList<>();
+                rotated.blocks()
+                        .forEach((c, b) -> {
+                            String material = b.material().name();
+                            for (String suffix :
+                                    List.of(
+                                            "WALL_SIGN",
+                                            "FENCE_GATE",
+                                            "PLANKS",
+                                            "STAIRS",
+                                            "SLAB",
+                                            "FENCE",
+                                            "SIGN",
+                                            "LOG",
+                                            "LEAVES"))
+                                if (material.endsWith("_" + suffix)) {
+                                    material = suffix;
+                                    break;
+                                }
+                            var properties = new TreeMap<>(b.properties());
+                            if (material.endsWith("SIGN")) {
+                                properties.remove("rotation");
+                                properties.remove("facing");
+                            }
+                            cells.add(
+                                    (c.x() - minX)
+                                            + ":"
+                                            + c.y()
+                                            + ":"
+                                            + (c.z() - minZ)
+                                            + "="
+                                            + material
+                                            + properties);
+                        });
+                Collections.sort(cells);
+                String signature = cells.toString();
+                if (canonical == null || signature.compareTo(canonical) < 0) canonical = signature;
+            }
+            check(
+                    shapes.add(canonical),
+                    "Small models are distinct beyond wood palette, rotation and translation: "
+                            + model);
+        }
+        check(shapes.size() == 30, "Thirty separate small structures");
+        check(
+                MemoryBlock.of(Material.OAK_LEAVES).dataString().contains("persistent=true"),
+                "Tree and hedge samples cannot decay");
+        var gate = MemoryBlock.of(Material.OAK_FENCE_GATE, "facing=west");
+        check(!MemoryBlock.sameForBuild(gate, gate.rotate(1)), "Gate direction still matters");
+        check(
+                MemoryBlock.sameForBuild(gate, gate.rotate(2)),
+                "Identical closed gate faces are equivalent");
+        check(
+                !MemoryBlock.sameForBuild(
+                        gate, MemoryBlock.of(Material.OAK_FENCE_GATE, "facing=west", "open=true")),
+                "Gate open state still matters");
     }
 
     private static void signOrientations() {

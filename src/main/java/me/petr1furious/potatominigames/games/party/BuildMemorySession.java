@@ -338,6 +338,10 @@ final class BuildMemorySession extends PartySurvivalSession {
                     || arena.localCell(e.getPlayer().getUniqueId(), e.getClickedBlock()) == null)
                 e.setCancelled(true);
         } else if (!e.getAction().isRightClick()) e.setCancelled(true);
+        else if (e.getClickedBlock() != null
+                && arena.localCell(player.getUniqueId(), e.getClickedBlock()) != null)
+            // Native gate toggles happen after this event; observe the resulting state next tick.
+            dirty.add(player.getUniqueId());
     }
 
     @org.bukkit.event.EventHandler
