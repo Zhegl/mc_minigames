@@ -18,11 +18,14 @@ final class BuildMemoryJudging {
             BuildMemoryPattern pattern, Map<BuildMemoryPattern.Cell, MemoryBlock> actual) {
         Set<BuildMemoryPattern.Cell> errors = new HashSet<>(pattern.blocks().keySet());
         errors.addAll(actual.keySet());
-        errors.removeIf(cell -> Objects.equals(pattern.blocks().get(cell), actual.get(cell)));
+        errors.removeIf(
+                cell -> MemoryBlock.sameForBuild(pattern.blocks().get(cell), actual.get(cell)));
         int correct =
                 (int)
                         pattern.blocks().entrySet().stream()
-                                .filter(e -> e.getValue().equals(actual.get(e.getKey())))
+                                .filter(e ->
+                                        MemoryBlock.sameForBuild(
+                                                e.getValue(), actual.get(e.getKey())))
                                 .count();
         return new Grade(correct, pattern.blocks().size(), errors);
     }
@@ -32,7 +35,7 @@ final class BuildMemoryJudging {
         private long finishedAt = Long.MAX_VALUE;
 
         void observe(Map<BuildMemoryPattern.Cell, MemoryBlock> actual, long tick) {
-            if (last.equals(actual)) return;
+            if (BuildMemoryPattern.sameBlocks(last, actual)) return;
             last = Map.copyOf(actual);
             editedAt(tick);
         }

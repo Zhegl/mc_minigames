@@ -19,15 +19,14 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     }
 
     static int buildSize(int stage) {
-        return stage >= 6 ? 7 : 5;
+        return stage >= 4 ? 7 : 5;
     }
 
     private static List<Integer> tier(int stage) {
         if (stage <= 2) return List.of(14, 15, 16, 17, 18, 19);
-        if (stage == 3) return List.of(0, 1, 3, 6, 7, 9, 10, 12);
-        if (stage <= 5) return List.of(2, 4, 5, 8, 11, 13);
-        if (stage == 6) return List.of(20, 21);
-        if (stage == 7) return List.of(22, 23);
+        if (stage == 3) return List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
+        if (stage <= 5) return List.of(20, 21);
+        if (stage <= 7) return List.of(22, 23);
         return List.of(24, 25);
     }
 
@@ -38,7 +37,7 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
             candidates.removeAll(models);
             models.add(candidates.get(random.nextInt(candidates.size())));
         }
-        // Within the two shared tiers, keep the lighter structure first.
+        // Keep the opening and the first advanced pair in ascending order of block count.
         for (int start : new int[] {0, 3}) {
             if (generate(start + 1, models.get(start), new Random(0)).blocks().size()
                     > generate(start + 2, models.get(start + 1), new Random(0)).blocks().size())
@@ -379,7 +378,14 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
     }
 
     boolean matches(Map<Cell, MemoryBlock> actual) {
-        return blocks.equals(actual);
+        return sameBlocks(blocks, actual);
+    }
+
+    static boolean sameBlocks(Map<Cell, MemoryBlock> expected, Map<Cell, MemoryBlock> actual) {
+        return expected.size() == actual.size()
+                && expected.entrySet().stream()
+                        .allMatch(e ->
+                                MemoryBlock.sameForBuild(e.getValue(), actual.get(e.getKey())));
     }
 
     BuildMemoryPattern rotate(int turns) {

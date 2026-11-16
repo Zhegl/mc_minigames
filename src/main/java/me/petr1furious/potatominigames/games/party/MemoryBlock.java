@@ -41,6 +41,20 @@ record MemoryBlock(Material material, Map<String, String> properties) {
                         : serialized.substring(start + 1, serialized.length() - 1).split(","));
     }
 
+    /** Keep rendering/support state intact; only grading ignores sign direction. */
+    static boolean sameForBuild(MemoryBlock expected, MemoryBlock actual) {
+        if (expected == null || actual == null) return expected == actual;
+        if (expected.material != actual.material) return false;
+        if (!expected.material.name().endsWith("_SIGN")) return expected.equals(actual);
+        var first = new HashMap<>(expected.properties);
+        var second = new HashMap<>(actual.properties);
+        for (var properties : List.of(first, second)) {
+            properties.remove("facing");
+            properties.remove("rotation");
+        }
+        return first.equals(second);
+    }
+
     String dataString() {
         String name = "minecraft:" + material.name().toLowerCase(Locale.ROOT);
         return properties.isEmpty()

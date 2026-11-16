@@ -13,6 +13,14 @@ import java.util.*;
 public final class BuildMemoryCheck {
     public static void main(String[] args) {
         judging();
+        signOrientations();
+        check(
+                BuildMemoryPattern.buildSize(3) == 5 && BuildMemoryPattern.buildSize(4) == 7,
+                "The large workspace unlocks at round four");
+        for (int seed = 0; seed < 30; seed++)
+            check(
+                    BuildMemoryPattern.generate(4, new Random(seed)).blocks().size() >= 30,
+                    "Round four already uses a full advanced model");
         for (int stage = 1; stage <= 8; stage++)
             check(
                     BuildMemorySession.buildSeconds(stage)
@@ -50,7 +58,7 @@ public final class BuildMemoryCheck {
                 check(
                         stage <= 2
                                 ? p.blocks().size() <= 9
-                                : p.blocks().size() >= (stage >= 6 ? 24 : 11)
+                                : p.blocks().size() >= (stage >= 4 ? 30 : 11)
                                         && p.blocks().size() <= 48,
                         "Difficulty comes from progressively larger complete models");
                 check(
@@ -68,9 +76,9 @@ public final class BuildMemoryCheck {
                 for (var c : p.blocks().keySet()) {
                     check(
                             c.x() >= 0
-                                    && c.x() < (stage >= 6 ? 7 : 5)
+                                    && c.x() < (stage >= 4 ? 7 : 5)
                                     && c.z() >= 0
-                                    && c.z() < (stage >= 6 ? 7 : 5)
+                                    && c.z() < (stage >= 4 ? 7 : 5)
                                     && c.y() >= 0
                                     && c.y() < 4,
                             "Bounds");
@@ -178,6 +186,53 @@ public final class BuildMemoryCheck {
                 MemoryBlock.of(Material.OAK_SLAB, "type=double").itemCount() == 2,
                 "Double slab refunds two items");
         System.out.println("Build memory variants, difficulty, exact kits and orientations passed");
+    }
+
+    private static void signOrientations() {
+        var cell = new BuildMemoryPattern.Cell(2, 1, 2);
+        for (Material material :
+                List.of(
+                        Material.OAK_SIGN,
+                        Material.CHERRY_SIGN,
+                        Material.OAK_WALL_SIGN,
+                        Material.CHERRY_WALL_SIGN)) {
+            var sign = MemoryBlock.of(material);
+            var expected = Map.of(cell, sign);
+            var pattern = new BuildMemoryPattern(Component.text("Sign"), expected);
+            for (int rotation = 0; rotation < 16; rotation++) {
+                var actual =
+                        Map.of(
+                                cell,
+                                MemoryBlock.of(
+                                        material,
+                                        "rotation=" + rotation,
+                                        "facing="
+                                                + List.of("north", "south", "east", "west")
+                                                        .get(rotation % 4)));
+                check(pattern.matches(actual), "Sign orientation does not affect matching");
+                var grade = BuildMemoryJudging.grade(pattern, actual);
+                check(
+                        grade.errors().isEmpty() && grade.percent() == 100 && grade.correct() == 1,
+                        "Jury gives every sign direction full credit");
+                var progress = new BuildMemoryJudging.Progress();
+                progress.observe(expected, 10);
+                progress.observe(actual, 20);
+                check(
+                        progress.finishedAt() == 10,
+                        "Sign orientation alone cannot delay completion");
+            }
+            check(
+                    !pattern.matches(Map.of(cell, MemoryBlock.of(Material.BIRCH_SIGN))),
+                    "Sign material and attachment type still matter");
+            check(
+                    !pattern.matches(Map.of(new BuildMemoryPattern.Cell(1, 1, 2), sign)),
+                    "Sign position still matters");
+        }
+        var wall = MemoryBlock.of(Material.OAK_WALL_SIGN, "facing=east");
+        check(
+                wall.properties().get("facing").equals("east")
+                        && wall.support(cell).equals(new BuildMemoryPattern.Cell(1, 1, 2)),
+                "Ignored grading orientation remains available to render and refund attachments");
     }
 
     private static void judging() {

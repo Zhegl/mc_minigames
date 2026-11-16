@@ -159,8 +159,10 @@ record HoleWallPattern(List<Cell> cells, List<Gate> gates, Component title) {
 
     static HoleWallPattern generate(int stage, int radius, Random random) {
         int kind = KINDS[Math.floorMod(stage - 1, KINDS.length)];
-        boolean movementRequired = HoleWallChallenge.required(difficulty(stage), kind, true);
-        var gates = HoleWallChallenge.gates(routes(kind, radius), kind, movementRequired);
+        boolean jumpRequired = HoleWallChallenge.requiresJump(difficulty(stage), kind, true);
+        var gates =
+                HoleWallChallenge.gates(
+                        routes(kind, radius), kind, difficulty(stage), jumpRequired);
         var full =
                 new HoleWallBlock(
                         kind % 2 == 0 ? Material.STONE_BRICKS : Material.DARK_PRISMARINE,
@@ -188,23 +190,29 @@ record HoleWallPattern(List<Cell> cells, List<Gate> gates, Component title) {
                 if (kind >= 13 && kind <= 15 && (u == -1 || u == 0)) {
                     // Two disconnected posts leave 0.75/0.875 blocks; a separate full-width route
                     // rewards moving farther instead of making precision the only solution.
-                    if (y < (kind == 14 ? 1 : 3))
+                    var narrow =
+                            gates.stream().filter(g -> g.width() < 1).findFirst().orElseThrow();
+                    if (y < narrow.bottom()) block = full;
+                    else if (y + 1 <= narrow.bottom() + narrow.height())
                         block =
                                 new HoleWallBlock(
                                         kind == 15 ? Material.IRON_BARS : Material.OAK_FENCE,
                                         kind == 15
                                                 ? HoleWallBlock.Shape.BARS
                                                 : HoleWallBlock.Shape.FENCE_POST);
-                    else if (kind == 14 && y == 1) block = full.upperSlab();
+                    else if (y < narrow.bottom() + narrow.height()) block = full.upperSlab();
                     else block = full;
                 } else if ((kind == 30 || kind == 31) && (u == 0 || u == 1)) {
                     // A right-offset pair of posts leaves a real 0.75-block opening. Its
                     // left-hand alternative remains full width at either surviving radius.
-                    int bottom = kind == 31 ? 1 : 0;
-                    if (y >= bottom && y < bottom + 2)
+                    var narrow =
+                            gates.stream().filter(g -> g.width() < 1).findFirst().orElseThrow();
+                    if (y < narrow.bottom()) block = full;
+                    else if (y + 1 <= narrow.bottom() + narrow.height())
                         block =
                                 new HoleWallBlock(
                                         Material.OAK_FENCE, HoleWallBlock.Shape.FENCE_POST);
+                    else if (y < narrow.bottom() + narrow.height()) block = full.upperSlab();
                     else block = full;
                 } else if (block != null && kind == 16 && y < 4) {
                     // Keep any crouching lintel solid; hanging chains themselves form many thin
@@ -214,7 +222,7 @@ record HoleWallPattern(List<Cell> cells, List<Gate> gates, Component title) {
                         if (g.height() == 1.5
                                 && u >= g.start()
                                 && u + 1 <= g.start() + g.width()
-                                && y == 1) lintel = true;
+                                && y == (int) Math.floor(g.bottom() + g.height())) lintel = true;
                     if (!lintel)
                         block = new HoleWallBlock(Material.IRON_CHAIN, HoleWallBlock.Shape.CHAIN);
                 } else if (block != null && kind == 17 && y != 0 && y != 3) {
@@ -229,7 +237,10 @@ record HoleWallPattern(List<Cell> cells, List<Gate> gates, Component title) {
                 if (block != null) cells.add(new Cell(u, y, block));
             }
         cells = new ArrayList<>(frameLowPassages(cells, gates, full));
-        cells = new ArrayList<>(HoleWallChallenge.frame(cells, gates, full, movementRequired));
+        cells =
+                new ArrayList<>(
+                        HoleWallChallenge.frame(
+                                cells, gates, full, difficulty(stage) != HoleWallDifficulty.EASY));
         return new HoleWallPattern(
                 cells, gates, I18n.tr("party.rounds.hole_wall.pattern." + NAMES[kind]));
     }
@@ -246,7 +257,7 @@ record HoleWallPattern(List<Cell> cells, List<Gate> gates, Component title) {
                         kind % 2 == 0 ? Material.STONE_BRICKS : Material.DARK_PRISMARINE,
                         HoleWallBlock.Shape.FULL);
         double height = kind == 2 ? 1.5 : kind == 1 ? 2 : 3;
-        double bottom = kind == 2 ? 0 : 1;
+        double bottom = 1;
         var gates = List.of(new Gate(-6, 2, bottom, height), new Gate(5, 2, bottom, height));
         var cells = new ArrayList<Cell>();
         for (int u = -HALF_WIDTH; u <= HALF_WIDTH; u++)
