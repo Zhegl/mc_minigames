@@ -44,6 +44,19 @@ public final class QueueMenu implements Listener {
     private final SessionManager sessions;
     private final QueueService queues;
 
+    private record PartyGroup(String key, Material marker, NamedTextColor color, List<String> modes) {
+    }
+
+    private static final List<PartyGroup> PARTY_GROUPS = List.of(
+            new PartyGroup("duels", Material.ORANGE_STAINED_GLASS_PANE, NamedTextColor.GOLD,
+                    List.of("pvp", "sumo")),
+            new PartyGroup("combat", Material.RED_STAINED_GLASS_PANE, NamedTextColor.RED,
+                    List.of("pvp_ffa", "sumo_ffa", "arms_race", "one_shot", "miners", "magic_battle", "pvp_select")),
+            new PartyGroup("challenges", Material.LIME_STAINED_GLASS_PANE, NamedTextColor.GREEN,
+                    List.of("tnt_run", "rhino", "color_floor", "anvils", "tool_race", "parkour_race", "hole_in_the_wall")),
+            new PartyGroup("creative", Material.PURPLE_STAINED_GLASS_PANE, NamedTextColor.LIGHT_PURPLE,
+                    List.of("mob_count", "build_memory", "gartic_phone")));
+
     private interface Action {
         void click(Player player) throws CommandFailure;
     }
@@ -55,6 +68,8 @@ public final class QueueMenu implements Listener {
         private final Map<Integer, Entry> entries = new LinkedHashMap<>();
         /** Set for a pick menu, which closes once they leave that queue. */
         private QueueService.Queue queue;
+        /** Party browsing remains open across queue and session changes. */
+        private Minigame partyGame;
         private Inventory inventory;
 
         @Override
@@ -86,6 +101,14 @@ public final class QueueMenu implements Listener {
 
     /** The mode menu of one game. */
     public void open(Player player, Minigame game) {
+        if (game.id().equals("party")) {
+            Holder holder = new Holder();
+            holder.partyGame = game;
+            holder.inventory = Bukkit.createInventory(holder, 54, I18n.render(game.displayName(), player));
+            render(holder, player);
+            player.openInventory(holder.inventory);
+            return;
+        }
         List<Entry> entries = new ArrayList<>();
         Set<Minigame.ModeGroup> shown = new HashSet<>();
         for (QueueService.Queue queue : queues.queuesOf(game)) {
@@ -166,6 +189,10 @@ public final class QueueMenu implements Listener {
     private void pickGame(Player player, Minigame game) throws CommandFailure {
         List<QueueService.Queue> available = queues.queuesOf(game);
         if (available.isEmpty()) {
+            return;
+        }
+        if (game.id().equals("party")) {
+            open(player, game);
             return;
         }
         Optional<QueueService.Queue> mine = queues.queueOf(player);
@@ -341,7 +368,132 @@ public final class QueueMenu implements Listener {
     }
 
     private void render(Holder holder, Player viewer) {
+        if (holder.partyGame != null) {
+            populateParty(holder, viewer);
+            // Removed queues and conditional actions must also disappear from the view.
+            for (int slot = 0; slot < holder.inventory.getSize(); slot++) {
+                if (!holder.entries.containsKey(slot)) holder.inventory.setItem(slot, null);
+            }
+        }
         holder.entries.forEach((slot, entry) -> holder.inventory.setItem(slot, I18n.item(entry.icon().apply(viewer), viewer)));
+    }
+
+    private void populateParty(Holder holder, Player player) {
+        holder.entries.clear();
+        Minigame game = holder.partyGame;
+        Optional<ActiveSession> running = sessions.sessionOf(game);
+        Map<String, QueueService.Queue> available = new LinkedHashMap<>();
+        for (QueueService.Queue queue : queues.queuesOf(game)) available.put(queue.mode(), queue);
+
+        if (running.isPresent()) {
+            holder.entries.put(4, new Entry(viewer -> infoIcon(Material.ENDER_EYE,
+                    I18n.tr("core.menu.party.spectate", running.get().displayName()).color(NamedTextColor.AQUA),
+                    List.of(I18n.tr("core.menu.click_spectate").color(NamedTextColor.AQUA))), clicker -> {
+                clicker.closeInventory();
+                queues.spectate(clicker, game);
+            }));
+        } else if (available.containsKey("party_games")) {
+            holder.entries.put(4, partyEntry(available.get("party_games"), "tournament"));
+        }
+
+        for (int groupIndex = 0; groupIndex < PARTY_GROUPS.size(); groupIndex++) {
+            PartyGroup group = PARTY_GROUPS.get(groupIndex);
+            int row = (groupIndex + 1) * 9;
+            holder.entries.put(row, new Entry(viewer -> infoIcon(group.marker(),
+                    I18n.tr("core.menu.party.group." + group.key()).color(group.color()),
+                    List.of(I18n.tr("core.menu.party.group_hint").color(NamedTextColor.GRAY))), clicker -> {}));
+            for (int index = 0; index < group.modes().size(); index++) {
+                QueueService.Queue queue = available.get(group.modes().get(index));
+                if (queue != null) holder.entries.put(row + 2 + index, partyEntry(queue, group.key()));
+            }
+        }
+        holder.entries.put(45, new Entry(viewer -> backIcon(), this::open));
+        holder.entries.put(49, new Entry(this::currentQueueIcon, clicker -> {
+            Optional<QueueService.Queue> current = queues.queueOf(clicker);
+            if (current.isPresent()) openPicks(clicker, current.get());
+        }));
+        if (queues.queueOf(player).isPresent()) {
+            holder.entries.put(53, new Entry(viewer -> {
+                Optional<QueueService.Queue> current = queues.queueOf(viewer);
+                return infoIcon(Material.BARRIER, I18n.tr("core.menu.party.leave_queue").color(NamedTextColor.RED),
+                        current.map(queue -> List.<Component>of(I18n.tr("core.menu.party.leave_hint", queue.displayName())
+                                .color(NamedTextColor.GRAY))).orElseGet(List::of));
+            }, clicker -> {
+                // QueueService.leave also leaves active games: never call it for a stale queue view.
+                if (queues.queueOf(clicker).isPresent()) queues.leave(clicker);
+            }));
+        }
+    }
+
+    private Entry partyEntry(QueueService.Queue queue, String group) {
+        return new Entry(viewer -> partyQueueIcon(queue, group, viewer), clicker -> {
+            if (!queue.enabled() || sessions.sessionOf(queue.game()).isPresent()) return;
+            if (!queue.contains(clicker.getUniqueId())) queues.join(clicker, queue);
+            openPicks(clicker, queue);
+        });
+    }
+
+    private ItemStack partyQueueIcon(QueueService.Queue queue, String group, Player viewer) {
+        List<Component> lore = new ArrayList<>();
+        addDescription(lore, queue.game().description(queue.mode()));
+        lore.add(plain(I18n.tr("core.menu.party.format." + group).color(NamedTextColor.DARK_GRAY)));
+        lore.add(Component.empty());
+        if (sessions.sessionOf(queue.game()).isPresent()) {
+            lore.add(I18n.tr("core.menu.party.match_running").color(NamedTextColor.YELLOW));
+            lore.add(I18n.tr("core.menu.party.spectate_above").color(NamedTextColor.GRAY));
+        } else {
+            partyQueueStatus(lore, queue);
+            lore.add(Component.empty());
+            if (hasPicks(viewer, queue)) {
+                pickStatus(lore, queue, viewer);
+            } else {
+                lore.add(I18n.tr(queue.contains(viewer.getUniqueId())
+                        ? "core.menu.in_this_queue" : "core.menu.click_join").color(queue.contains(viewer.getUniqueId())
+                        ? NamedTextColor.GREEN : NamedTextColor.AQUA));
+            }
+        }
+        Component title = queue.mode().equals("party_games") ? I18n.tr("core.menu.party.tournament")
+                .color(NamedTextColor.LIGHT_PURPLE) : queue.game().modeTitle(queue.mode());
+        ItemStack item = infoIcon(queue.game().icon(queue.mode()), title, lore);
+        item.editMeta(meta -> meta.setEnchantmentGlintOverride(queue.contains(viewer.getUniqueId())));
+        return item;
+    }
+
+    private ItemStack currentQueueIcon(Player viewer) {
+        Optional<QueueService.Queue> current = queues.queueOf(viewer);
+        if (current.isEmpty()) {
+            return infoIcon(Material.COMPASS, I18n.tr("core.menu.party.no_queue").color(NamedTextColor.GRAY),
+                    List.of(I18n.tr("core.menu.party.choose_game").color(NamedTextColor.GRAY)));
+        }
+        QueueService.Queue queue = current.get();
+        List<Component> lore = new ArrayList<>();
+        partyQueueStatus(lore, queue);
+        if (hasPicks(viewer, queue)) pickStatus(lore, queue, viewer);
+        ItemStack item = infoIcon(Material.COMPASS,
+                I18n.tr("core.menu.party.current_queue", queue.displayName()).color(NamedTextColor.GREEN), lore);
+        item.editMeta(meta -> meta.setEnchantmentGlintOverride(true));
+        return item;
+    }
+
+    private static void partyQueueStatus(List<Component> lore, QueueService.Queue queue) {
+        lore.add(I18n.tr("core.menu.party.queue_status", queue.countText(),
+                Math.max(0, queue.minPlayers() - queue.size())).color(NamedTextColor.GRAY));
+        for (Ballot ballot : queue.ballots()) {
+            lore.add(I18n.tr("core.menu.ballot_status", ballot.titleComponent(),
+                    queue.leadingComponent(ballot).color(NamedTextColor.GOLD)).color(NamedTextColor.GRAY));
+        }
+        if (queue.countdown() != null) {
+            lore.add(I18n.tr("core.menu.starts_in", queue.countdown()).color(NamedTextColor.GREEN));
+        }
+    }
+
+    private static ItemStack infoIcon(Material material, Component title, List<Component> lore) {
+        ItemStack item = new ItemStack(material);
+        item.editMeta(meta -> {
+            meta.displayName(plain(title).decorate(TextDecoration.BOLD));
+            meta.lore(lore.stream().map(QueueMenu::plain).toList());
+        });
+        return item;
     }
 
     private ItemStack gameIcon(Minigame game, Player viewer) {
@@ -352,19 +504,21 @@ public final class QueueMenu implements Listener {
         item.editMeta(meta -> {
             meta.displayName(plain(game.displayName()).decorate(TextDecoration.BOLD));
             List<Component> lore = new ArrayList<>();
-            addDescription(lore, game.description(game.defaultMode()));
+            addDescription(lore, game.id().equals("party") ? I18n.tr("core.menu.party.description")
+                    : game.description(game.defaultMode()));
             lore.add(Component.empty());
             if (running.isPresent()) {
                 lore.add(plain(I18n.tr("core.menu.being_played").color(NamedTextColor.YELLOW)));
-                lore.add(plain(I18n.tr("core.menu.click_spectate").color(NamedTextColor.AQUA)));
+                lore.add(plain(I18n.tr(game.id().equals("party") ? "core.menu.click_mode"
+                        : "core.menu.click_spectate").color(NamedTextColor.AQUA)));
             } else {
-                if (game.showModes()) {
+                if (game.showModes() && !game.id().equals("party")) {
                     for (QueueService.Queue queue : gameQueues) {
                         lore.add(plain(I18n.tr("core.menu.mode_status", queue.game().modeTitle(queue.mode()).colorIfAbsent(NamedTextColor.GRAY),
                                 Component.text(queue.countText(), NamedTextColor.WHITE),
                                 leadingSummary(queue).color(NamedTextColor.DARK_GRAY))));
                     }
-                } else if (!gameQueues.isEmpty()) {
+                } else if (!game.showModes() && !gameQueues.isEmpty()) {
                     queueStatus(lore, gameQueues.getFirst());
                 }
                 lore.add(Component.empty());
@@ -579,7 +733,9 @@ public final class QueueMenu implements Listener {
     private void refreshOpen() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (player.getOpenInventory().getTopInventory().getHolder() instanceof Holder holder) {
-                if (holder.queue != null && !holder.queue.contains(player.getUniqueId())) {
+                boolean startedPlaying = holder.partyGame != null && sessions.sessionOf(player)
+                        .map(session -> session.isParticipant(player)).orElse(false);
+                if (startedPlaying || holder.queue != null && !holder.queue.contains(player.getUniqueId())) {
                     player.closeInventory();
                 } else {
                     render(holder, player);
@@ -594,6 +750,9 @@ public final class QueueMenu implements Listener {
             return;
         }
         event.setCancelled(true);
+        if (holder.partyGame != null && event.getWhoClicked() instanceof Player viewer) {
+            render(holder, viewer);
+        }
         // Raw slots past the menu size are the player's inventory.
         Entry entry = holder.entries.get(event.getRawSlot());
         if (!(event.getWhoClicked() instanceof Player player) || entry == null) {
@@ -605,7 +764,7 @@ public final class QueueMenu implements Listener {
             player.sendMessage(failure.text());
         }
         // Show a pick straight away, not on the next refresh.
-        if (player.getOpenInventory().getTopInventory().getHolder() == holder) {
+        if (player.getOpenInventory().getTopInventory() == holder.inventory) {
             render(holder, player);
         }
     }

@@ -28,11 +28,12 @@ public record Ballot(String key, String title, Supplier<List<String>> choices, S
         return switch (key) {
             case "difficulty" -> I18n.tr("core.ballot.difficulty");
             case "map" -> I18n.tr("core.ballot.map");
+            case "length" -> I18n.tr("core.ballot.length");
             default -> Component.text(title);
         };
     }
 
-    /** Localize only built-in difficulty labels; map and custom difficulty names stay literal. */
+    /** Localize built-in difficulty and length labels; map and extension names stay literal. */
     public Component choiceComponent(String choice) {
         if (choice == null) {
             return I18n.tr("core.ballot.any");
@@ -40,6 +41,12 @@ public record Ballot(String key, String title, Supplier<List<String>> choices, S
         if (key.equals("difficulty")) {
             return switch (choice) {
                 case "baby", "easy", "medium", "hard", "insane" -> I18n.tr("core.ballot.choice." + choice);
+                default -> Component.text(choice);
+            };
+        }
+        if (key.equals("length")) {
+            return switch (choice) {
+                case "small", "medium", "large", "marathon" -> I18n.tr("core.ballot.length." + choice);
                 default -> Component.text(choice);
             };
         }
