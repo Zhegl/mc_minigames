@@ -28,7 +28,7 @@ final class PartyRoundFactory {
 
     static Component title(String mode) {
         return switch (mode) {
-            case "hole_in_the_wall", "pvp", "sumo", "arms_race", "one_shot", "tnt_run", "mob_count",
+            case "gartic_phone", "hole_in_the_wall", "pvp", "sumo", "arms_race", "one_shot", "tnt_run", "mob_count",
                     "rhino", "miners", "magic_battle", "color_floor", "anvils", "build_memory", "tool_race", "parkour_race" ->
                     I18n.tr("party.rounds.mode." + mode);
             default -> Component.text(mode);

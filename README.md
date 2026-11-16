@@ -357,6 +357,33 @@ Timing and score settings are in `games/finals.yml`, editable with
 `/finals config`; changes apply next match. All game text uses the shared
 English/Russian i18n catalogs, selected by each player's client language.
 
+### Gartic Phone
+
+Join **Party → Gartic Phone** or run `/play party gartic_phone` (2–12 players).
+This is a standalone mode: it is excluded from the Party Games rotation, including
+custom pool configurations. `/party test gartic_phone` allows solo practice.
+
+Everyone writes a private prompt in chat, then players alternate between building
+the latest text and guessing the latest build. Chains rotate one player each turn;
+only the previous contribution is visible. The match has one turn per player,
+with at least three turns for two-player games and solo practice. Each completed
+chain is revealed in order with its authors. There is no winner or point award.
+
+Build in a private, enclosed **11×8×11** plot with flight. Right-click to place;
+left-click to instantly erase. Right-click the **chest in slot 8** to choose from
+50 blocks; selecting one puts it in slot 1 and keeps the six recent blocks beside
+it. Blocks refill automatically. Right-click the **emerald in slot 9** to lock
+your build. A chat answer locks immediately and is limited to 120 characters.
+Turns finish when everyone is ready or time runs out. Missing prompts receive a
+starter idea, unfinished builds are preserved, and missing guesses are marked.
+Leaving withdraws a player for the match; reconnecting players can spectate.
+
+Defaults in `games/party.yml` under `garticPhone`: `promptSeconds: 30`,
+`buildSeconds: 90`, `guessSeconds: 30`, `revealSeconds: 6` per contribution.
+Changes apply next session. English and Russian text follows the client language.
+`checkGarticPhone` covers rotation, timeouts, private-room geometry, snapshots,
+editing and ready locks, departed-player chat, queue registration and pool exclusion.
+
 ### Party Games and new party games
 
 Join **Вечеринка → Party Games**, or run `/play party party_games`.
