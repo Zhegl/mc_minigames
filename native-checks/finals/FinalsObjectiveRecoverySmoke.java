@@ -47,8 +47,8 @@ public final class FinalsObjectiveRecoverySmoke {
         Constructor<?> ctor = Arrays.stream(sessionType.getDeclaredConstructors()).filter(c -> c.getParameterCount() == 2).findFirst().orElseThrow();
         ctor.setAccessible(true);
         Object session = ctor.newInstance(new SessionServices(main, null, null, null, null, null, null, null, null, null, null, null), null);
-        Constructor<?> padsCtor = FinalsMapJumpPads.class.getDeclaredConstructor(FinalsMapArena.class);
-        padsCtor.setAccessible(true); Object pads = padsCtor.newInstance(arena);
+        Constructor<?> padsCtor = FinalsMapJumpPads.class.getDeclaredConstructor(FinalsMapArena.class, JavaPlugin.class);
+        padsCtor.setAccessible(true); Object pads = padsCtor.newInstance(arena, main);
         int checks = 0;
         try {
             UUID actor = UUID.randomUUID();
@@ -73,14 +73,24 @@ public final class FinalsObjectiveRecoverySmoke {
                     "A lost native item also returns to its saved departure point"); checks++;
             call(pads, "start");
             Map<?, ?> outlines = (Map<?, ?>) field(pads, "outlines");
-            require(outlines.size() == 2, "Both upward and targeted pads have native outlines"); checks++;
+            require(outlines.size() == 1 && outlines.containsKey(0), "Only targeted pads have native outlines"); checks++;
             List<BlockDisplay> displays = outlines.values().stream().map(BlockDisplay.class::cast).toList();
             for (BlockDisplay display : displays) {
-                require(display.isValid() && display.isGlowing() && !display.hasGravity() && !display.isPersistent(),
+                require(display.isValid() && display.isGlowing() && !display.hasGravity() && !display.isPersistent() && !display.isVisibleByDefault(),
                         "Pad outline is a nonpersistent, glowing display without physics"); checks++;
                 require(display.getBrightness().getBlockLight() == 15 && display.getTransformation().getScale().y < .1,
                         "Pad display is bright and remains a thin surface"); checks++;
             }
+            Viewer near = new Viewer(ledge.clone().add(15, 0, 0));
+            Viewer far = new Viewer(ledge.clone().add(16.01, 0, 0));
+            call(pads, "updateGlows", List.of(near.player, far.player));
+            require(near.shown.contains(displays.getFirst()) && far.shown.isEmpty(), "Near and distant players receive different pad visibility"); checks++;
+            near.at = ledge.clone().add(0, 16.01, 0);
+            far.at = ledge.clone().add(16, 0, 0);
+            call(pads, "updateGlows", List.of(near.player, far.player));
+            require(near.shown.isEmpty() && far.shown.contains(displays.getFirst()), "Crossing the 3D boundary hides or shows the same outline at 16 blocks"); checks++;
+            call(pads, "updateGlows", List.of());
+            require(far.shown.isEmpty(), "Leaving the match's audience clears private pad visibility"); checks++;
             call(pads, "clear");
             require(displays.stream().noneMatch(Entity::isValid), "Ending the match removes every pad glow"); checks++;
             smoke.getLogger().info("FINALS_OBJECTIVE_RECOVERY_PASS: " + checks);
@@ -88,6 +98,26 @@ public final class FinalsObjectiveRecoverySmoke {
         } finally {
             call(session, "removeCashbox"); call(pads, "clear");
             for (BlockState b : originals) b.update(true, false);
+        }
+    }
+
+    private static final class Viewer {
+        Location at;
+        final UUID id = UUID.randomUUID();
+        final Set<Entity> shown = new HashSet<>();
+        final Player player;
+        Viewer(Location at) {
+            this.at = at;
+            player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class},
+                    (o, m, a) -> switch (m.getName()) {
+                        case "getUniqueId" -> id;
+                        case "isOnline" -> true;
+                        case "getLocation" -> this.at.clone();
+                        case "canSee" -> shown.contains(a[0]);
+                        case "showEntity" -> { shown.add((Entity) a[1]); yield null; }
+                        case "hideEntity" -> { shown.remove(a[1]); yield null; }
+                        default -> throw new AssertionError(m.getName());
+                    });
         }
     }
 }

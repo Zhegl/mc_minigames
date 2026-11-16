@@ -45,6 +45,10 @@ interface FinalsCombatContext {
         damage(target, source, amount);
     }
 
+    default void damageMelee(Player target, Player source, double amount, Location origin) {
+        damage(target, source, amount, origin);
+    }
+
     /** Gun hits only; generic damage (including a reflected hit) must not inherit this type. */
     default void damageBullet(Player target, Player source, double amount, Location origin) {
         damage(target, source, amount, origin);

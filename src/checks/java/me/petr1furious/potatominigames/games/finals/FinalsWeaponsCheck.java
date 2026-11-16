@@ -10,7 +10,17 @@ import java.util.Set;
 public final class FinalsWeaponsCheck {
     private static int checks;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        var precision = FinalsWeapons.class.getDeclaredMethod("precisionBlock", Vector.class, Vector.class);
+        precision.setAccessible(true);
+        for (double angle : new double[]{-14.01, -14, 0, 14, 14.01, 65, 180}) {
+            double radians = Math.toRadians(angle);
+            boolean expected = Math.abs(angle) <= 14;
+            check((boolean) precision.invoke(null, new Vector(0, 0, 1), new Vector(Math.sin(radians), 0, Math.cos(radians))) == expected,
+                    "Dual Blades use the inclusive 14-degree horizontal block cone");
+            check((boolean) precision.invoke(null, new Vector(0, 0, 1), new Vector(0, Math.sin(radians), Math.cos(radians))) == expected,
+                    "Dual Blades also require precise vertical aim");
+        }
         classAndWeaponRoster();
         cadenceAndFiniteMagazine();
         reloadDeadlineAndCancellation();

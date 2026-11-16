@@ -14,6 +14,8 @@ public final class BuildMemoryCheck {
     public static void main(String[] args) {
         judging();
         signOrientations();
+        centeredModels();
+        materialSilhouettes();
         smallCatalog();
         laterVariety();
         check(
@@ -45,22 +47,23 @@ public final class BuildMemoryCheck {
         check(
                 !BuildMemorySession.allReady(List.of(), Set.of()),
                 "Empty roster does not start review");
-        for (int stage = 1; stage <= 2; stage++)
-            for (int seed = 0; seed < 100; seed++)
-                check(
-                        BuildMemoryPattern.generate(stage, new Random(seed)).blocks().size() <= 9,
-                        "First two rounds exclude models larger than nine blocks");
+        check(
+                BuildMemoryPattern.smallModels().stream()
+                        .anyMatch(model ->
+                                BuildMemoryPattern.generate(1, model, new Random(0)).blocks().size()
+                                        > 9),
+                "Opening rounds include recognizable simple models larger than nine blocks");
         Set<Component> openingModels = new HashSet<>();
         for (int seed = 0; seed < 1000; seed++)
             openingModels.add(BuildMemoryPattern.generate(1, new Random(seed * 104729L)).title());
-        check(openingModels.size() == 30, "Thirty different opening models vary between matches");
+        check(openingModels.size() == 36, "Thirty-six opening models vary between matches");
         for (int stage = 1; stage <= 8; stage++)
             for (int seed = 0; seed < 50; seed++) {
                 var p = BuildMemoryPattern.generate(stage, new Random(seed));
                 int minimumTop = stage <= 2 ? 1 : 2;
                 check(
                         stage <= 2
-                                ? p.blocks().size() <= 9
+                                ? p.blocks().size() >= 4
                                 : p.blocks().size() >= (stage >= 4 ? 30 : 11)
                                         && p.blocks().size() <= 56,
                         "Difficulty comes from progressively larger complete models");
@@ -151,6 +154,11 @@ public final class BuildMemoryCheck {
             check(
                     materials.stream().anyMatch(m -> m.name().endsWith(suffix)),
                     "Includes decorative family " + suffix);
+        for (String family :
+                List.of("CONCRETE", "WOOL", "ANDESITE", "DIORITE", "GRANITE", "SANDSTONE"))
+            check(
+                    materials.stream().anyMatch(m -> m.name().contains(family)),
+                    "Includes requested material family " + family);
         for (int seed = 0; seed < 30; seed++) {
             var deck = BuildMemoryPattern.deck(new Random(seed));
             check(new HashSet<>(deck.subList(0, 8)).size() == 8, "No repeated model in a match");
@@ -165,10 +173,7 @@ public final class BuildMemoryCheck {
             }
             for (int stage = 1; stage <= 2; stage++)
                 check(
-                        BuildMemoryPattern.generate(stage, deck.get(stage - 1), new Random(seed))
-                                        .blocks()
-                                        .size()
-                                <= 9,
+                        BuildMemoryPattern.smallModels().contains(deck.get(stage - 1)),
                         "Actual game deck starts with two small models");
         }
         var stair = MemoryBlock.of(Material.OAK_STAIRS, "facing=north", "half=top");
@@ -200,7 +205,7 @@ public final class BuildMemoryCheck {
                         BuildMemoryPattern.smallModels(),
                         BuildMemoryPattern.mediumModels(),
                         BuildMemoryPattern.advancedModels())) {
-            check(group.size() == 30, "Each difficulty catalog has thirty models");
+            check(group.size() == 36, "Each difficulty catalog has thirty-six models");
             for (int model : group) {
                 check(ids.add(model), "Difficulty catalogs do not overlap");
                 var pattern = BuildMemoryPattern.generate(4, model, new Random(0));
@@ -251,11 +256,60 @@ public final class BuildMemoryCheck {
                         "Advanced tier has the intended block budget: stage " + stage);
             }
         }
-        check(medium.size() == 30, "Thirty distinct medium models are reachable in round three");
+        check(medium.size() == 36, "Thirty-six medium models are reachable in round three");
+        check(advanced.size() == 36, "Thirty-six advanced models are reachable in later rounds");
+        System.out.println("Build Memory catalog: 36 simple, 36 medium, 36 advanced models");
+    }
+
+    private static void centeredModels() {
+        for (int model = 0; model < BuildMemoryPattern.MODEL_COUNT; model++) {
+            var pattern = BuildMemoryPattern.generate(4, model, new Random(model));
+            for (int size : new int[] {pattern.size(), 7})
+                for (int turn = 0; turn < 4; turn++) {
+                    var centered = pattern.rotate(turn).centered(size);
+                    check(
+                            centered.inventory().equals(pattern.inventory()),
+                            "Centering preserves the exact kit");
+                    check(centered.centered(size).equals(centered), "Centering is idempotent");
+                    checkCentered(centered, model);
+                }
+            checkCentered(pattern, model);
+        }
+    }
+
+    private static void materialSilhouettes() {
+        Set<String> shapes = new HashSet<>();
+        for (int model = 90; model < BuildMemoryPattern.MODEL_COUNT; model++) {
+            var pattern = BuildMemoryPattern.generate(4, model, new Random(0));
+            String canonical = null;
+            for (int turn = 0; turn < 4; turn++) {
+                var cells = pattern.rotate(turn).blocks().keySet();
+                int minX = cells.stream().mapToInt(BuildMemoryPattern.Cell::x).min().orElseThrow();
+                int minZ = cells.stream().mapToInt(BuildMemoryPattern.Cell::z).min().orElseThrow();
+                String shape =
+                        cells.stream()
+                                .map(c -> (c.x() - minX) + ":" + c.y() + ":" + (c.z() - minZ))
+                                .sorted()
+                                .toList()
+                                .toString();
+                if (canonical == null || shape.compareTo(canonical) < 0) canonical = shape;
+            }
+            check(
+                    shapes.add(canonical),
+                    "New material models have distinct silhouettes even without color: " + model);
+        }
+    }
+
+    private static void checkCentered(BuildMemoryPattern pattern, int model) {
+        var cells = pattern.blocks().keySet();
+        int minX = cells.stream().mapToInt(BuildMemoryPattern.Cell::x).min().orElseThrow();
+        int maxX = cells.stream().mapToInt(BuildMemoryPattern.Cell::x).max().orElseThrow();
+        int minZ = cells.stream().mapToInt(BuildMemoryPattern.Cell::z).min().orElseThrow();
+        int maxZ = cells.stream().mapToInt(BuildMemoryPattern.Cell::z).max().orElseThrow();
         check(
-                advanced.size() == 30,
-                "Thirty distinct advanced models are reachable in later rounds");
-        System.out.println("Build Memory catalog: 30 simple, 30 medium, 30 advanced models");
+                Math.abs(minX - (pattern.size() - 1 - maxX)) <= 1
+                        && Math.abs(minZ - (pattern.size() - 1 - maxZ)) <= 1,
+                "Model footprint is centered in its workspace: " + model);
     }
 
     private static String structureSignature(BuildMemoryPattern pattern) {
@@ -317,16 +371,14 @@ public final class BuildMemoryCheck {
         Set<String> shapes = new HashSet<>();
         for (int model : BuildMemoryPattern.smallModels()) {
             var pattern = BuildMemoryPattern.generate(1, model, new Random(0));
-            check(
-                    pattern.blocks().size() >= 4 && pattern.blocks().size() <= 9,
-                    "Small model block budget: " + model);
+            check(pattern.blocks().size() >= 4, "Small model block budget: " + model);
             String canonical = structureSignature(pattern);
             check(
                     shapes.add(canonical),
                     "Small models are distinct beyond wood palette, rotation and translation: "
                             + model);
         }
-        check(shapes.size() == 30, "Thirty separate small structures");
+        check(shapes.size() == 36, "Thirty-six separate small structures");
         check(
                 MemoryBlock.of(Material.OAK_LEAVES).dataString().contains("persistent=true"),
                 "Tree and hedge samples cannot decay");

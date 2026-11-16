@@ -44,10 +44,13 @@ final class FinalsSession implements GameSession {
     private final FinalsConfig config;
     private final FinalsMaps maps;
     private final FinalsLoadouts loadouts;
+    private final FinalsTutorial tutorial;
     private FinalsWeapons weapons;
     private FinalsGadgets gadgets;
     private boolean applyingCombatDamage;
     private boolean applyingBulletDamage;
+    private boolean applyingRangedDamage;
+    private boolean applyingMeleeDamage;
     private final FinalsBulletKnockback bulletKnockback = new FinalsBulletKnockback();
     private final FinalsHitHealth hitHealth = new FinalsHitHealth(this::fighting, () -> this.tick);
     private final FinalsRegeneration regeneration = new FinalsRegeneration(this::fighting, () -> this.tick);
@@ -121,18 +124,34 @@ final class FinalsSession implements GameSession {
             FinalsConfig config,
             FinalsMaps maps,
             FinalsLoadouts loadouts) {
+        this(services, config, maps, loadouts, false);
+    }
+
+    FinalsSession(SessionServices services, FinalsConfig config, FinalsMaps maps,
+            FinalsLoadouts loadouts, boolean tutorial) {
         this.services = services;
         this.config = config;
         this.maps = maps;
         this.loadouts = loadouts;
+        this.tutorial = tutorial ? new FinalsTutorial(loadouts) : null;
         this.cashoutMusic = new FinalsCashoutMusic(services.plugin());
     }
 
     void loadoutChanged(Player player) {
         if (!running() || !connected.contains(player.getUniqueId())) return;
         if (preparing) return;
+        if (tutorial != null && tutorial.equipmentLesson()) {
+            Location location = player.getLocation().clone();
+            spawn(player);
+            teleport(player, location);
+            return;
+        }
         if (state == null) spawn(player);
         else player.sendMessage(text("loadout.next_spawn"));
+    }
+
+    void tutorialHelp(Player player) {
+        if (tutorial != null) tutorial.help(player);
     }
 
     boolean isGameMaster(Player player) {
@@ -294,19 +313,23 @@ final class FinalsSession implements GameSession {
             }
 
             public void damage(Player target, Player source, double amount, Location origin) {
-                applyDamage(target, source, amount, origin, false, false);
+                applyDamage(target, source, amount, origin, false, false, false);
+            }
+
+            public void damageMelee(Player target, Player source, double amount, Location origin) {
+                applyDamage(target, source, amount, origin, false, false, true);
             }
 
             public void damageBullet(Player target, Player source, double amount, Location origin) {
-                applyDamage(target, source, amount, origin, true, true);
+                applyDamage(target, source, amount, origin, true, true, false);
             }
 
             public void damageReflectedBullet(Player target, Player source, double amount, Location origin) {
-                applyDamage(target, source, amount, origin, false, true);
+                applyDamage(target, source, amount, origin, false, true, false);
             }
 
             private void applyDamage(Player target, Player source, double amount, Location origin,
-                    boolean bullet, boolean suppressKnockback) {
+                    boolean bullet, boolean ranged, boolean melee) {
                 if (amount <= 0
                         || !fighting(target)
                         || !fighting(source)
@@ -315,17 +338,23 @@ final class FinalsSession implements GameSession {
                         || (!target.equals(source) && arePlayersFriendly(source, target))) return;
                 boolean previous = applyingCombatDamage;
                 boolean previousBullet = applyingBulletDamage;
+                boolean previousRanged = applyingRangedDamage;
+                boolean previousMelee = applyingMeleeDamage;
                 Location previousOrigin = damageOrigin;
                 applyingCombatDamage = true;
                 applyingBulletDamage = bullet;
+                applyingRangedDamage = ranged;
+                applyingMeleeDamage = melee;
                 damageOrigin = origin == null ? source.getLocation() : origin.clone();
                 try {
                     target.setNoDamageTicks(0);
-                    bulletKnockback.damage(target, source, suppressKnockback,
+                    bulletKnockback.damage(target, source, ranged,
                             () -> target.damage(amount, source));
                 } finally {
                     applyingCombatDamage = previous;
                     applyingBulletDamage = previousBullet;
+                    applyingRangedDamage = previousRanged;
+                    applyingMeleeDamage = previousMelee;
                     damageOrigin = previousOrigin;
                 }
             }
@@ -611,7 +640,7 @@ final class FinalsSession implements GameSession {
         int[] sizes = new int[2];
         int capacity = (participants.size() + 1) / 2;
         for (var participant : participants) {
-            int preferred = participant.team() == TeamColor.BLUE ? 1 : 0;
+            int preferred = tutorial == null && participant.team() == TeamColor.BLUE ? 1 : 0;
             int team = sizes[preferred] < capacity ? preferred : 1 - preferred;
             sizes[team]++;
             roster.put(participant.id(), team);
@@ -622,6 +651,7 @@ final class FinalsSession implements GameSession {
                 && roster.values().stream().filter(team -> team == 0).count() == roster.size() / 2
                 && roster.values().stream().filter(team -> team == 1).count() == roster.size() / 2;
         countdownEnd = Math.clamp(config.countdownSeconds.get(), 18, 60) * 20L;
+        if (tutorial != null) countdownEnd = 1;
         respawnTicks = Math.clamp(config.respawnSeconds.get(), 3, 15) * 20;
         protectionTicks = Math.clamp(config.protectionSeconds.get(), 1, 5) * 20;
         int value = Math.clamp(config.cashoutValue.get(), 100, 1000000);
@@ -633,8 +663,10 @@ final class FinalsSession implements GameSession {
                         Math.clamp(config.durationSeconds.get(), 60, 1800) * 20L,
                         value,
                         Math.clamp(config.targetScore.get(), value, 10000000));
-        arena =
-                maps == null
+        if (tutorial != null) rules = new FinalsState.Rules(100, 200, 100, 72000, 10000, 1000000);
+        arena = tutorial != null
+                ? new FinalsTutorialArena(services.worlds().createVoid("finals_tutorial_" + roster.keySet().iterator().next()))
+                : maps == null
                         ? new FinalsArena(services.worlds().createVoid("finals"))
                         : maps.open(services, services.option("map"));
         preparing = true;
@@ -667,7 +699,7 @@ final class FinalsSession implements GameSession {
         weapons = new FinalsWeapons(combat);
         gadgets = new FinalsGadgets(combat);
         cashouts = new FinalsCashoutPhysics(arena);
-        mapJumpPads = new FinalsMapJumpPads(arena);
+        mapJumpPads = new FinalsMapJumpPads(arena, services.plugin());
         mapJumpPads.start();
         highlights = new FinalsHighlights(services.plugin());
         tabList = new FinalsTabList(services.plugin());
@@ -693,19 +725,15 @@ final class FinalsSession implements GameSession {
         for (Player player : services.participants().onlinePlayers()) {
             if (connected.contains(player.getUniqueId())) {
                 spawn(player);
-                if (loadouts != null) loadouts.open(player);
+                if (loadouts != null && tutorial == null) loadouts.open(player);
             } else if (isGameMaster(player)) spawnGameMaster(player);
         }
-        services.messages()
-                .broadcast(
-                        text(
-                                "rules",
-                                rules.cashoutValue(),
-                                rules.targetScore(),
-                                rules.cashoutTicks() / 20,
-                                rules.stealTicks() / 20));
-        services.messages().broadcast(text("controls"));
-        if (services.isTest()) services.messages().broadcast(text("practice"));
+        if (tutorial == null) {
+            services.messages().broadcast(text("rules", rules.cashoutValue(), rules.targetScore(),
+                    rules.cashoutTicks() / 20, rules.stealTicks() / 20));
+            services.messages().broadcast(text("controls"));
+            if (services.isTest()) services.messages().broadcast(text("practice"));
+        }
         updateHighlights();
         updateTabList();
         updateHud();
@@ -1180,6 +1208,8 @@ final class FinalsSession implements GameSession {
             announceVault();
             announceCashout(0);
             announceCashout(1);
+            if (tutorial != null)
+                for (Player player : services.participants().onlinePlayers()) tutorial.start(player, tick);
             services.messages()
                     .playSound(
                             services.participants().onlinePlayers(),
@@ -1188,12 +1218,13 @@ final class FinalsSession implements GameSession {
                             1.6f);
         }
         if (state == null) {
+            if (mapJumpPads != null) mapJumpPads.updateGlows(services.participants().onlinePlayers());
             if (tick % 2 == 0) updateHighlights();
             if (tick % 5 == 0) updateTabList();
             if (tick % 20 == 0) updateHud();
             return;
         }
-        advanceObjective();
+        if (tutorial == null || !tutorial.equipmentLesson()) advanceObjective();
         updateCashoutMusic();
         if (state.isFinished()) {
             finish();
@@ -1240,6 +1271,25 @@ final class FinalsSession implements GameSession {
         }
         updateStealSiren();
         ensureCashbox();
+        if (tutorial != null) {
+            Player learner = Bukkit.getPlayer(connected.iterator().next());
+            if (learner != null) {
+                switch (tutorial.tick(learner, state, tick)) {
+                    case ENEMY_CASHOUT -> tutorialEnemyCashout(learner);
+                    case CLEAR_OBJECTIVE -> {
+                        cashoutMusic.clear();
+                        state = new FinalsState(roster, tick, rules);
+                        loadoutChanged(learner);
+                    }
+                    case FINISH -> {
+                        result = List.of(text("tutorial.complete"));
+                        services.session().endGame(EndReason.FINISHED);
+                        return;
+                    }
+                    case NONE -> {}
+                }
+            }
+        }
         if (tick % 2 == 0) updateHighlights();
         if (tick % 5 == 0) {
             updateActionBars();
@@ -1282,6 +1332,19 @@ final class FinalsSession implements GameSession {
             }
             teamWipes.release(wave);
         }
+    }
+
+    private void tutorialEnemyCashout(Player learner) {
+        UUID opponent = UUID.randomUUID();
+        FinalsState.Rules practiceRules = new FinalsState.Rules(100, 1800, 100, 72000, 10000, 1000000);
+        long opened = Math.max(0, tick - 100);
+        state = new FinalsState(Map.of(learner.getUniqueId(), 0, opponent, 1), opened, practiceRules);
+        state.activateVault(opponent, opened);
+        state.pickUp(opponent, tick);
+        state.deposit(opponent, 0, tick);
+        cashoutMusic.clear();
+        services.messages().broadcast(text("deposited", teamName(1), "A"));
+        updateCashoutMusic();
     }
 
     private void advanceObjective() {
@@ -1398,6 +1461,7 @@ final class FinalsSession implements GameSession {
     public void onEnd(EndReason reason) {
         if (done) return;
         done = true;
+        if (tutorial != null && loadouts != null) roster.keySet().forEach(loadouts::endPractice);
         cashoutMusic.clear();
         updateStealSiren();
         if (arena != null) arena.cancelBuild();
@@ -1430,7 +1494,7 @@ final class FinalsSession implements GameSession {
         removeCashbox();
         for (Entity entity : ordnance.values()) entity.remove();
         ordnance.clear();
-        if (reason == EndReason.FINISHED && state != null && state.isFinished())
+        if (tutorial == null && reason == EndReason.FINISHED && state != null && state.isFinished())
             for (UUID id : state.winners()) services.award("finals", id, 3);
         for (UUID id : connected) {
             Player player = Bukkit.getPlayer(id);
@@ -1455,11 +1519,24 @@ final class FinalsSession implements GameSession {
 
     @Override
     public Component globalResult() {
+        if (tutorial != null) return null;
         return result.isEmpty() ? null : text("global_result", result.getFirst());
     }
 
     private void updateHud() {
         if (done || bar == null) return;
+        if (tutorial != null && state != null) {
+            bar.name(tutorial.title());
+            bar.progress(tutorial.fraction());
+            bar.color(BossBar.Color.GREEN);
+            for (Player player : services.participants().onlinePlayers()) {
+                services.sidebar().update(player, text("tutorial.name"), List.of(tutorial.title(),
+                        text("loadout.current", classes.getOrDefault(player.getUniqueId(), FinalsClass.MEDIUM).display()),
+                        text("tutorial.help_command"), text("tutorial.leave_command")));
+                player.showBossBar(bar);
+            }
+            return;
+        }
         long remaining =
                 Math.max(
                         0,
@@ -1787,14 +1864,15 @@ final class FinalsSession implements GameSession {
             event.setCancelled(true);
             return;
         }
-        if (applyingBulletDamage && event.getDamage() > 0 && weapons != null
-                && weapons.canReflectBullet(victim, source)) {
-            event.setCancelled(true);
-            weapons.reflectBullet(victim, source, event.getDamage());
-            return;
-        }
+        double incoming = event.getDamage();
+        boolean reflect = applyingBulletDamage && incoming > 0 && weapons != null
+                && weapons.canReflectBullet(victim, source, damageOrigin);
         if (weapons != null)
-            event.setDamage(event.getDamage() * weapons.incomingMultiplier(victim, source));
+            event.setDamage(incoming * weapons.incomingMultiplier(victim, source,
+                    applyingRangedDamage || event.getDamager() instanceof Projectile,
+                    applyingMeleeDamage || !applyingCombatDamage && event.getDamager() instanceof Player,
+                    damageOrigin));
+        if (reflect) weapons.reflectBullet(victim, source, incoming);
         if (event.getFinalDamage() > 0) {
             interruptSteal(victim);
             if (revives != null) revives.interrupt(victim.getUniqueId());

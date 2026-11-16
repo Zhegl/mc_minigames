@@ -59,6 +59,7 @@ public final class PartyInteractionCheck {
                         PartyInteractionCheck::toolMining,
                         PartyInteractionCheck::memoryMining,
                         PartyInteractionCheck::daylight,
+                        MobCountSessionCheck::run,
                         PartyInteractionCheck::armsReconnect,
                         PartyInteractionCheck::cancelRecovery,
                         PartyInteractionCheck::spectatorTeleport,
@@ -170,7 +171,8 @@ public final class PartyInteractionCheck {
 
     private static void daylight() throws Exception {
         var session = fixture(ToolRaceSession.class);
-        for (String mode : List.of("tool_race", "anvils", "color_floor", "build_memory")) {
+        for (String mode :
+                List.of("tool_race", "anvils", "color_floor", "build_memory", "mob_count")) {
             set(session, "id", mode);
             check(session.arenaTime() == 6000, "Daylight in " + mode);
         }

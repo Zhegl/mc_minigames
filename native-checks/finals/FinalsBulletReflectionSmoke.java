@@ -86,7 +86,7 @@ public final class FinalsBulletReflectionSmoke {
         try {
             reset("AKM", "DUAL_BLADES");
             guard(defender); shoot();
-            near(defender.health, 100, "Guarded frontal gunfire does not damage the blade wielder");
+            near(defender.health, 98.04, "A precision block reduces incoming bullet damage by thirty percent");
             near(shooter.health, 97.2, "The real AKM hit reflects its full body-shot damage");
             require(shooter.pushes.equals(List.of(new Pushes(true, true))) && shooter.velocity.equals(MOVEMENT),
                     "Reflected gunfire cancels both native knockback events without changing existing movement");
@@ -107,12 +107,29 @@ public final class FinalsBulletReflectionSmoke {
             near(defender.health, 97.2, "A shot arriving behind the blades bypasses the guard");
             near(shooter.health, 100, "Rear shots are not reflected");
 
+            for (float angle : new float[]{-14.01f, -14f, 14f, 14.01f}) {
+                for (boolean vertical : new boolean[]{false, true}) {
+                    reset("AKM", "DUAL_BLADES");
+                    defender.location.setY(shooter.location.getY());
+                    defender.location.setPitch(0);
+                    if (vertical) defender.location.setPitch(angle);
+                    else defender.location.setYaw(180 + angle);
+                    guard(defender);
+                    call(context, "damageBullet", defender.player, shooter.player, 2.8d, shooter.eye());
+                    boolean inside = Math.abs(angle) <= 14;
+                    near(defender.health, inside ? 98.04 : 97.2,
+                            "Ranged damage reduction uses the precision cone in both axes");
+                    near(shooter.health, inside ? 97.2 : 100,
+                            "Only shots inside the inclusive precision cone reflect");
+                }
+            }
+
             reset("AKM", "DUAL_BLADES"); guard(defender);
             tick += 6; set(session, "tick", tick); shoot();
             near(defender.health, 97.2, "The expired guard cannot reflect a later shot");
 
             reset("MODEL_1887", "DUAL_BLADES"); guard(defender); shoot();
-            near(defender.health, 100, "A guarded shotgun blast leaves the defender unharmed");
+            near(defender.health, 89.92, "A guarded shotgun blast still deals reduced damage");
             near(shooter.health, 85.6, "All eight body pellets are reflected as one aggregate hit");
             require(shooter.damageEvents == 1 && defender.damageEvents == 1,
                     "Shotgun aggregation produces one incoming and one reflected damage event");
@@ -127,7 +144,7 @@ public final class FinalsBulletReflectionSmoke {
             EntityDamageByEntityEvent melee = event(shooter.player, defender.player, 1);
             call(session, "onEntityDamageByEntity", melee);
             require(melee.isCancelled(), "The native melee attack uses the custom weapon dispatch");
-            near(defender.health, 96.78, "Melee retains blade damage reduction instead of reflecting");
+            near(defender.health, 96.55, "Melee damage is reduced by exactly twenty-five percent instead of reflecting");
             near(shooter.health, 100, "The sword attacker takes no reflected melee damage");
             require(defender.pushes.equals(List.of(new Pushes(false, false))) && !defender.velocity.equals(MOVEMENT),
                     "Native melee knockback is not cancelled by the bullet-only listener");
@@ -141,7 +158,7 @@ public final class FinalsBulletReflectionSmoke {
 
             reset("DUAL_BLADES", "DUAL_BLADES"); guard(shooter); guard(defender);
             call(context, "damageBullet", defender.player, shooter.player, 4d, shooter.eye());
-            near(defender.health, 100, "The first guarded defender reflects the bullet");
+            near(defender.health, 97.2, "The first guarded defender reflects the bullet while taking reduced damage");
             near(shooter.health, 97.2, "Return damage may be reduced by a guard but is never reflected again");
             require(shooter.damageEvents == 1 && defender.damageEvents == 1,
                     "Two guarding players cannot recurse or duplicate reflected hits");
@@ -204,7 +221,7 @@ public final class FinalsBulletReflectionSmoke {
         guard(defender); shoot();
         call(regeneration, "tick", defender.player, medium);
         call(regeneration, "tick", shooter.player, medium);
-        near(defender.health, 10.2, "The cancelled original hit leaves the blade defender's regeneration ready");
+        near(defender.health, 8.04, "Reduced incoming damage still delays the blade defender's regeneration");
         near(shooter.health, 7.2, "The actual reflected hit delays regeneration for the shooter");
         setTick(reflectedAt + 180);
         call(regeneration, "tick", shooter.player, medium);
@@ -291,6 +308,11 @@ public final class FinalsBulletReflectionSmoke {
         ((Map<?, ?>) get(session, "protectedUntil")).clear();
         ((Map<UUID, Integer>) get(session, "roster")).put(defender.id, 1);
         shooter.location.setYaw(0); defender.location.setYaw(180);
+        shooter.location.setPitch(0); defender.location.setPitch(0);
+        defender.location.setY(100.7);
+        defender.location.setDirection(shooter.eye().toVector().subtract(defender.eye().toVector()));
+        if (gun.equals("DUAL_BLADES"))
+            shooter.location.setDirection(defender.eye().toVector().subtract(shooter.eye().toVector()));
         shooter.reset(); defender.reset();
         for (var entry : Map.of(shooter, gun, defender, defense).entrySet()) {
             Object weapon = enumeration("FinalsWeapon", entry.getValue());

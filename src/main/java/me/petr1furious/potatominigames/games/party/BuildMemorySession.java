@@ -113,7 +113,8 @@ final class BuildMemorySession extends PartySurvivalSession {
                 BuildMemoryPattern.generate(stage, models.get(stage - 1), random);
         modelTitle = shared.title();
         for (Player p : alivePlayers()) {
-            var pattern = shared.rotate(random.nextInt(4));
+            var pattern =
+                    shared.rotate(random.nextInt(4)).centered(BuildMemoryPattern.buildSize(stage));
             patterns.put(p.getUniqueId(), pattern);
             progress.put(p.getUniqueId(), new BuildMemoryJudging.Progress());
             teleport(p, arena.spawn(p.getUniqueId()));

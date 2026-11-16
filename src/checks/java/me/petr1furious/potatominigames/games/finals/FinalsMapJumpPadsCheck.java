@@ -11,12 +11,19 @@ import java.util.UUID;
 public final class FinalsMapJumpPadsCheck {
     private static int checks;
     private static void check(boolean value, String message) { checks++; if (!value) throw new AssertionError(message); }
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[]{World.class},
                 (self, method, a) -> switch (method.getName()) {
                     case "equals" -> self == a[0]; case "hashCode" -> 1; case "getName" -> "pads"; default -> null;
                 });
         Location start = new Location(world, .5, 65, .5), target = new Location(world, 65.5, 83, 25.5);
+        var visible = FinalsMapJumpPads.class.getDeclaredMethod("glowVisible", FinalsMapJumpPads.Pad.class, Location.class);
+        visible.setAccessible(true);
+        var targeted = new FinalsMapJumpPads.Pad(start, target);
+        check((boolean) visible.invoke(null, targeted, start.clone().add(16, 0, 0)), "Targeted glow is visible at 16 blocks");
+        check(!(boolean) visible.invoke(null, targeted, start.clone().add(16.01, 0, 0)), "Targeted glow is hidden beyond 16 blocks");
+        check(!(boolean) visible.invoke(null, targeted, start.clone().add(0, 16.01, 0)), "Glow range includes vertical separation");
+        check(!(boolean) visible.invoke(null, new FinalsMapJumpPads.Pad(start, null), start), "Vertical pads never glow, even at zero distance");
         check(FinalsMapJumpPads.UP_SPEED == 3 * FinalsGadgets.JUMP_PAD_SPEED, "Upward pads use triple gadget vertical velocity");
         check(FinalsMapJumpPads.arc(start, target, 0).equals(start), "Arc begins at launch point");
         check(FinalsMapJumpPads.arc(start, target, 1).equals(target), "Arc ends at configured destination");
