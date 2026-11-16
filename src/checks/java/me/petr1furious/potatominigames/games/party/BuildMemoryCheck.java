@@ -15,6 +15,7 @@ public final class BuildMemoryCheck {
         judging();
         signOrientations();
         smallCatalog();
+        laterVariety();
         check(
                 BuildMemoryPattern.buildSize(3) == 5 && BuildMemoryPattern.buildSize(4) == 7,
                 "The large workspace unlocks at round four");
@@ -61,7 +62,7 @@ public final class BuildMemoryCheck {
                         stage <= 2
                                 ? p.blocks().size() <= 9
                                 : p.blocks().size() >= (stage >= 4 ? 30 : 11)
-                                        && p.blocks().size() <= 48,
+                                        && p.blocks().size() <= 56,
                         "Difficulty comes from progressively larger complete models");
                 check(
                         p.blocks().keySet().stream().anyMatch(c -> c.y() >= minimumTop),
@@ -191,6 +192,127 @@ public final class BuildMemoryCheck {
         System.out.println("Build memory variants, difficulty, exact kits and orientations passed");
     }
 
+    private static void laterVariety() {
+        Set<Integer> ids = new HashSet<>();
+        Set<String> shapes = new HashSet<>();
+        for (var group :
+                List.of(
+                        BuildMemoryPattern.smallModels(),
+                        BuildMemoryPattern.mediumModels(),
+                        BuildMemoryPattern.advancedModels())) {
+            check(group.size() == 30, "Each difficulty catalog has thirty models");
+            for (int model : group) {
+                check(ids.add(model), "Difficulty catalogs do not overlap");
+                var pattern = BuildMemoryPattern.generate(4, model, new Random(0));
+                check(
+                        pattern.rotate(1).rotate(3).blocks().equals(pattern.blocks()),
+                        "Every model rotates around a stable workspace: " + model);
+                check(
+                        pattern.rotate(1).size() == pattern.size(),
+                        "Rotation preserves the workspace size");
+                check(
+                        shapes.add(structureSignature(pattern)),
+                        "A model is only a recolor or rotation: " + model);
+                Set<BuildMemoryPattern.Cell> reachable = new HashSet<>();
+                pattern.blocks().keySet().stream().filter(c -> c.y() == 0).forEach(reachable::add);
+                boolean changed;
+                do {
+                    changed = false;
+                    for (var cell : pattern.blocks().keySet())
+                        if (!reachable.contains(cell)
+                                && reachable.stream()
+                                        .anyMatch(c ->
+                                                Math.abs(c.x() - cell.x())
+                                                                + Math.abs(c.y() - cell.y())
+                                                                + Math.abs(c.z() - cell.z())
+                                                        == 1)) {
+                            reachable.add(cell);
+                            changed = true;
+                        }
+                } while (changed);
+                check(
+                        reachable.size() == pattern.blocks().size(),
+                        "Model needs extra scaffolding: " + model);
+            }
+        }
+        check(
+                ids.size() == BuildMemoryPattern.MODEL_COUNT,
+                "Every model is assigned to a difficulty");
+        Set<Component> medium = new HashSet<>(), advanced = new HashSet<>();
+        for (int seed = 0; seed < 1000; seed++) {
+            medium.add(BuildMemoryPattern.generate(3, new Random(seed * 104729L)).title());
+            for (int stage : new int[] {4, 6, 8}) {
+                var pattern = BuildMemoryPattern.generate(stage, new Random(seed * 7919L));
+                advanced.add(pattern.title());
+                int min = stage == 4 ? 30 : stage == 6 ? 38 : 44;
+                int max = stage == 4 ? 36 : stage == 6 ? 42 : 56;
+                check(
+                        pattern.blocks().size() >= min && pattern.blocks().size() <= max,
+                        "Advanced tier has the intended block budget: stage " + stage);
+            }
+        }
+        check(medium.size() == 30, "Thirty distinct medium models are reachable in round three");
+        check(
+                advanced.size() == 30,
+                "Thirty distinct advanced models are reachable in later rounds");
+        System.out.println("Build Memory catalog: 30 simple, 30 medium, 30 advanced models");
+    }
+
+    private static String structureSignature(BuildMemoryPattern pattern) {
+        String canonical = null;
+        for (int turn = 0; turn < 4; turn++) {
+            var rotated = pattern.rotate(turn);
+            int minX =
+                    rotated.blocks().keySet().stream()
+                            .mapToInt(BuildMemoryPattern.Cell::x)
+                            .min()
+                            .orElseThrow();
+            int minZ =
+                    rotated.blocks().keySet().stream()
+                            .mapToInt(BuildMemoryPattern.Cell::z)
+                            .min()
+                            .orElseThrow();
+            List<String> cells = new ArrayList<>();
+            rotated.blocks()
+                    .forEach((c, b) -> {
+                        String material = b.material().name();
+                        for (String suffix :
+                                List.of(
+                                        "WALL_SIGN",
+                                        "FENCE_GATE",
+                                        "PLANKS",
+                                        "STAIRS",
+                                        "SLAB",
+                                        "FENCE",
+                                        "SIGN",
+                                        "LOG",
+                                        "LEAVES"))
+                            if (material.endsWith("_" + suffix)) {
+                                material = suffix;
+                                break;
+                            }
+                        var properties = new TreeMap<>(b.properties());
+                        if (material.endsWith("SIGN")) {
+                            properties.remove("rotation");
+                            properties.remove("facing");
+                        }
+                        cells.add(
+                                (c.x() - minX)
+                                        + ":"
+                                        + c.y()
+                                        + ":"
+                                        + (c.z() - minZ)
+                                        + "="
+                                        + material
+                                        + properties);
+                    });
+            Collections.sort(cells);
+            String signature = cells.toString();
+            if (canonical == null || signature.compareTo(canonical) < 0) canonical = signature;
+        }
+        return canonical;
+    }
+
     private static void smallCatalog() {
         Set<String> shapes = new HashSet<>();
         for (int model : BuildMemoryPattern.smallModels()) {
@@ -198,57 +320,7 @@ public final class BuildMemoryCheck {
             check(
                     pattern.blocks().size() >= 4 && pattern.blocks().size() <= 9,
                     "Small model block budget: " + model);
-            String canonical = null;
-            for (int turn = 0; turn < 4; turn++) {
-                var rotated = pattern.rotate(turn);
-                int minX =
-                        rotated.blocks().keySet().stream()
-                                .mapToInt(BuildMemoryPattern.Cell::x)
-                                .min()
-                                .orElseThrow();
-                int minZ =
-                        rotated.blocks().keySet().stream()
-                                .mapToInt(BuildMemoryPattern.Cell::z)
-                                .min()
-                                .orElseThrow();
-                List<String> cells = new ArrayList<>();
-                rotated.blocks()
-                        .forEach((c, b) -> {
-                            String material = b.material().name();
-                            for (String suffix :
-                                    List.of(
-                                            "WALL_SIGN",
-                                            "FENCE_GATE",
-                                            "PLANKS",
-                                            "STAIRS",
-                                            "SLAB",
-                                            "FENCE",
-                                            "SIGN",
-                                            "LOG",
-                                            "LEAVES"))
-                                if (material.endsWith("_" + suffix)) {
-                                    material = suffix;
-                                    break;
-                                }
-                            var properties = new TreeMap<>(b.properties());
-                            if (material.endsWith("SIGN")) {
-                                properties.remove("rotation");
-                                properties.remove("facing");
-                            }
-                            cells.add(
-                                    (c.x() - minX)
-                                            + ":"
-                                            + c.y()
-                                            + ":"
-                                            + (c.z() - minZ)
-                                            + "="
-                                            + material
-                                            + properties);
-                        });
-                Collections.sort(cells);
-                String signature = cells.toString();
-                if (canonical == null || signature.compareTo(canonical) < 0) canonical = signature;
-            }
+            String canonical = structureSignature(pattern);
             check(
                     shapes.add(canonical),
                     "Small models are distinct beyond wood palette, rotation and translation: "

@@ -8,18 +8,39 @@ import org.bukkit.Material;
 
 import java.util.*;
 
-record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
+record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks, int size) {
     static final int FULL_MODELS = 14;
-    static final int MODEL_COUNT = 50;
+    static final int MODEL_COUNT = 90;
 
     static List<Integer> smallModels() {
         var models = new ArrayList<Integer>();
         for (int model = 14; model < 20; model++) models.add(model);
-        for (int model = 26; model < MODEL_COUNT; model++) models.add(model);
+        for (int model = 26; model < 50; model++) models.add(model);
+        return List.copyOf(models);
+    }
+
+    static List<Integer> mediumModels() {
+        var models = new ArrayList<Integer>();
+        for (int model = 0; model < FULL_MODELS; model++) models.add(model);
+        for (int model = 50; model < 66; model++) models.add(model);
+        return List.copyOf(models);
+    }
+
+    static List<Integer> advancedModels() {
+        var models = new ArrayList<Integer>();
+        for (int model = 20; model < 26; model++) models.add(model);
+        for (int model = 66; model < MODEL_COUNT; model++) models.add(model);
         return List.copyOf(models);
     }
 
     record Cell(int x, int y, int z) {}
+
+    BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
+        this(
+                title,
+                blocks,
+                blocks.keySet().stream().anyMatch(c -> c.x() >= 5 || c.z() >= 5) ? 7 : 5);
+    }
 
     BuildMemoryPattern {
         blocks = Map.copyOf(blocks);
@@ -31,10 +52,10 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
 
     private static List<Integer> tier(int stage) {
         if (stage <= 2) return smallModels();
-        if (stage == 3) return List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
-        if (stage <= 5) return List.of(20, 21);
-        if (stage <= 7) return List.of(22, 23);
-        return List.of(24, 25);
+        if (stage == 3) return mediumModels();
+        if (stage <= 5) return List.of(20, 21, 66, 67, 68, 69, 70, 71, 72, 73);
+        if (stage <= 7) return List.of(22, 23, 25, 74, 75, 76, 77, 78, 79, 80);
+        return List.of(24, 81, 82, 83, 84, 85, 86, 87, 88, 89);
     }
 
     static List<Integer> deck(Random random) {
@@ -45,7 +66,7 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
             models.add(candidates.get(random.nextInt(candidates.size())));
         }
         // Keep the opening and the first advanced pair in ascending order of block count.
-        for (int start : new int[] {0, 3}) {
+        for (int start : new int[] {0, 3, 5}) {
             if (generate(start + 1, models.get(start), new Random(0)).blocks().size()
                     > generate(start + 2, models.get(start + 1), new Random(0)).blocks().size())
                 Collections.swap(models, start, start + 1);
@@ -76,6 +97,15 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
                                 Material.GREEN_TERRACOTTA)
                         .get(random.nextInt(4));
         Material light = random.nextBoolean() ? Material.LANTERN : Material.SOUL_LANTERN;
+        if (model >= 50)
+            return (model < 66
+                            ? BuildMemoryMediumModels.generate(model, wood, stone, accent, light)
+                            : model < 78
+                                    ? BuildMemoryLargeModels.generate(
+                                            model, wood, stone, accent, light)
+                                    : BuildMemoryComplexModels.generate(
+                                            model, wood, stone, accent, light))
+                    .rotate(random.nextInt(4));
         if (model >= 26)
             return (model < 38
                             ? BuildMemoryFurnitureModels.generate(model, wood, stone, accent, light)
@@ -379,10 +409,6 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
         return new BuildMemoryPattern(title, b.blocks).rotate(random.nextInt(4));
     }
 
-    int size() {
-        return blocks.keySet().stream().anyMatch(c -> c.x() >= 5 || c.z() >= 5) ? 7 : 5;
-    }
-
     Map<Material, Integer> inventory() {
         Map<Material, Integer> result = new EnumMap<>(Material.class);
         blocks.values().forEach(b -> result.merge(b.item(), b.itemCount(), Integer::sum));
@@ -411,7 +437,7 @@ record BuildMemoryPattern(Component title, Map<Cell, MemoryBlock> blocks) {
             }
             rotated.put(new Cell(x, c.y, z), block.rotate(turns));
         });
-        return new BuildMemoryPattern(title, rotated);
+        return new BuildMemoryPattern(title, rotated, size);
     }
 
     static final class Builder {
