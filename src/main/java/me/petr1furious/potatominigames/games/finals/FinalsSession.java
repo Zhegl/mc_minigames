@@ -48,6 +48,8 @@ final class FinalsSession implements GameSession {
     private FinalsGadgets gadgets;
     private boolean applyingCombatDamage;
     private boolean applyingBulletDamage;
+    private boolean applyingRangedDamage;
+    private boolean applyingMeleeDamage;
     private final FinalsBulletKnockback bulletKnockback = new FinalsBulletKnockback();
     private final FinalsHitHealth hitHealth = new FinalsHitHealth(this::fighting, () -> this.tick);
     private final FinalsRegeneration regeneration = new FinalsRegeneration(this::fighting, () -> this.tick);
@@ -294,19 +296,23 @@ final class FinalsSession implements GameSession {
             }
 
             public void damage(Player target, Player source, double amount, Location origin) {
-                applyDamage(target, source, amount, origin, false, false);
+                applyDamage(target, source, amount, origin, false, false, false);
+            }
+
+            public void damageMelee(Player target, Player source, double amount, Location origin) {
+                applyDamage(target, source, amount, origin, false, false, true);
             }
 
             public void damageBullet(Player target, Player source, double amount, Location origin) {
-                applyDamage(target, source, amount, origin, true, true);
+                applyDamage(target, source, amount, origin, true, true, false);
             }
 
             public void damageReflectedBullet(Player target, Player source, double amount, Location origin) {
-                applyDamage(target, source, amount, origin, false, true);
+                applyDamage(target, source, amount, origin, false, true, false);
             }
 
             private void applyDamage(Player target, Player source, double amount, Location origin,
-                    boolean bullet, boolean suppressKnockback) {
+                    boolean bullet, boolean ranged, boolean melee) {
                 if (amount <= 0
                         || !fighting(target)
                         || !fighting(source)
@@ -315,17 +321,23 @@ final class FinalsSession implements GameSession {
                         || (!target.equals(source) && arePlayersFriendly(source, target))) return;
                 boolean previous = applyingCombatDamage;
                 boolean previousBullet = applyingBulletDamage;
+                boolean previousRanged = applyingRangedDamage;
+                boolean previousMelee = applyingMeleeDamage;
                 Location previousOrigin = damageOrigin;
                 applyingCombatDamage = true;
                 applyingBulletDamage = bullet;
+                applyingRangedDamage = ranged;
+                applyingMeleeDamage = melee;
                 damageOrigin = origin == null ? source.getLocation() : origin.clone();
                 try {
                     target.setNoDamageTicks(0);
-                    bulletKnockback.damage(target, source, suppressKnockback,
+                    bulletKnockback.damage(target, source, ranged,
                             () -> target.damage(amount, source));
                 } finally {
                     applyingCombatDamage = previous;
                     applyingBulletDamage = previousBullet;
+                    applyingRangedDamage = previousRanged;
+                    applyingMeleeDamage = previousMelee;
                     damageOrigin = previousOrigin;
                 }
             }
@@ -667,7 +679,7 @@ final class FinalsSession implements GameSession {
         weapons = new FinalsWeapons(combat);
         gadgets = new FinalsGadgets(combat);
         cashouts = new FinalsCashoutPhysics(arena);
-        mapJumpPads = new FinalsMapJumpPads(arena);
+        mapJumpPads = new FinalsMapJumpPads(arena, services.plugin());
         mapJumpPads.start();
         highlights = new FinalsHighlights(services.plugin());
         tabList = new FinalsTabList(services.plugin());
@@ -1188,6 +1200,7 @@ final class FinalsSession implements GameSession {
                             1.6f);
         }
         if (state == null) {
+            if (mapJumpPads != null) mapJumpPads.updateGlows(services.participants().onlinePlayers());
             if (tick % 2 == 0) updateHighlights();
             if (tick % 5 == 0) updateTabList();
             if (tick % 20 == 0) updateHud();
@@ -1787,14 +1800,15 @@ final class FinalsSession implements GameSession {
             event.setCancelled(true);
             return;
         }
-        if (applyingBulletDamage && event.getDamage() > 0 && weapons != null
-                && weapons.canReflectBullet(victim, source)) {
-            event.setCancelled(true);
-            weapons.reflectBullet(victim, source, event.getDamage());
-            return;
-        }
+        double incoming = event.getDamage();
+        boolean reflect = applyingBulletDamage && incoming > 0 && weapons != null
+                && weapons.canReflectBullet(victim, source, damageOrigin);
         if (weapons != null)
-            event.setDamage(event.getDamage() * weapons.incomingMultiplier(victim, source));
+            event.setDamage(incoming * weapons.incomingMultiplier(victim, source,
+                    applyingRangedDamage || event.getDamager() instanceof Projectile,
+                    applyingMeleeDamage || !applyingCombatDamage && event.getDamager() instanceof Player,
+                    damageOrigin));
+        if (reflect) weapons.reflectBullet(victim, source, incoming);
         if (event.getFinalDamage() > 0) {
             interruptSteal(victim);
             if (revives != null) revives.interrupt(victim.getUniqueId());

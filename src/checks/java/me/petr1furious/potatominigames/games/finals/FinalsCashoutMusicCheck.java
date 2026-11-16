@@ -25,24 +25,24 @@ public final class FinalsCashoutMusicCheck {
         f.update(audience);
         require(f.created.size() == 2 && near.plays.isEmpty() && boundary.plays.isEmpty(),
                 "Only eligible listeners within inclusive 32 blocks get emitters, and playback waits for tracking");
-        require(f.emitter(near).at.equals(near.eye().add(0, 2, 0))
-                        && f.emitter(boundary).at.equals(boundary.eye().add(0, 2, 0)),
-                "Audible emitters stay overhead instead of crossing the listener's camera between movement packets");
+        require(f.emitter(near).at.equals(audible(near, f.source))
+                        && f.emitter(boundary).at.equals(audible(boundary, f.source)),
+                "Audible emitters point toward the cashout with distance-scaled attenuation");
         f.track(near); f.track(boundary); f.update(audience);
         playback(near, f.emitter(near), PIGSTEP); playback(boundary, f.emitter(boundary), PIGSTEP);
         for (int tick = 0; tick < 20; tick++) f.update(audience);
         require(near.plays.size() == 1 && boundary.plays.size() == 1, "Ordinary ticks never restart the music");
         Body original = f.emitter(near);
         near.at.add(1, .5, 1); f.update(audience);
-        require(original.at.equals(near.eye().add(0, 2, 0))
+        require(original.at.equals(audible(near, f.source))
                         && near.plays.size() == 1 && near.stops.isEmpty(),
-                "Walking and vertical movement retain the overhead offset without restarting the stream");
+                "Walking and vertical movement preserve cashout direction without restarting the stream");
         near.at.setY(70); near.at.setZ(0);
         for (int visit = 0; visit < 3; visit++) {
             near.at.setX(32.001); f.update(audience);
             require(original.at.equals(near.eye().add(0, 24, 0)), "Outside 32 blocks the emitter moves beyond sound attenuation range");
             near.at.setX(32); f.update(audience);
-            require(original.at.equals(near.eye().add(0, 2, 0)), "Re-entering the inclusive boundary brings the same emitter overhead");
+            require(original.at.equals(audible(near, f.source)), "Re-entering the inclusive boundary restores the same directional emitter");
         }
         require(near.plays.size() == 1 && near.stops.isEmpty() && original.removals == 0,
                 "Exiting and re-entering never stops, replays or replaces the current track");
@@ -91,6 +91,13 @@ public final class FinalsCashoutMusicCheck {
         playback(replacement, f.emitter(replacement), LAVA);
         f.music.clear();
         System.out.println("FinalsCashoutMusicCheck: " + checks + " checks passed");
+    }
+
+    private static Location audible(Viewer viewer, Body source) {
+        Location eye = viewer.eye();
+        var direction = source.at.clone().add(0, .5, 0).toVector().subtract(eye.toVector());
+        double distance = viewer.at.distance(source.at) * .45;
+        return direction.lengthSquared() < 1e-8 ? eye : eye.add(direction.normalize().multiply(distance));
     }
 
     private static final class Harness {

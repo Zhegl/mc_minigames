@@ -333,7 +333,7 @@ final class FinalsWeapons {
                         target.getLocation().getDirection(),
                         source.getLocation().toVector().subtract(target.getLocation().toVector())))
             damage *= 4;
-        context.damage(target, source, damage, eye);
+        context.damageMelee(target, source, damage, eye);
         source.playSound(source.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, .35f, 1.7f);
     }
 
@@ -365,12 +365,16 @@ final class FinalsWeapons {
     }
 
     boolean canReflectBullet(Player defender, Player shooter) {
-        Equipped held = equipped.get(defender.getUniqueId());
-        return held != null && held.weapon == FinalsWeapon.DUAL_BLADES
-                && guarding(defender, shooter, held) && enemy(defender, shooter);
+        return canReflectBullet(defender, shooter, shooter.getEyeLocation());
     }
 
-    /** Called after the session validates the guard and cancels the original gun hit. */
+    boolean canReflectBullet(Player defender, Player shooter, Location origin) {
+        Equipped held = equipped.get(defender.getUniqueId());
+        return held != null && held.weapon == FinalsWeapon.DUAL_BLADES
+                && guarding(defender, shooter, held, true, origin) && enemy(defender, shooter);
+    }
+
+    /** Called after the session validates the guard; the original hit still deals reduced damage. */
     void reflectBullet(Player defender, Player shooter, double damage) {
         Location origin = defender.getEyeLocation();
         Vector direction = shooter.getEyeLocation().toVector().subtract(origin.toVector());
@@ -384,8 +388,13 @@ final class FinalsWeapons {
         context.damageReflectedBullet(shooter, defender, damage, origin);
     }
 
-    private boolean guarding(Player target, Player source, Equipped held) {
+    private boolean guarding(Player target, Player source, Equipped held, boolean ranged, Location origin) {
         if (!usable(target, held) || context.tick() >= held.guardUntil) return false;
+        if (ranged && held.weapon == FinalsWeapon.DUAL_BLADES) {
+            Location eye = target.getEyeLocation();
+            Location incoming = origin == null ? source.getEyeLocation() : origin;
+            return precisionBlock(eye.getDirection(), incoming.toVector().subtract(eye.toVector()));
+        }
         Vector attacker = source.getLocation().toVector().subtract(target.getLocation().toVector());
         return frontal(target.getLocation().getDirection(), attacker);
     }
@@ -395,12 +404,22 @@ final class FinalsWeapons {
      * hit.
      */
     double incomingMultiplier(Player target, Player source) {
+        return incomingMultiplier(target, source, false, false, null);
+    }
+
+    double incomingMultiplier(Player target, Player source, boolean ranged, boolean melee, Location origin) {
         Equipped held = equipped.get(target.getUniqueId());
         if (held == null
                 || held.weapon != FinalsWeapon.RIOT_SHIELD
                         && held.weapon != FinalsWeapon.DUAL_BLADES
-                || !guarding(target, source, held)) return 1;
-        return held.weapon == FinalsWeapon.RIOT_SHIELD ? .35 : .7;
+                || !guarding(target, source, held, ranged, origin)) return 1;
+        return held.weapon == FinalsWeapon.RIOT_SHIELD ? .35 : melee ? .75 : .7;
+    }
+
+    static boolean precisionBlock(Vector facing, Vector towardAttacker) {
+        if (facing.lengthSquared() < 1e-8 || towardAttacker.lengthSquared() < 1e-8) return false;
+        return facing.clone().normalize().dot(towardAttacker.clone().normalize())
+                >= Math.cos(Math.toRadians(14)) - 1e-10;
     }
 
     static boolean frontal(Vector facing, Vector towardAttacker) {

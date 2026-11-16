@@ -2,6 +2,7 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.function.*;
 import org.bukkit.*;
+import org.bukkit.util.Vector;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.*;
 import org.bukkit.event.inventory.*;
@@ -19,6 +20,11 @@ import net.kyori.adventure.text.Component;
 
 /** Native registries/inventories/attributes with fake player transport; production lifecycle is invoked unchanged. */
 public final class FinalsLoadoutSmoke {
+    private static Location musicPoint(Player viewer, Entity source) {
+        Location eye=viewer.getEyeLocation();
+        Vector toward=source.getLocation().add(0,.5,0).toVector().subtract(eye.toVector());
+        return toward.lengthSquared()<1e-8 ? eye : eye.add(toward.normalize().multiply(viewer.getLocation().distance(source.getLocation())*.45));
+    }
     private final JavaPlugin smoke, main;
     private final ClassLoader loader;
     private final Map<UUID, FakePlayer> players = new LinkedHashMap<>();
@@ -465,9 +471,9 @@ public final class FinalsLoadoutSmoke {
         require(carrier.musicSource==transports.get(carrier.id)&&listener.musicSource==transports.get(listener.id)
                         &&carrier.musicCategory==SoundCategory.RECORDS,
                 "Background music binds once to each listener's private emitter in the record category");
-        require(emitters.get(carrier.id).getLocation().distanceSquared(carrier.player.getEyeLocation().add(0,2,0))<.000001
-                        &&emitters.get(listener.id).getLocation().distanceSquared(listener.player.getEyeLocation().add(0,2,0))<.000001,
-                "Audible native emitters remain two blocks above their listeners' eye positions");
+        require(emitters.get(carrier.id).getLocation().distanceSquared(musicPoint(carrier.player,source))<.000001
+                        &&emitters.get(listener.id).getLocation().distanceSquared(musicPoint(listener.player,source))<.000001,
+                "Audible native emitters point toward the cashout and fade with distance");
         close(carrier.musicVolume,.30,"Cashout music uses thirty-percent volume");
         require(players.values().stream().filter(player->player!=carrier&&player!=listener)
                         .allMatch(player->player.musicStarted.isEmpty()),
@@ -497,7 +503,7 @@ public final class FinalsLoadoutSmoke {
         boundary.location=source.getLocation().add(24,0,0);
         withPlayerLookup(session,"updateCashoutMusic");
         require(boundary.musicStarted.size()==1&&boundary.musicStopped.isEmpty()&&emitters.get(boundary.id)==boundaryEmitter
-                        &&boundaryEmitter.getLocation().distanceSquared(boundary.player.getEyeLocation().add(0,2,0))<.000001,
+                        &&boundaryEmitter.getLocation().distanceSquared(musicPoint(boundary.player,source))<.000001,
                 "Returning within range restores the same emitter without restarting the current track");
         call(session,"onPlayerPostRespawn",new com.destroystokyo.paper.event.player.PlayerPostRespawnEvent(
                 boundary.player,boundary.location,false,false,false,PlayerRespawnEvent.RespawnReason.DEATH));
