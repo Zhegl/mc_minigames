@@ -7,11 +7,8 @@ import java.util.Map;
 final class MagicMana {
     static final double MAX = 100, REGEN_PER_SECOND = 7;
     private double mana = MAX;
-    private long nextCast, nextCycle;
+    private long nextCast;
     private final Map<MagicSpell, Long> readyAt = new EnumMap<>(MagicSpell.class);
-    private final Map<MagicSpell.School, Integer> selection =
-            new EnumMap<>(MagicSpell.School.class);
-
     double mana() {
         return mana;
     }
@@ -22,25 +19,6 @@ final class MagicMana {
 
     void tick() {
         restore(REGEN_PER_SECOND / 20);
-    }
-
-    MagicSpell selected(MagicSpell.School school) {
-        return school.spells().get(selection.getOrDefault(school, 0));
-    }
-
-    boolean cycle(MagicSpell.School school, boolean backwards, long tick) {
-        if (tick < nextCycle) return false;
-        selection.put(
-                school,
-                Math.floorMod(
-                        selection.getOrDefault(school, 0) + (backwards ? -1 : 1),
-                        school.spells().size()));
-        nextCycle = tick + 6;
-        return true;
-    }
-
-    void select(MagicSpell spell) {
-        selection.put(spell.school, spell.school.spells().indexOf(spell));
     }
 
     long remaining(MagicSpell spell, long tick) {
