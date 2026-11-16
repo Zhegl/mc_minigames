@@ -4,7 +4,7 @@ Server fork of [Petr1Furious/potato-minigames](https://github.com/Petr1Furious/p
 preserving the upstream Git history and the server's downstream patches.
 The original Apache-2.0 license and attribution are retained in `LICENSE` and `NOTICE`.
 
-One Paper plugin with seven game categories on a shared framework, built for a server
+One Paper plugin with eight game categories on a shared framework, built for a server
 anybody can join and play at any time: players queue for a game, wait in a lobby,
 and the game starts by itself. Different games run side by side.
 Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Java 25.
@@ -24,6 +24,48 @@ Install [Potato Launcher](https://github.com/Petr1Furious/potato-launcher) and f
 | **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `pvp_ffa`, `pvp_select`, `sumo_ffa`, `arms_race`, `one_shot`, `tnt_run`, `mob_count`, `rhino`, `miners`, `magic_battle`, `parkour_race` | PvP and sumo have round-robin BO3 tournaments and simultaneous one-life FFA variants. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random equipment upgrades, consumable loot and underground PvP. Magic Battle puts six wands and forty-two spells on the imported Lighthouse sky-island map. |
 | **Counter-Strike** | `/cs` | `default`, `deathmatch`, `wingman` | Classic bomb defusal, A-side Wingman or a timed free-for-all with respawns and free weapon selection on Dust II. |
 | **The Finals** | `/finals` | — | Two teams open vaults, carry cash boxes and defend or steal cashouts in a disposable arena. The first team to $20,000 wins, or the richer team after ten minutes. |
+| **World of Tanks** | `/tanks` | — | Light, medium and heavy tanks with independent turrets, armor, AP/HE shells, spotting, smoke and team base capture. Join with `/play tanks`. |
+
+### World of Tanks
+
+Join with `/play tanks` or the lobby compass. Two balanced red/blue teams of up to
+six tanks battle in Iron Valley. One tank, one life: eliminate the enemy team or
+capture their base. Defenders contest capture; damage resets the damaged tank's
+contribution. The six-minute default limit ends in a draw. Tank state survives
+disconnects, and the abandoned hull remains vulnerable. Permanent leaving forfeits
+participation. Winners receive three points; `/tanks test` is solo practice without
+points. No client mod or resource pack is required.
+
+**Controls:** W/S drive and reverse, A/D turn the hull, mouse aims the independently
+traversing turret. Right-click slots 1/2 for AP/HE. Slot 3 uses the single repair kit
+(tracks and 15% HP); slot 4 deploys one six-second smoke screen. Left-click with
+AP/HE to toggle zoom, then right-click to fire while zoomed. Slot 5 also toggles
+zoom with right-click and fires with left-click. Zoom uses vanilla dynamic FOV
+(the client's FOV Effects setting controls its strength).
+F5 offers Minecraft's third-person camera. Before battle, right-click slots 7–9
+or use `/tanks light`, `/tanks medium`, `/tanks heavy` to choose a chassis.
+
+Light tanks trade armor for speed, view range and concealment; mediums balance
+mobility and firepower; heavies have stronger armor and guns with slower traverse.
+AP checks plate angle and may ricochet. HE trades penetration for reduced damage
+on armor impacts; it is a direct-hit shell in this compact adaptation. Low hits
+can break tracks, including a blocked hull hit. The private gun circle previews
+the actual ballistic trajectory; green indicates penetration, orange blocked armor
+and cyan an ally. Moving and turning widen dispersion. Muzzle walls, your own
+depressed barrel and allied tanks obstruct shells.
+
+The offhand tactical map displays allies and team-spotted enemies. Cover, light-tank
+concealment and smoke affect spotting; smoke does not stop shells. Destroyed team
+members retain team spotting rather than receiving omniscient enemy information.
+Three-dimensional tank models animate tracks, hull, turret and barrel separately;
+impacts, ricochets, reloads, damage and wrecks have distinct vanilla feedback.
+Settings are in `games/tanks.yml` and `/tanks config`.
+
+The adaptation intentionally has fewer vehicles, simpler armor/modules, one flat
+arena and vanilla art/audio.
+Run `checkTanks checkTanksBallistics checkTanksGeometry checkTankVisual
+checkTanksRadar checkTanksSession checkTanksScope checkTanksAudio checkI18n`; native instructions live in
+`native-checks/tanks/README.md`.
 
 ### The Finals
 
