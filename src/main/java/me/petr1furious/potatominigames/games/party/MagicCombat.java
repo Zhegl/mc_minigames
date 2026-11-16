@@ -56,7 +56,7 @@ final class MagicCombat {
             this.owner = owner;
             this.spell = spell;
             at = owner.getEyeLocation();
-            double speed = spell == MagicSpell.FIREBALL || spell == MagicSpell.FROZEN_ORB ? 1 : 1.6;
+            double speed = spell == MagicSpell.FIREBALL || spell == MagicSpell.FROZEN_ORB ? 2 : 3.2;
             velocity = at.getDirection().normalize().multiply(speed);
         }
     }

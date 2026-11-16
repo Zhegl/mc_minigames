@@ -24,6 +24,7 @@ public final class MagicBattleCheck {
         map();
         spells();
         mana();
+        wandsAndStarters();
         movement();
         integration();
         survival();
@@ -71,29 +72,8 @@ public final class MagicBattleCheck {
         for (var school : MagicSpell.School.values()) {
             check(
                     school.spells().size() == 7 && new HashSet<>(school.spells()).size() == 7,
-                    "Seven available choices per wand");
-            MagicMana state = new MagicMana();
-            var first = state.selected(school);
-            check(
-                    state.cycle(school, false, 0) && state.selected(school) != first,
-                    "Left-click changes the selected spell");
-            check(
-                    !state.cycle(school, false, 1),
-                    "Duplicate attack/interact events cannot skip a spell");
-            check(
-                    state.cycle(school, true, 6) && state.selected(school) == first,
-                    "Sneak selection cycles backward");
-            for (int i = 0; i < school.spells().size(); i++)
-                check(
-                        state.cycle(school, false, 12 + i * 6),
-                        "Every choice is reachable through left-click cycling");
-            check(state.selected(school) == first, "Cycling wraps across all seven choices");
-            for (MagicSpell choice : school.spells()) {
-                state.select(choice);
-                check(
-                        state.selected(school) == choice,
-                        "The spellbook can directly select every spell");
-            }
+                    "Seven spells per school remain available as loot");
+
         }
         for (var spell : MagicSpell.values()) {
             check(
@@ -115,6 +95,51 @@ public final class MagicBattleCheck {
         }
     }
 
+    private static void wandsAndStarters() {
+        check(MagicWand.STARTERS.size() == 6 && MagicWand.STARTERS.stream().map(s -> s.school).distinct().count() == 6,
+                "Starter pool has one basic spell from each school");
+        UUID a = new UUID(0, 1), b = new UUID(0, 2), c = new UUID(0, 3);
+        MagicStarterChoices choices = new MagicStarterChoices(List.of(a, b, c));
+        check(!choices.confirm(a), "An empty selection cannot be confirmed");
+        check(choices.toggle(a, MagicSpell.FIREBOLT) && choices.toggle(a, MagicSpell.MEND)
+                && !choices.toggle(a, MagicSpell.GALE), "No third starter wand can be selected");
+        check(!choices.toggle(b, MagicSpell.METEOR) && !choices.toggle(new UUID(0, 99), MagicSpell.GALE),
+                "Strong spells and unknown players cannot enter the starter selection");
+        check(choices.confirm(a) && !choices.ready(), "One confirmation does not start everyone");
+        check(choices.toggle(b, MagicSpell.RIFT) && choices.confirm(b), "A single wand is a valid starter set");
+        choices.withdraw(c);
+        check(choices.ready(), "A withdrawn player cannot stall the start");
+        var selected = choices.finish();
+        check(selected.get(a).equals(List.of(MagicSpell.FIREBOLT, MagicSpell.MEND))
+                && selected.get(b).equals(List.of(MagicSpell.RIFT)) && !selected.containsKey(c),
+                "Locking preserves choices and never grants extra wands");
+        check(!choices.toggle(a, MagicSpell.FIREBOLT), "Starter choices lock before combat");
+        MagicStarterChoices timeout = new MagicStarterChoices(List.of(a));
+        check(timeout.finish().get(a).size() == 2, "Timeout grants only two basic fallback wands");
+        var normal = java.util.EnumSet.noneOf(MagicSpell.class);
+        var dual = java.util.EnumSet.noneOf(MagicSpell.class);
+        java.util.Random random = new java.util.Random(1234);
+        for (int i = 0; i < 5000; i++) {
+            MagicWand wand = MagicWand.loot(random);
+            check(wand.cast(false) == wand.first(), "Right-click casts only the primary spell");
+            if (wand.enchanted()) {
+                check(wand.first() != wand.second() && wand.first().school == wand.second().school,
+                        "Enchanted loot pairs distinct spells from one school");
+                check(wand.cast(true) == wand.second(), "Left-click casts only the secondary spell");
+                dual.add(wand.first()); dual.add(wand.second());
+            } else {
+                check(wand.cast(true) == null, "Ordinary wands cannot access a second spell");
+                normal.add(wand.first());
+            }
+        }
+        check(normal.size() == 42 && dual.size() == 42, "All spells remain reachable in ordinary and enchanted loot");
+        MagicChestLoot chest = new MagicChestLoot(random, 900);
+        check(chest.wand(0) != null && chest.wand(1) != null && chest.wool(), "Chest starts with two wand offers and blocks");
+        chest.takeWand(0); chest.takeWool();
+        check(chest.wand(0) == null && chest.wand(1) != null && !chest.wool(),
+                "Taking shared loot removes only that offer for all viewers");
+    }
+
     private static void mana() {
         MagicMana a = new MagicMana(), b = new MagicMana();
         check(
@@ -129,8 +154,7 @@ public final class MagicBattleCheck {
         check(
                 a.spend(MagicSpell.FIREBALL, 4) && a.mana() == 18,
                 "Another wand can cast after the shared lock");
-        a.select(MagicSpell.METEOR);
-        check(!a.spend(MagicSpell.METEOR, 8), "Spellbook selection cannot reset a spell cooldown");
+        check(!a.spend(MagicSpell.METEOR, 8), "Changing physical wands cannot reset a spell cooldown");
         check(b.ready(MagicSpell.METEOR, 0) && b.mana() == 100, "Pools and cooldowns are personal");
         a.restore(-999);
         check(

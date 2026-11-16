@@ -63,6 +63,7 @@ import java.util.UUID;
 final class MagicBattleSession implements PartyRoundSession {
     private enum Phase {
         BUILDING,
+        SELECTING,
         COUNTDOWN,
         FIGHT,
         RESULT,
@@ -80,7 +81,10 @@ final class MagicBattleSession implements PartyRoundSession {
     private final Map<UUID, Hit> lastHit = new HashMap<>();
     private final Map<UUID, Long> recoveries = new HashMap<>();
     private final Map<UUID, String> languages = new HashMap<>();
-    private final Map<MagicBattleArena.Pos, Long> chests = new HashMap<>();
+    private final Map<MagicBattleArena.Pos, MagicChestLoot> chests = new HashMap<>();
+    private final MagicMenus menus = new MagicMenus();
+    private final java.util.Random random = new java.util.Random();
+    private MagicStarterChoices starters;
     private final CountdownFreeze freeze = new CountdownFreeze();
     private SurvivalStandings standings;
     private MagicBattleArena arena;
@@ -158,6 +162,7 @@ final class MagicBattleSession implements PartyRoundSession {
         if (names.isEmpty() || names.size() > 12)
             throw new CommandFailure(I18n.tr("party.magic.players"));
         standings = new SurvivalStandings(names.keySet());
+        starters = new MagicStarterChoices(names.keySet());
         duration =
                 (context.embedded()
                                 ? Math.min(120, config.magicSeconds.get())
@@ -250,7 +255,8 @@ final class MagicBattleSession implements PartyRoundSession {
         services.playerState().resetForRound(p, GameMode.SURVIVAL);
         p.setAbsorptionAmount(0);
         p.setHealth(20);
-        refreshItems(p);
+        p.getInventory().setItem(4, MagicItems.opener(p));
+        languages.put(p.getUniqueId(), I18n.language(p.locale()));
         p.getInventory().setItem(6, new ItemStack(Material.WHITE_WOOL, 64));
         p.getInventory().setHeldItemSlot(0);
         teleport(p, arena.spawn(spawn));
@@ -258,14 +264,36 @@ final class MagicBattleSession implements PartyRoundSession {
     }
 
     private void refreshItems(Player p) {
-        for (var school : MagicSpell.School.values()) refreshWand(p, school);
-        p.getInventory().setItem(7, MagicItems.guide(p));
+        var inventory = p.getInventory();
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            MagicWand wand = MagicItems.wand(inventory.getItem(slot));
+            if (wand != null) inventory.setItem(slot, MagicItems.wand(wand, p));
+            else if (MagicItems.opener(inventory.getItem(slot))) inventory.setItem(slot, MagicItems.opener(p));
+        }
         languages.put(p.getUniqueId(), I18n.language(p.locale()));
+        var top = p.getOpenInventory().getTopInventory();
+        if (menus.starter(top) && phase == Phase.SELECTING) menus.openStarter(p, starters.selected(p.getUniqueId()));
+        else if (menus.owns(top) && menus.chest(top) != null) {
+            var pos = menus.chest(top);
+            if (chests.containsKey(pos)) menus.openLoot(p, pos, chests.get(pos), tick);
+        }
     }
 
-    private void refreshWand(Player p, MagicSpell.School school) {
-        p.getInventory()
-                .setItem(school.ordinal(), MagicItems.wand(school, mana.get(p.getUniqueId()), p));
+    private void finishSelection() {
+        var choices = starters.finish();
+        phase = Phase.COUNTDOWN;
+        deadline = tick + countdown;
+        for (Player p : survivors()) {
+            menus.close(p);
+            p.setItemOnCursor(null);
+            p.getInventory().clear();
+            List<MagicSpell> spells = choices.getOrDefault(p.getUniqueId(), List.of());
+            for (int slot = 0; slot < spells.size(); slot++)
+                p.getInventory().setItem(slot, MagicItems.wand(MagicWand.single(spells.get(slot)), p));
+            p.getInventory().setItem(6, new ItemStack(Material.WHITE_WOOL, 64));
+            p.getInventory().setHeldItemSlot(0);
+        }
+        hud();
     }
 
     private void tickGame() {
@@ -286,9 +314,12 @@ final class MagicBattleSession implements PartyRoundSession {
                     Player p = player(order.get(i));
                     if (p != null && alive(p)) equip(p, spawns.get(i));
                 }
-                phase = Phase.COUNTDOWN;
-                deadline = tick + countdown;
+                phase = Phase.SELECTING;
+                deadline = tick + MagicStarterChoices.SECONDS * 20L;
+                for (Player p : survivors()) menus.openStarter(p, starters.selected(p.getUniqueId()));
             }
+        } else if (phase == Phase.SELECTING) {
+            if (starters.ready() || tick >= deadline) finishSelection();
         } else if (phase == Phase.COUNTDOWN && tick >= deadline) {
             freeze.releaseAll();
             phase = Phase.FIGHT;
@@ -324,7 +355,7 @@ final class MagicBattleSession implements PartyRoundSession {
             if (tick % 10 == 0) for (Player p : survivors()) preview(p);
             if (tick % 20 == 0)
                 for (var pos : arena.chests())
-                    if (chests.getOrDefault(pos, 0L) <= tick)
+                    if (!chests.containsKey(pos) || chests.get(pos).refillAt <= tick)
                         arena.world()
                                 .spawnParticle(
                                         Particle.ENCHANT,
@@ -361,17 +392,14 @@ final class MagicBattleSession implements PartyRoundSession {
     }
 
     private void preview(Player p) {
-        MagicSpell.School school = MagicItems.school(p.getInventory().getItemInMainHand());
-        if (school == null) return;
-        MagicSpell spell = mana.get(p.getUniqueId()).selected(school);
+        MagicWand wand = MagicItems.wand(p.getInventory().getItemInMainHand());
+        if (wand == null) return;
+        // Sneaking previews the left-click spell without changing the wand's contents.
+        MagicSpell spell = p.isSneaking() && wand.second() != null ? wand.second() : wand.first();
         if (!spell.aimed()) return;
         var aim = MagicCombat.aim(p, spell.range());
-        if (arena.inside(aim.point()))
-            MagicCombat.ring(
-                    aim.point(),
-                    spell.radius(),
-                    mana.get(p.getUniqueId()).ready(spell, tick) ? school.color : 0xEF4242,
-                    p);
+        if (arena.inside(aim.point())) MagicCombat.ring(aim.point(), spell.radius(),
+                mana.get(p.getUniqueId()).ready(spell, tick) ? spell.school.color : 0xEF4242, p);
     }
 
     private void actionBar(Player p) {
@@ -387,16 +415,18 @@ final class MagicBattleSession implements PartyRoundSession {
                     I18n.tr("party.magic.silenced", (magic.silenceRemaining(p, tick) + 19) / 20));
             return;
         }
-        MagicSpell.School school = MagicItems.school(p.getInventory().getItemInMainHand());
-        Component spell =
-                school == null
-                        ? I18n.tr("party.magic.select_wand")
-                        : state.selected(school).title();
-        long cooldown =
-                school == null ? 0 : (state.remaining(state.selected(school), tick) + 19) / 20;
-        p.sendActionBar(
-                I18n.tr("party.magic.action", (int) state.mana(), spell, cooldown)
-                        .color(NamedTextColor.AQUA));
+        MagicWand wand = MagicItems.wand(p.getInventory().getItemInMainHand());
+        if (wand != null && wand.enchanted()) {
+            p.sendActionBar(I18n.tr("party.magic.action_double", (int) state.mana(),
+                    wand.first().title(), (state.remaining(wand.first(), tick) + 19) / 20,
+                    wand.second().title(), (state.remaining(wand.second(), tick) + 19) / 20)
+                    .color(NamedTextColor.AQUA));
+        } else {
+            p.sendActionBar(I18n.tr("party.magic.action", (int) state.mana(),
+                    wand == null ? I18n.tr("party.magic.select_wand") : wand.first().title(),
+                    wand == null ? 0 : (state.remaining(wand.first(), tick) + 19) / 20)
+                    .color(NamedTextColor.AQUA));
+        }
     }
 
     private void hud() {
@@ -404,6 +434,8 @@ final class MagicBattleSession implements PartyRoundSession {
         Component status =
                 switch (phase) {
                     case BUILDING -> I18n.tr("party.magic.preparing");
+                    case SELECTING -> I18n.tr("party.magic.starter.waiting", starters.confirmed(),
+                            starters.size(), Math.max(0, (deadline - tick + 19) / 20));
                     case COUNTDOWN ->
                             I18n.tr(
                                     "party.magic.countdown",
@@ -441,90 +473,66 @@ final class MagicBattleSession implements PartyRoundSession {
         }
     }
 
-    private void cycle(Player p) {
-        MagicSpell.School school = MagicItems.school(p.getInventory().getItemInMainHand());
-        if (school != null
-                && mana.containsKey(p.getUniqueId())
-                && mana.get(p.getUniqueId()).cycle(school, p.isSneaking(), tick)) {
-            refreshWand(p, school);
+    private void cast(Player p, boolean leftClick) {
+        if (!fighting(p)) return;
+        MagicWand wand = MagicItems.wand(p.getInventory().getItemInMainHand());
+        MagicSpell spell = wand == null ? null : wand.cast(leftClick);
+        if (spell == null) return;
+        if (magic.silenceRemaining(p, tick) > 0 || magic.channelRemaining(p, tick) > 0) {
             actionBar(p);
-            p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, .4f, 1.4f);
+            return;
         }
+        MagicMana state = mana.get(p.getUniqueId());
+        if (!state.ready(spell, tick)) {
+            p.sendActionBar(I18n.tr("party.magic.not_ready", spell.mana,
+                    (state.remaining(spell, tick) + 19) / 20));
+            return;
+        }
+        if (magic.cast(p, spell, tick)) {
+            state.spend(spell, tick);
+            actionBar(p);
+        } else p.sendActionBar(I18n.tr("party.magic.invalid_target"));
+    }
+
+    private void openChest(Player p, MagicBattleArena.Pos pos) {
+        MagicChestLoot loot = chests.get(pos);
+        if (loot == null || tick >= loot.refillAt) {
+            loot = new MagicChestLoot(random, tick + chestRecharge);
+            chests.put(pos, loot);
+        }
+        menus.openLoot(p, pos, loot, tick);
+        p.playSound(p.getLocation(), Sound.BLOCK_CHEST_OPEN, .5f, 1);
     }
 
     @Override
     public void onPlayerInteract(PlayerInteractEvent event) {
         Player p = event.getPlayer();
-        if (fighting(p) && event.getClickedBlock() != null) {
-            boolean placing = event.getAction().isRightClick()
-                    && event.getItem() != null
-                    && event.getItem().getType() == Material.WHITE_WOOL
-                    && (event.getClickedBlock().getType() != Material.CHEST || p.isSneaking());
-            boolean mining = event.getAction().isLeftClick()
-                    && event.getHand() == EquipmentSlot.HAND
-                    && MagicItems.school(event.getItem()) == null
-                    && arena.breakable(event.getClickedBlock());
-            if (placing || mining) {
-                // DENY on the clicked block short-circuits Paper's native item placement,
-                // even when useItemInHand is ALLOW. Let block events enforce build limits.
-                event.setCancelled(false);
-                return;
-            }
-        }
-        event.setCancelled(true);
-        if (event.getHand() != EquipmentSlot.HAND || !alive(p)) return;
-        if (MagicItems.guide(event.getItem()) && event.getAction().isRightClick()) {
-            MagicItems.openBook(p, mana.get(p.getUniqueId()));
+        if (event.getHand() != EquipmentSlot.HAND) { event.setCancelled(true); return; }
+        if (phase == Phase.SELECTING && alive(p) && MagicItems.opener(event.getItem())
+                && event.getAction().isRightClick()) {
+            event.setCancelled(true);
+            menus.openStarter(p, starters.selected(p.getUniqueId()));
             return;
         }
-        MagicSpell.School school = MagicItems.school(event.getItem());
-        if (school != null) {
-            if (event.getAction().isLeftClick()) {
-                if (phase == Phase.FIGHT || phase == Phase.COUNTDOWN) cycle(p);
-                return;
-            }
-            if (!event.getAction().isRightClick() || !fighting(p)) return;
-            if (magic.silenceRemaining(p, tick) > 0 || magic.channelRemaining(p, tick) > 0) {
-                actionBar(p);
-                return;
-            }
-            MagicMana state = mana.get(p.getUniqueId());
-            MagicSpell spell = state.selected(school);
-            if (!state.ready(spell, tick)) {
-                p.sendActionBar(
-                        I18n.tr(
-                                "party.magic.not_ready",
-                                spell.mana,
-                                (state.remaining(spell, tick) + 19) / 20));
-                return;
-            }
-            if (magic.cast(p, spell, tick)) {
-                state.spend(spell, tick);
-                actionBar(p);
-            } else p.sendActionBar(I18n.tr("party.magic.invalid_target"));
-        } else if (fighting(p)
+        if (fighting(p) && event.getAction().isRightClick() && !p.isSneaking()
                 && event.getClickedBlock() != null
-                && event.getClickedBlock().getType() == Material.CHEST
-                && event.getAction().isRightClick()) {
-            var pos = MagicBattleArena.Pos.of(event.getClickedBlock());
-            if (!arena.chests().contains(pos)) return;
-            long wait = chests.getOrDefault(pos, 0L) - tick;
-            if (wait > 0) {
-                p.sendActionBar(I18n.tr("party.magic.chest_wait", (wait + 19) / 20));
-                return;
-            }
-            MagicMana state = mana.get(p.getUniqueId());
-            if (state.mana() >= MagicMana.MAX) {
-                p.sendActionBar(I18n.tr("party.magic.mana_full"));
-                return;
-            }
-            state.restore(35);
-            chests.put(pos, tick + chestRecharge);
-            ItemStack wool = p.getInventory().getItem(6);
-            int count = wool == null ? 0 : wool.getAmount();
-            p.getInventory()
-                    .setItem(6, new ItemStack(Material.WHITE_WOOL, Math.min(64, count + 16)));
-            p.sendActionBar(I18n.tr("party.magic.chest_used"));
+                && arena.chests().contains(MagicBattleArena.Pos.of(event.getClickedBlock()))
+                && event.getClickedBlock().getType() == Material.CHEST) {
+            event.setCancelled(true);
+            openChest(p, MagicBattleArena.Pos.of(event.getClickedBlock()));
+            return;
+        }
+        if (fighting(p) && event.getClickedBlock() != null) {
+            boolean placing = event.getAction().isRightClick() && event.getItem() != null
+                    && event.getItem().getType() == Material.WHITE_WOOL;
+            boolean mining = event.getAction().isLeftClick() && MagicItems.school(event.getItem()) == null
+                    && arena.breakable(event.getClickedBlock());
+            if (placing || mining) { event.setCancelled(false); return; }
+        }
+        event.setCancelled(true);
+        if (alive(p)) {
+            if (event.getAction().isRightClick()) cast(p, false);
+            else if (event.getAction().isLeftClick()) cast(p, true);
         }
     }
 
@@ -584,7 +592,7 @@ final class MagicBattleSession implements PartyRoundSession {
     @Override
     public void onPrePlayerAttackEntity(PrePlayerAttackEntityEvent event) {
         event.setCancelled(true);
-        if (alive(event.getPlayer())) cycle(event.getPlayer());
+        if (alive(event.getPlayer())) cast(event.getPlayer(), true);
     }
 
     @Override
@@ -613,6 +621,7 @@ final class MagicBattleSession implements PartyRoundSession {
     private void out(Player p) {
         if (!standings.eliminate(p.getUniqueId(), tick)) return;
         magic.remove(p.getUniqueId());
+        menus.close(p);
         freeze.release(p.getUniqueId());
         if (p.isDead()) recoveries.put(p.getUniqueId(), tick + DeathPause.TICKS);
         else spectate(p);
@@ -654,6 +663,7 @@ final class MagicBattleSession implements PartyRoundSession {
     private void leave(Player p) {
         context.withdraw(p.getUniqueId());
         connected.remove(p.getUniqueId());
+        if (starters != null) starters.withdraw(p.getUniqueId());
         if (standings != null) standings.eliminate(p.getUniqueId(), tick);
         if (magic != null) magic.remove(p.getUniqueId());
         freeze.release(p.getUniqueId());
@@ -766,12 +776,14 @@ final class MagicBattleSession implements PartyRoundSession {
 
     @Override
     public void onDropItem(PlayerDropItemEvent event) {
-        event.setCancelled(true);
+        event.setCancelled(!fighting(event.getPlayer()));
     }
 
     @Override
     public void onPickupItem(EntityPickupItemEvent event) {
-        event.setCancelled(true);
+        ItemStack item = event.getItem().getItemStack();
+        event.setCancelled(!(event.getEntity() instanceof Player p) || !fighting(p)
+                || (MagicItems.wand(item) == null && item.getType() != Material.WHITE_WOOL));
     }
 
     @Override
@@ -782,31 +794,60 @@ final class MagicBattleSession implements PartyRoundSession {
     @Override
     public void onInventoryClick(InventoryClickEvent event) {
         event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player p)
-                || !alive(p)
-                || (phase != Phase.FIGHT && phase != Phase.COUNTDOWN)) return;
-        MagicSpell spell =
-                MagicItems.bookChoice(event.getView().getTopInventory(), event.getRawSlot(), p);
-        if (spell == null) return;
-        var book = event.getView().getTopInventory();
-        Bukkit.getScheduler()
-                .runTask(
-                        services.plugin(),
-                        () -> {
-                            if (!alive(p)
-                                    || (phase != Phase.FIGHT && phase != Phase.COUNTDOWN)
-                                    || p.getOpenInventory().getTopInventory() != book) return;
-                            mana.get(p.getUniqueId()).select(spell);
-                            refreshWand(p, spell.school);
-                            p.getInventory().setHeldItemSlot(spell.school.ordinal());
-                            p.closeInventory();
-                            actionBar(p);
-                        });
+        if (!(event.getWhoClicked() instanceof Player p) || !alive(p)) return;
+        var top = event.getView().getTopInventory();
+        if (!menus.owns(top)) {
+            if (fighting(p) && top.getType() == org.bukkit.event.inventory.InventoryType.CRAFTING)
+                event.setCancelled(false);
+            return;
+        }
+        if (!menus.viewer(top, p) || event.getRawSlot() < 0 || event.getRawSlot() >= top.getSize()
+                || (!event.isLeftClick() && !event.isRightClick()) || event.isShiftClick()) return;
+        int slot = event.getRawSlot();
+        Bukkit.getScheduler().runTask(services.plugin(), () -> {
+            if (!alive(p) || p.getOpenInventory().getTopInventory() != top) return;
+            if (menus.starter(top) && phase == Phase.SELECTING) {
+                if (slot == 22) {
+                    if (starters.confirm(p.getUniqueId())) p.closeInventory();
+                    else p.sendActionBar(I18n.tr("party.magic.starter.need_one"));
+                } else {
+                    MagicSpell spell = menus.starterChoice(slot);
+                    if (spell == null) return;
+                    if (!starters.toggle(p.getUniqueId(), spell))
+                        p.sendActionBar(I18n.tr("party.magic.starter.limit"));
+                    menus.openStarter(p, starters.selected(p.getUniqueId()));
+                }
+            } else if (fighting(p) && menus.chest(top) != null) {
+                var pos = menus.chest(top);
+                var loot = chests.get(pos);
+                // Leaving the chest or losing access to its block invalidates an old view.
+                Location at = new Location(arena.world(), pos.x() + .5, pos.y() + .5, pos.z() + .5);
+                if (p.getEyeLocation().distanceSquared(at) > 64
+                        || at.getBlock().getType() != Material.CHEST) { p.closeInventory(); return; }
+                if (loot == null || loot != menus.loot(top)) { openChest(p, pos); return; }
+                ItemStack reward = null;
+                int index = slot == 11 ? 0 : slot == 15 ? 1 : -1;
+                if (index >= 0 && loot.wand(index) != null) reward = MagicItems.wand(loot.wand(index), p);
+                else if (slot == 13 && loot.wool()) reward = new ItemStack(Material.WHITE_WOOL, 16);
+                if (reward == null) return;
+                // Reserve an empty slot, so a full inventory never consumes any chest loot.
+                if (p.getInventory().firstEmpty() < 0) {
+                    p.sendActionBar(I18n.tr("party.magic.loot.full")); return;
+                }
+                p.getInventory().setItem(p.getInventory().firstEmpty(), reward);
+                if (index >= 0) loot.takeWand(index); else loot.takeWool();
+                for (Player viewer : survivors()) {
+                    var view = viewer.getOpenInventory().getTopInventory();
+                    if (menus.owns(view) && pos.equals(menus.chest(view))) menus.openLoot(viewer, pos, loot, tick);
+                }
+            }
+        });
     }
 
     @Override
     public void onInventoryDrag(InventoryDragEvent event) {
-        event.setCancelled(true);
+        event.setCancelled(!(event.getWhoClicked() instanceof Player p) || !fighting(p)
+                || event.getView().getTopInventory().getType() != org.bukkit.event.inventory.InventoryType.CRAFTING);
     }
 
     @Override
@@ -821,7 +862,7 @@ final class MagicBattleSession implements PartyRoundSession {
 
     @Override
     public boolean mayFollowPlayers(Player p) {
-        return phase != Phase.BUILDING && phase != Phase.COUNTDOWN && !alive(p);
+        return phase != Phase.BUILDING && phase != Phase.SELECTING && phase != Phase.COUNTDOWN && !alive(p);
     }
 
     @Override
@@ -835,6 +876,7 @@ final class MagicBattleSession implements PartyRoundSession {
             ticker = null;
         }
         if (magic != null) magic.clear();
+        for (Player p : services.session().audiencePlayers()) menus.close(p);
         freeze.releaseAll();
         recoveries.clear();
         chests.clear();

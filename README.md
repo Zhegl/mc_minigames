@@ -21,7 +21,7 @@ Install [Potato Launcher](https://github.com/Petr1Furious/potato-launcher) and f
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
-| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `pvp_ffa`, `pvp_select`, `sumo_ffa`, `arms_race`, `one_shot`, `tnt_run`, `mob_count`, `rhino`, `miners`, `magic_battle`, `parkour_race` | PvP and sumo have round-robin BO3 tournaments and simultaneous one-life FFA variants. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random equipment upgrades, consumable loot and underground PvP. Magic Battle puts six wands and forty-two spells on the imported Lighthouse sky-island map. |
+| **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `pvp_ffa`, `pvp_select`, `sumo_ffa`, `arms_race`, `one_shot`, `tnt_run`, `mob_count`, `rhino`, `miners`, `magic_battle`, `parkour_race` | PvP and sumo have round-robin BO3 tournaments and simultaneous one-life FFA variants. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random equipment upgrades, consumable loot and underground PvP. Magic Battle starts with up to two chosen basic wands and offers forty-two spells as chest loot on the imported Lighthouse sky-island map. |
 | **Counter-Strike** | `/cs` | `default`, `deathmatch`, `wingman` | Classic bomb defusal, A-side Wingman or a timed free-for-all with respawns and free weapon selection on Dust II. |
 | **The Finals** | `/finals` | — | Two teams open vaults, carry cash boxes and defend or steal cashouts in a disposable arena. The first team to $20,000 wins, or the richer team after ten minutes. |
 | **World of Tanks** | `/tanks` | — | Light, medium and heavy tanks with independent turrets, armor, AP/HE shells, spotting, smoke and team base capture. Join with `/play tanks`. |
@@ -1176,8 +1176,8 @@ and are intended for live playtesting.
 
 Join **Вечеринка → Магическая битва**, or use `/play party magic_battle`.
 This is a one-life, spell-first free-for-all for **2–12 players**, also included
-in the default mixed Party Games pool. Each mage starts with six reusable wands,
-64 wool and a spellbook; native melee and vanilla health regeneration are disabled.
+in the default mixed Party Games pool. Each mage starts with up to two chosen basic wands
+and 64 wool; native melee and vanilla health regeneration are disabled.
 The last survivor wins; standings award the usual 3/2/1 Party points.
 
 The arena is the ready-made **Lighthouse** map by **JangoMango / NetherGames**,
@@ -1189,20 +1189,39 @@ resource pack, runtime download or external map setup is required. Source world,
 license, pinned revision and conversion tool are in
 `assets/maps/nethergames-lighthouse/` and `tools/import_magic_lighthouse.py`.
 
-**Controls:** hotbar slots 1–6 select a school. **Right-click** casts the selected
-spell; **left-click** cycles that wand's seven spells. Sneak + left-click cycles
-backward. Slot 7 contains building wool; right-click the spellbook in slot 8 to
-open a six-row menu with all **42 spells**. Click a spell to select it and equip
-its wand; selection never spends mana or resets cooldowns.
-The action bar shows mana, selected spell and cooldown. Aimed area spells show
-private target rings; a cast locks the position and gives everyone a warning.
+**Starter selection:** after spawning on their island, players have up to 30 seconds
+in a private menu to select one or two basic wands: Firebolt, Ice Lance, Gale,
+Stone Shot, Mend or Rift. Click an icon to toggle it, then confirm. Everyone
+confirming ends selection early; timeout preserves a partial choice and gives
+Firebolt + Ice Lance only to players who selected nothing. A book in hotbar slot 5
+reopens selection until it locks. Players are frozen through selection and the
+normal countdown; the book is then removed and the chosen wands are issued together.
+
+Each ordinary wand has **one fixed spell** on right-click, with no enchantment
+glint. Enchanted wands have **two different spells from the same school**:
+right-click casts the first, left-click casts the second. Sneaking previews the
+second aimed spell; both names, costs and cooldowns are written on the item.
+There is no school cycling or spellbook granting access to unowned spells.
+Personal per-spell cooldowns survive changing, moving or dropping wands, and a
+shared four-tick cast interval prevents simultaneous-cast exploits.
+Projectiles travel at 3.2 blocks per tick (64 blocks/s); Fireball and Frozen Orb
+travel at 2 blocks per tick (40 blocks/s). Swept collision checks cover their full
+movement each tick; range remains 96 blocks. Area warnings and movement spells
+retain their existing timings.
+
+Source chests now open viewer-local loot menus backed by shared contents:
+two random wands and 16 wool. Every spell can appear on a single wand; each wand
+has a 25% chance to instead contain a second distinct spell of its school.
+Click to take an item; claiming removes that offer for all viewers, and a full
+inventory preserves it. Chests can refresh after **45 seconds** when reopened.
+Holding a wand can still open a chest; sneak-right-click bypasses opening.
+Players can rearrange, drop and pick up their wands during combat. Menu icons
+cannot be shifted, dragged or taken with hotbar shortcuts. Spectators cannot loot.
 
 Mana starts at **100**, regenerates **7/s**, and gains another **5/s** near the
-central lighthouse. Source chests are shared mana caches: right-click one while
-holding wool or with an empty hand for **35 mana** and up to **16 wool**; each cache
-recharges after **45 s**. Full mana does not waste the cache. Switching wands
-never resets cooldowns. A shared four-tick cast interval prevents same-tick burst
-exploits, and every successful spell has its own mana cost and cooldown.
+central lighthouse. Chests no longer restore mana. Successful spells retain
+their existing individual costs, cooldowns and effects. Aimed spells show private
+target rings; a cast fixes the position and gives everyone a warning.
 
 Damage values below are health points (two points equal one heart):
 
