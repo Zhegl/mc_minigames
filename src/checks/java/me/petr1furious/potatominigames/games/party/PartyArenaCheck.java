@@ -17,7 +17,11 @@ public final class PartyArenaCheck {
         for (int i = 0; i < 12; i++) ids.add(new UUID(0, i + 1));
         BuildMemoryArena memory = new BuildMemoryArena(w.world, ids);
         memory.build();
+        var originalCenters = new HashMap<UUID, Location>();
+        var originalSpawns = new HashMap<UUID, Location>();
         for (UUID id : ids) {
+            originalCenters.put(id, memory.reviewCenter(id));
+            originalSpawns.put(id, memory.spawn(id));
             var s = memory.spawn(id);
             int cx = s.getBlockX() - 2, cz = s.getBlockZ() + 3;
             for (int x = 0; x < 5; x++)
@@ -44,7 +48,23 @@ public final class PartyArenaCheck {
         memory.resize(7);
         for (UUID id : ids) {
             var center = memory.reviewCenter(id);
+            check(
+                    center.equals(originalCenters.get(id)),
+                    "Expanding the build plot preserves its center");
+            check(
+                    memory.spawn(id).equals(originalSpawns.get(id)),
+                    "Expanding the build plot preserves spawn");
             int cx = center.getBlockX() - 3, cz = center.getBlockZ() - 3;
+            for (int d = 1; d <= 3; d++) {
+                check(
+                        w.block(cx - d, 80, cz + 3).getType() == Material.SMOOTH_QUARTZ
+                                && w.block(cx + 6 + d, 80, cz + 3).getType()
+                                        == Material.SMOOTH_QUARTZ
+                                && w.block(cx + 3, 80, cz - d).getType() == Material.SMOOTH_QUARTZ
+                                && w.block(cx + 3, 80, cz + 6 + d).getType()
+                                        == Material.SMOOTH_QUARTZ,
+                        "Expanded workspace has equal three-block outer margins");
+            }
             for (int x = 0; x < 7; x++)
                 for (int z = 0; z < 7; z++)
                     check(
@@ -57,6 +77,17 @@ public final class PartyArenaCheck {
             check(
                     memory.localCell(id, w.block(cx + 7, 84, cz + 6)) == null,
                     "Expanded plot still rejects outside edits");
+            var corner = new BuildMemoryPattern.Cell(6, 3, 6);
+            var location = memory.cellLocation(id, corner);
+            check(
+                    corner.equals(
+                            memory.localCell(
+                                    id,
+                                    w.block(
+                                            location.getBlockX(),
+                                            location.getBlockY(),
+                                            location.getBlockZ()))),
+                    "Error highlights and editing use the same expanded origin");
         }
         for (UUID id : ids) memory.show(id, pattern);
         memory.clear(ids.getFirst());
@@ -99,6 +130,34 @@ public final class PartyArenaCheck {
                 refund.size() == 2 && refund.stream().anyMatch(b -> b.item() == Material.OAK_SIGN),
                 "Removing support refunds sign as well");
         check(memory.capture(owner).isEmpty(), "No floating attachment or dropped item remains");
+        memory.resize(7);
+        var supportCell = new BuildMemoryPattern.Cell(0, 0, 0);
+        var signCell = new BuildMemoryPattern.Cell(0, 1, 0);
+        memory.show(
+                owner,
+                new BuildMemoryPattern(
+                        net.kyori.adventure.text.Component.text("Expanded support"),
+                        Map.of(
+                                supportCell,
+                                MemoryBlock.of(Material.OAK_PLANKS),
+                                signCell,
+                                MemoryBlock.of(Material.OAK_SIGN)),
+                        7));
+        var supportLocation = memory.cellLocation(owner, supportCell);
+        check(
+                memory.remove(
+                                        owner,
+                                        w.block(
+                                                supportLocation.getBlockX(),
+                                                supportLocation.getBlockY(),
+                                                supportLocation.getBlockZ()),
+                                        blocks -> true)
+                                .size()
+                        == 2,
+                "Expanded-origin corrections refund support and attachment together");
+        check(
+                memory.capture(owner).isEmpty(),
+                "Expanded-origin corrections remove the actual blocks");
         for (int model = 0; model < BuildMemoryPattern.MODEL_COUNT; model++) {
             var small = BuildMemoryPattern.generate(4, model, new Random(model));
             memory.resize(small.size());
