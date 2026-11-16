@@ -107,9 +107,14 @@ final class FinalsLoadouts implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
+    private final Map<UUID, Choice> practiceChoices = new HashMap<>();
+
     Choice choice(UUID id) {
-        return choices.getOrDefault(id, Choice.defaults());
+        return practiceChoices.getOrDefault(id, choices.getOrDefault(id, Choice.defaults()));
     }
+
+    void beginPractice(UUID id) { practiceChoices.put(id, Choice.defaults()); }
+    void endPractice(UUID id) { practiceChoices.remove(id); }
 
     static Choice readChoice(YamlConfiguration yaml, String key) {
         FinalsClass type = FinalsClass.parse(yaml.getString(key + ".class"));
@@ -150,6 +155,12 @@ final class FinalsLoadouts implements Listener {
 
     private void choose(Player player, Choice choice) throws CommandFailure {
         UUID id = player.getUniqueId();
+        if (practiceChoices.containsKey(id)) {
+            practiceChoices.put(id, choice);
+            changed.accept(player);
+            if (viewing(player)) paint(player, player.getOpenInventory().getTopInventory());
+            return;
+        }
         Choice previous = choices.put(id, choice);
         try {
             Files.createDirectories(file.getParent());
@@ -382,7 +393,8 @@ final class FinalsLoadouts implements Listener {
                         I18n.tr("finals.loadout.controls"),
                         List.of(
                                 I18n.tr("finals.loadout.help"),
-                                I18n.tr("finals.loadout.next_spawn")),
+                                I18n.tr(practiceChoices.containsKey(player.getUniqueId())
+                                        ? "finals.tutorial.practice_loadout" : "finals.loadout.next_spawn")),
                         false));
         inventory.setItem(
                 49,

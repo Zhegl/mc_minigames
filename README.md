@@ -23,6 +23,16 @@ Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Jav
 
 ### The Finals
 
+**Tutorial:** `/finals tutorial` starts a private solo practice arena, even while a
+normal Finals match is running. Players open a vault, pick up and deposit a cashbox,
+watch a short practice payout, steal an enemy cashout, try all three classes, and
+change their weapon, gadget and specialization using the real loadout menu.
+Practice choices apply immediately and leave saved loadouts untouched. Use
+`/finals tutorial help` to repeat instructions or `/play leave` to exit.
+The first Finals queue attempt offers **Play tutorial** or **Continue queueing**;
+the suggestion is remembered in the player's persistent data. Closing the popup
+cancels that queue attempt. The tutorial remains replayable through its command.
+
 Join with `/play finals` or use the lobby compass. Two players can play against
 each other; the queue supports 2–12 players split between red and blue teams.
 This is a Minecraft adaptation using vanilla items, sounds and particles; no
@@ -46,8 +56,8 @@ destroying their support makes them fall and settle on terrain. Their labels,
 deposit/steal interactions and ongoing payout timers follow their current positions.
 Active cashouts alternate between vanilla **Pigstep** and **Lava Chicken** at 30%
 volume in the Jukebox/Note Blocks sound category. Nearby players hear the music
-within 32 blocks of the station. The background track follows each listener while
-they remain in range, with a smoothed overhead sound source to reduce movement jitter.
+within 32 blocks of the station. Music comes from the cashout's direction and fades with distance. A smoothed private
+sound source preserves that direction while extending vanilla attenuation to 32 blocks.
 Leaving the radius makes the same track inaudible; returning continues its current
 playback position, with a brief two-tick fade at the boundary. Payout, disconnect, world changes, and
 match end stop it. Respawning/reconnecting starts a fresh stream because vanilla
@@ -154,8 +164,10 @@ shorter time to kill, with the same firing cadence. Gunshots, including reflecte
 bullets, do not knock players back. The dagger rewards backstabs, the spear has longer
 reach, and the hammer's right-click destroys nearby cover. Hold right-click with
 the Riot Shield to reduce frontal damage. Hold right-click with Dual Blades to guard:
-frontal bullets are reflected back at the shooter, with damage credited to the
-defender. Melee attacks and explosions are not reflected.
+bullets within a 14-degree cone around the crosshair (including vertical aim) are
+reflected back at the shooter, with damage credited to the defender. Guarded ranged
+hits still deal 70% damage. Frontal melee hits deal 75% damage while guarding and
+are never reflected. Explosions are not reflected.
 
 Passive health regeneration replaces Minecraft's food healing. After the last
 damage taken, Light waits 8 seconds, Medium 9, and Heavy 10, then heals 4 Minecraft
@@ -309,7 +321,9 @@ headroom and objective spacing. Map jump pads can connect rooftops:
 - Save with `/finals map save NAME`. Both endpoints must be safe standing locations
   inside the selected map. A targeted pad without a destination cannot be saved.
 
-Pads appear as protected slime blocks with glowing outlines in matches; setup previews identify launch
+Pads appear as protected slime blocks in matches. Only targeted pads glow, and only
+for viewers within 16 blocks (including vertical distance); vertical pads never glow.
+The setup previews identify launch
 points and destinations. Targeted launches guide players along a smooth timed arc using velocity,
 at 1.5 times their original flight speed, and stop when blocked by terrain. They do
 not teleport through buildings. Upward pads preserve horizontal momentum. Old maps
