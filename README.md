@@ -9,6 +9,10 @@ anybody can join and play at any time: players queue for a game, wait in a lobby
 and the game starts by itself. Different games run side by side.
 Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Java 25.
 
+## Want to play?
+
+Install [Potato Launcher](https://github.com/Petr1Furious/potato-minigames) and follow instructions in launcher's repo to connect with minigames' server instance via [instance manifest](https://mc.emptiness.observer:14885/data/instance_manifest.json) (requires Telegram account).
+
 ## Games
 
 | Game | Command | Modes | What it is |
