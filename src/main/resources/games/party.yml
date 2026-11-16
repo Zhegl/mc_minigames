@@ -30,7 +30,7 @@ anvils:
   waveSeconds: 6
   moveSeconds: 10
   waves: 10
-  pvpWave: 3
+  pvpWave: 1
 buildMemory:
   stages: 8
 toolRace:

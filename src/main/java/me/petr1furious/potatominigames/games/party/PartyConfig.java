@@ -95,7 +95,7 @@ public final class PartyConfig {
     public final Property<Integer> anvilWaves =
             bag.define("anvils.waves", PropertyCodec.INT, 10).validate(n -> n >= 2 && n <= 20);
     public final Property<Integer> anvilPvpWave =
-            bag.define("anvils.pvpWave", PropertyCodec.INT, 3).validate(n -> n >= 1 && n <= 20);
+            bag.define("anvils.pvpWave", PropertyCodec.INT, 1).validate(n -> n >= 1 && n <= 20);
     public final Property<Integer> buildMemoryStages =
             bag.define("buildMemory.stages", PropertyCodec.INT, 8).validate(n -> n >= 1 && n <= 8);
     public final Property<Integer> toolRaceSeconds =
