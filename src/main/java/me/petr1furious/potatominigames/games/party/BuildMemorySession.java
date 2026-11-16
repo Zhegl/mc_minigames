@@ -113,7 +113,8 @@ final class BuildMemorySession extends PartySurvivalSession {
                 BuildMemoryPattern.generate(stage, models.get(stage - 1), random);
         modelTitle = shared.title();
         for (Player p : alivePlayers()) {
-            var pattern = shared.rotate(random.nextInt(4));
+            var pattern =
+                    shared.rotate(random.nextInt(4)).centered(BuildMemoryPattern.buildSize(stage));
             patterns.put(p.getUniqueId(), pattern);
             progress.put(p.getUniqueId(), new BuildMemoryJudging.Progress());
             teleport(p, arena.spawn(p.getUniqueId()));
@@ -338,6 +339,10 @@ final class BuildMemorySession extends PartySurvivalSession {
                     || arena.localCell(e.getPlayer().getUniqueId(), e.getClickedBlock()) == null)
                 e.setCancelled(true);
         } else if (!e.getAction().isRightClick()) e.setCancelled(true);
+        else if (e.getClickedBlock() != null
+                && arena.localCell(player.getUniqueId(), e.getClickedBlock()) != null)
+            // Native gate toggles happen after this event; observe the resulting state next tick.
+            dirty.add(player.getUniqueId());
     }
 
     @org.bukkit.event.EventHandler

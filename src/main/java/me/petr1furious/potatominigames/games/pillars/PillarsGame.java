@@ -424,9 +424,6 @@ public final class PillarsGame implements Minigame, Listener {
             Component details = I18n.tr("pillars.play.arena.entry",
                     Component.text(arena.name(), ready ? NamedTextColor.GREEN : NamedTextColor.RED),
                     arena.template(), arena.x(), arena.z()).color(NamedTextColor.GRAY);
-            if (arena.time() != null) {
-                details = details.append(I18n.tr("pillars.play.arena.time", arena.time()));
-            }
             if (!arena.gameRules().isEmpty()) {
                 details = details.append(I18n.tr("pillars.play.arena.rules", arena.gameRules().toString()));
             }

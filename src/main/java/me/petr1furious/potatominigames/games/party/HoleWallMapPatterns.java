@@ -92,8 +92,8 @@ final class HoleWallMapPatterns {
                 case 32, 35 -> gates.add(gate(0, 1, 1, 1.5));
                 default -> {}
             }
-        boolean movementRequired = HoleWallChallenge.required(difficulty(stage), kind, false);
-        gates = HoleWallChallenge.gates(gates, kind, movementRequired);
+        boolean jumpRequired = HoleWallChallenge.requiresJump(difficulty(stage), kind, false);
+        gates = HoleWallChallenge.gates(gates, kind, difficulty(stage), jumpRequired);
         var full =
                 new HoleWallBlock(
                         layout == HoleWallLayout.SNAKE
@@ -116,17 +116,21 @@ final class HoleWallMapPatterns {
                     if (gate.width() == .75
                             && (u == (int) Math.floor(gate.start())
                                     || u == (int) Math.floor(gate.start()) + 1)) {
-                        if (y + 1 <= gate.height())
+                        if (y < gate.bottom()) block = full;
+                        else if (y + 1 <= gate.bottom() + gate.height())
                             block =
                                     new HoleWallBlock(
                                             Material.OAK_FENCE, HoleWallBlock.Shape.FENCE_POST);
-                        else if (y < gate.height()) block = full.upperSlab();
+                        else if (y < gate.bottom() + gate.height()) block = full.upperSlab();
                         else block = full;
                     }
                 if (block != null) cells.add(new HoleWallPattern.Cell(u, y, block));
             }
         cells = new ArrayList<>(HoleWallPattern.frameLowPassages(cells, gates, full));
-        cells = new ArrayList<>(HoleWallChallenge.frame(cells, gates, full, movementRequired));
+        cells =
+                new ArrayList<>(
+                        HoleWallChallenge.frame(
+                                cells, gates, full, difficulty(stage) != HoleWallDifficulty.EASY));
         return new HoleWallPattern(
                 cells,
                 gates,

@@ -294,6 +294,47 @@ public final class FinalsHighlightsSmoke {
                     "Explicit cleanup removes every real native marker");
             require(observer.spawned.values().stream().noneMatch(initial -> initial.entity.isValid()),
                     "Native lifecycle leaves no orphan marker entities");
+            Method cashboxUpdate = method(type, "update", FinalsMapArena.class, FinalsState.Phase.class,
+                    int.class, long.class, long.class, Collection.class, Map.class, Function.class,
+                    Predicate.class, Location.class, UUID.class);
+            Location box = new Location(world, 1500.5, 100, 1500.5);
+            bob.locale = Locale.forLanguageTag("ru");
+            invoke(cashboxUpdate, highlights, arena, FinalsState.Phase.CASHBOX_AVAILABLE, -1, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, box, null);
+            require(hasLabel(alice, "Cashbox") && hasLabel(eve, "Cashbox"),
+                    "Both teams get a far cashbox label through the full update path");
+            require(hasLabel(bob, "Кэшбокс"), "Cashbox labels use the viewer's locale");
+            require(alice.blocks().size() == 3, "A distant cashbox adds a native glowing block proxy");
+            invoke(cashboxUpdate, highlights, arena, FinalsState.Phase.CARRIED, -1, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, box, alice.id);
+            require(!hasLabel(alice, "Cashbox") && hasLabel(eve, "Cashbox"),
+                    "The carrier avoids an own-body marker while other players can track the cashbox");
+            invoke(cashboxUpdate, highlights, arena, FinalsState.Phase.CASHOUT, 0, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, box, null);
+            require(!hasLabel(eve, "Cashbox"), "Depositing cleans up native cashbox markers");
+            Method hitUpdate = method(type, "update", FinalsMapArena.class, FinalsState.Phase.class,
+                    int.class, long.class, long.class, Collection.class, Map.class, Function.class,
+                    Predicate.class, Location.class, UUID.class, Predicate.class);
+            Predicate<Player> hit = p -> p.getUniqueId().equals(eve.id);
+            invoke(hitUpdate, highlights, arena, FinalsState.Phase.CASHOUT, 0, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, null, null, hit);
+            require(hasLabel(alice, "17/25 HP") && hasLabel(bob, "17/25 ОЗ"),
+                    "A hit exposes the victim's HP to every opposing teammate");
+            require(!hasLabel(eve, "17/25 HP") && !hasLabel(frank, "17/25 HP") && outsider.active().isEmpty(),
+                    "Victim, allies and game master do not get an enemy HP display");
+            TextDisplay hp = alice.texts().stream().filter(t -> PlainTextComponentSerializer.plainText()
+                    .serialize(t.text()).contains("17/25 HP")).findFirst().orElseThrow();
+            require(!hp.isSeeThrough() && !hp.isVisibleByDefault(),
+                    "Enemy HP is private and cannot be read through walls");
+            close(hp.getLocation().distance(eve.location.clone().add(0, 2.1, 0)), 0,
+                    "Native HP display is above the player's scaled head");
+            eve.health = 7.1;
+            invoke(hitUpdate, highlights, arena, FinalsState.Phase.CASHOUT, 0, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, null, null, hit);
+            require(hasLabel(alice, "8/25 HP") && hp.isValid(), "HP updates live in the existing display");
+            invoke(hitUpdate, highlights, arena, FinalsState.Phase.CASHOUT, 0, 0L, 90L,
+                    players, teams, positions, (Predicate<Player>) p -> false, null, null, (Predicate<Player>) p -> false);
+            require(!hp.isValid() && !hasLabel(alice, "8/25 HP"), "Expiry removes the native enemy HP display");
             invoke(clear, highlights);
             smoke.getLogger().info("FINALS_HIGHLIGHTS_SMOKE_PASS: " + assertions + " native assertions");
             return assertions;
@@ -384,6 +425,7 @@ public final class FinalsHighlightsSmoke {
         Location location;
         Locale locale = Locale.ENGLISH;
         boolean dead;
+        double health = 16.2;
         int sendDistance = 10;
         Long sentChunk;
         GameMode mode = GameMode.SURVIVAL;
@@ -395,6 +437,9 @@ public final class FinalsHighlightsSmoke {
                     (proxy, method, args) -> switch (method.getName()) {
                         case "getUniqueId" -> id;
                         case "getName" -> name;
+                        case "getHealth" -> health;
+                        case "getMaxHealth" -> 25d;
+                        case "getHeight" -> 1.8;
                         case "displayName" -> Component.text(name);
                         case "getWorld" -> location.getWorld();
                         case "getLocation" -> location.clone();
@@ -406,7 +451,7 @@ public final class FinalsHighlightsSmoke {
                         case "isOnline", "isValid" -> true;
                         case "isDead" -> dead;
                         case "getGameMode" -> mode;
-                        case "canSee" -> shown.contains(args[0]);
+                        case "canSee" -> args[0] instanceof Player || shown.contains(args[0]);
                         case "showEntity" -> {
                             if (!(args[1] instanceof Display display))
                                 throw new AssertionError("Only private display entities may be shown to a viewer");

@@ -1,0 +1,4 @@
+# Vanilla-client World of Tanks adaptation. Durations are in seconds.
+preparationSeconds: 20
+battleSeconds: 360
+captureSeconds: 35

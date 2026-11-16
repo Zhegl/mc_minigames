@@ -1,0 +1,5 @@
+name: PillarsReplaySmoke
+version: '1.0'
+main: PillarsReplaySmoke
+api-version: '26.3'
+depend: [PotatoMinigames, FlashbackServer]

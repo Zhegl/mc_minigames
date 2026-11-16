@@ -219,7 +219,14 @@ public final class HoleWallCheck {
                             check(
                                     !HoleWallPhysics.collides(
                                             pattern.cells(), dir, -1, 1, body, body),
-                                    "Actual player fits while wall passes in every direction");
+                                    "Actual player fits: stage="
+                                            + stage
+                                            + " radius="
+                                            + radius
+                                            + " gate="
+                                            + gate
+                                            + " direction="
+                                            + dir);
                         }
                     }
                 }

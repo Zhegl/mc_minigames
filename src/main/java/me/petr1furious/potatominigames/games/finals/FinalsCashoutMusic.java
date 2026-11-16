@@ -22,9 +22,9 @@ final class FinalsCashoutMusic {
     };
     private static final float VOLUME = .30f;
     private static final double RANGE_SQUARED = 32 * 32;
-    // Keep the source overhead so delayed server positions do not repeatedly cross the
-    // listener's camera and reverse the direction of this positional background sound.
-    private static final double AUDIBLE_HEIGHT = 2;
+    // Vanilla sound attenuation is 16 blocks. A private source on the cashout bearing
+    // preserves its direction while extending quiet playback to the configured 32 blocks.
+    private static final double DISTANCE_SCALE = .45;
     // Vanilla discs attenuate to silence at 16 blocks. Keep the entity nearby and tracked,
     // but move its sound outside that distance so the client continues the same audio stream.
     private static final double MUTED_HEIGHT = 24;
@@ -101,7 +101,11 @@ final class FinalsCashoutMusic {
             Location point = player.getEyeLocation();
             point.setYaw(0);
             point.setPitch(0);
-            point.add(0, nearby ? AUDIBLE_HEIGHT : MUTED_HEIGHT, 0);
+            if (nearby) {
+                var direction = origin.clone().add(0, .5, 0).toVector().subtract(point.toVector());
+                if (direction.lengthSquared() > 1e-8)
+                    point.add(direction.normalize().multiply(player.getLocation().distance(origin) * DISTANCE_SCALE));
+            } else point.add(0, MUTED_HEIGHT, 0);
             if (playback == null) {
                 if (!nearby) continue;
                 playback = new Playback(player, createEmitter.apply(player, point));

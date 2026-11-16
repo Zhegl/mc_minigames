@@ -16,6 +16,13 @@ java -Xms256M -Xmx1536M -Dfinals.smoke.includePreviews=true -jar asp-server.jar 
 
 The default run checks maps only. Add `-Dfinals.smoke.includePreviews=true` for editor previews and/or `-Dfinals.smoke.includeLoadouts=true` for loadouts. Use `-Dfinals.smoke.previewOnly=true` or `-Dfinals.smoke.loadoutOnly=true` for a targeted rerun. Start a fresh map fixture for another map run: its setup names are intentionally fixed.
 
+For the solo tutorial, run the loadout fixture with both
+`-Dfinals.smoke.loadoutOnly=true` and `-Dfinals.smoke.tutorialOnly=true`.
+It exercises real vault interaction, cashbox pickup, station deposit, payout,
+steal channels, class/equipment menus, temporary loadout restoration and the
+first-queue prompt's persistence and inventory protection. Player transport is
+simulated; worlds, items, inventories and attributes use the native server.
+
 `FinalsMarkerDeliverySmoke.run(smokePlugin, mainPlugin)` tests real CraftPlayer
 visibility and native entity-tracker packets for contestants on both teams. Compile
 it with the cached native server JAR under `versions` in addition to the dependencies

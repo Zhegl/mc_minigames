@@ -1,0 +1,24 @@
+name: PotatoMinigames
+version: '${version}'
+author: _FuriousPotato_
+main: me.petr1furious.potatominigames.PotatoMinigamesPlugin
+api-version: '${apiVersion}'
+bootstrapper: me.petr1furious.potatominigames.games.pillars.PillarsSkyBootstrap
+dependencies:
+  server:
+    ASPaperPlugin:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    NewAmazingLuckyBlocks:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    FlashbackServer:
+      load: BEFORE
+      required: false
+      join-classpath: true
+permissions:
+  potatominigames.admin:
+    description: Manage minigames (start/stop games, change configs, admin helpers).
+    default: op

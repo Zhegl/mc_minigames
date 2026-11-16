@@ -90,13 +90,33 @@ final class FinalsHighlights {
             long vaultSeconds, long cashoutSeconds, Collection<Player> players,
             Map<UUID, Integer> teams, Function<Player, Location> teammateLocation,
             Predicate<Player> downed) {
+        update(arena, phase, activeStation, vaultSeconds, cashoutSeconds, players, teams,
+                teammateLocation, downed, null, null);
+    }
+
+    void update(FinalsMapArena arena, FinalsState.Phase phase, int activeStation,
+            long vaultSeconds, long cashoutSeconds, Collection<Player> players,
+            Map<UUID, Integer> teams, Function<Player, Location> teammateLocation,
+            Predicate<Player> downed, Location cashbox, UUID carrier) {
+        update(arena, phase, activeStation, vaultSeconds, cashoutSeconds, players, teams,
+                teammateLocation, downed, cashbox, carrier, ignored -> false);
+    }
+
+    void update(FinalsMapArena arena, FinalsState.Phase phase, int activeStation,
+            long vaultSeconds, long cashoutSeconds, Collection<Player> players,
+            Map<UUID, Integer> teams, Function<Player, Location> teammateLocation,
+            Predicate<Player> downed, Location cashbox, UUID carrier, Predicate<Player> hitHealth) {
         teammateGlow.update(arena.world(),
                 phase == FinalsState.Phase.FINISHED ? List.of() : players, teams);
         Set<UUID> present = new HashSet<>();
         for (Player player : players) {
-            List<Marker> markers = markers(arena, phase, activeStation, vaultSeconds, cashoutSeconds,
-                    player, players, teams, teammateLocation, downed);
+            List<Marker> markers = new ArrayList<>(markers(arena, phase, activeStation, vaultSeconds, cashoutSeconds,
+                    player, players, teams, teammateLocation, downed));
             if (markers.isEmpty()) continue;
+            markers.addAll(enemyHealthMarkers(player, players, teams, hitHealth));
+            Marker box = cashboxMarker(phase, cashbox);
+            if (box != null && arena.world().equals(cashbox.getWorld())
+                    && !player.getUniqueId().equals(carrier)) markers.add(box);
             UUID id = player.getUniqueId();
             present.add(id);
             View view = views.get(id);
@@ -113,6 +133,34 @@ final class FinalsHighlights {
                     entry.getValue().clear();
                     return true;
                 });
+    }
+
+    static Marker cashboxMarker(FinalsState.Phase phase, Location point) {
+        if (point == null || phase != FinalsState.Phase.CASHBOX_AVAILABLE
+                && phase != FinalsState.Phase.CARRIED) return null;
+        return new Marker("cashbox", point.clone(), I18n.tr("finals.highlight.cashbox"),
+                NamedTextColor.GOLD, Material.GOLD_BLOCK);
+    }
+
+    @SuppressWarnings("deprecation") // Effective maximum, matching the teammate HP display.
+    static List<Marker> enemyHealthMarkers(Player viewer, Collection<Player> players,
+            Map<UUID, Integer> teams, Predicate<Player> revealed) {
+        Integer team = teams.get(viewer.getUniqueId());
+        if (team == null || !viewer.isOnline()) return List.of();
+        List<Marker> markers = new ArrayList<>();
+        for (Player target : players) {
+            Integer opposing = teams.get(target.getUniqueId());
+            if (opposing == null || team.equals(opposing) || !target.isOnline() || target.isDead()
+                    || !viewer.getWorld().equals(target.getWorld()) || !revealed.test(target)
+                    || !viewer.canSee(target)) continue;
+            int maximum = Math.max(1, (int) Math.ceil(target.getMaxHealth()));
+            int health = Math.clamp((int) Math.ceil(target.getHealth()), 0, maximum);
+            if (health == 0) continue;
+            markers.add(new Marker("enemy-health-" + target.getUniqueId(),
+                    target.getLocation().clone().add(0, target.getHeight() + .3, 0),
+                    I18n.tr("finals.highlight.enemy_health", health, maximum), NamedTextColor.RED, null));
+        }
+        return markers;
     }
 
     static List<Marker> markers(
@@ -215,7 +263,7 @@ final class FinalsHighlights {
                     if (!overlay.outline().getLocation().equals(block))
                         overlay.outline().teleport(block);
                     if (overlay.projected() != placement.projected()) {
-                        overlay.outline().setTransformationMatrix(outlineTransform(placement.projected()));
+                        overlay.outline().setTransformationMatrix(outlineTransform(marker, placement.projected()));
                         overlay = new Overlay(overlay.label(), overlay.outline(), placement.projected());
                         view.overlays.put(marker.key(), overlay);
                     }
@@ -246,7 +294,7 @@ final class FinalsHighlights {
                                 entity -> {
                                     configure(entity);
                                     entity.setBillboard(Display.Billboard.CENTER);
-                                    entity.setSeeThrough(true);
+                                    entity.setSeeThrough(!marker.key().startsWith("enemy-health-"));
                                     entity.setShadowed(true);
                                     entity.text(text);
                                 });
@@ -265,7 +313,7 @@ final class FinalsHighlights {
                                             entity.setGlowing(true);
                                             entity.setGlowColorOverride(
                                                     Color.fromRGB(marker.color().value()));
-                                            entity.setTransformationMatrix(outlineTransform(placement.projected()));
+                                            entity.setTransformationMatrix(outlineTransform(marker, placement.projected()));
                                         });
             }
             viewer.showEntity(plugin, label);
@@ -290,6 +338,7 @@ final class FinalsHighlights {
     }
 
     private static Location labelPosition(Marker marker) {
+        if (marker.key().startsWith("enemy-health-")) return marker.location().clone();
         return marker.location().clone().add(0, marker.block() == null ? 2.4 : 2, 0);
     }
 
@@ -297,6 +346,8 @@ final class FinalsHighlights {
         Location eye = viewer.getEyeLocation();
         Location label = labelPosition(marker);
         Location block = marker.block() == null ? null : blockPosition(marker);
+        if (marker.key().startsWith("enemy-health-"))
+            return new Placement(label, null, marker.label(), false);
         int clientDistance = viewer.getClientViewDistance();
         int sendDistance = viewer.getSendViewDistance();
         int chunks = Math.min(clientDistance > 0 ? clientDistance : 2, sendDistance > 0 ? sendDistance : 2);
@@ -311,7 +362,7 @@ final class FinalsHighlights {
         // Never load distant chunks just to display a direction marker.
         boolean cashout = marker.key().startsWith("cashout-");
         // Keep station letters readable instead of shrinking with the real objective distance.
-        if (cashout) radius = Math.min(radius, 8);
+        if (cashout || marker.key().equals("cashbox")) radius = Math.min(radius, 8);
         radius = Math.min(radius, distance);
         if (distance > 0) direction.multiply(1 / distance);
         Location projected = eye.clone().add(direction.clone().multiply(radius));
@@ -359,8 +410,15 @@ final class FinalsHighlights {
                 : new Matrix4f().translation(-.01f, -.01f, -.01f).scale(1.02f);
     }
 
+    private static Matrix4f outlineTransform(Marker marker, boolean projected) {
+        if (!projected && marker.key().equals("cashbox"))
+            return new Matrix4f().translation(-.15f, 0, -.15f).scale(.3f);
+        return outlineTransform(projected);
+    }
+
     private static Location blockPosition(Marker marker) {
         Location point = marker.location();
+        if (marker.key().equals("cashbox")) return point.clone();
         if (marker.key().startsWith("cashout-"))
             return new Location(point.getWorld(), point.getX() - .5, point.getY(), point.getZ() - .5);
         return new Location(point.getWorld(), point.getBlockX(), point.getY(), point.getBlockZ());

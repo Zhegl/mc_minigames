@@ -39,9 +39,11 @@ import me.petr1furious.potatominigames.games.bingo.BingoGame;
 import me.petr1furious.potatominigames.games.chase.ChaseGame;
 import me.petr1furious.potatominigames.games.finals.FinalsGame;
 import me.petr1furious.potatominigames.games.cs.CsGame;
+import me.petr1furious.potatominigames.games.tanks.TanksGame;
 import me.petr1furious.potatominigames.games.party.PartyGame;
 import me.petr1furious.potatominigames.games.dummy.DummyGame;
 import me.petr1furious.potatominigames.games.pillars.PillarsGame;
+import me.petr1furious.potatominigames.games.pillars.PillarsReplays;
 import me.petr1furious.potatominigames.games.warfare.WarfareGame;
 import me.petr1furious.potatominigames.i18n.I18n;
 
@@ -102,13 +104,17 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         sessions.registerGame(new WarfareGame(configs, fpvDrone));
         sessions.registerGame(new ChaseGame(configs, gadgets));
         sessions.registerGame(new PartyGame(configs));
-        sessions.registerGame(new FinalsGame(this, configs));
+        FinalsGame finals = new FinalsGame(this, configs);
+        sessions.registerGame(finals);
         sessions.registerGame(new CsGame(configs));
+        sessions.registerGame(new TanksGame(configs));
 
         QueueService queues = new QueueService(this, sessions, lobby);
         queues.createQueues(configs);
         pillars.setQueues(queues);
         QueueMenu menu = new QueueMenu(this, sessions, queues);
+        queues.setAfterOnboarding(menu::openPicks);
+        finals.configureTutorials(sessions, queues);
         lobby.setMenuOpener(menu::open);
         SpectatorCamera camera = new SpectatorCamera(this, sessions);
         configs.register(camera.config(), "config.yml", "spectate");
@@ -143,6 +149,7 @@ public final class PotatoMinigamesPlugin extends JavaPlugin {
         if (sessions != null) {
             sessions.stopAll(EndReason.ABORTED);
         }
+        PillarsReplays.awaitSaves();
         I18n.unregister();
     }
 }

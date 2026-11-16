@@ -35,11 +35,12 @@ final class BuildMemoryArena {
     }
 
     private void floor(Location c) {
+        int offset = (5 - size) / 2;
         for (int x = -4; x <= 8; x++)
             for (int z = -4; z <= 8; z++)
                 world.getBlockAt(c.getBlockX() + x, 80, c.getBlockZ() + z)
                         .setType(
-                                x >= 0 && x < size && z >= 0 && z < size
+                                x >= offset && x < offset + size && z >= offset && z < offset + size
                                         ? Material.LIGHT_BLUE_CONCRETE
                                         : Material.SMOOTH_QUARTZ,
                                 false);
@@ -66,19 +67,24 @@ final class BuildMemoryArena {
     }
 
     Location spawn(UUID id) {
-        return centers.get(id).clone().add(size / 2.0, 0, -2.5);
+        return centers.get(id).clone().add(2.5, 0, -2.5);
     }
 
     Location reviewCenter(UUID id) {
-        return centers.get(id).clone().add(size / 2.0, 1.5, size / 2.0);
+        return centers.get(id).clone().add(2.5, 1.5, 2.5);
+    }
+
+    private Location origin(UUID id) {
+        Location center = centers.get(id);
+        return center == null ? null : center.clone().add((5 - size) / 2, 0, (5 - size) / 2);
     }
 
     Location cellLocation(UUID id, BuildMemoryPattern.Cell cell) {
-        return centers.get(id).clone().add(cell.x(), cell.y(), cell.z());
+        return origin(id).add(cell.x(), cell.y(), cell.z());
     }
 
     BuildMemoryPattern.Cell localCell(UUID owner, Block block) {
-        Location c = centers.get(owner);
+        Location c = origin(owner);
         if (c == null || !block.getWorld().equals(world)) return null;
         int x = block.getX() - c.getBlockX(),
                 y = block.getY() - 81,
@@ -91,7 +97,7 @@ final class BuildMemoryArena {
     void show(UUID id, BuildMemoryPattern p) {
         if (p.size() > size) resize(p.size());
         clear(id);
-        Location c = centers.get(id);
+        Location c = origin(id);
         p.blocks()
                 .forEach((cell, m) ->
                         world.getBlockAt(
@@ -111,9 +117,24 @@ final class BuildMemoryArena {
                     fence.setFace(
                             face,
                             neighbor.getType().name().endsWith("_FENCE")
-                                    || neighbor.getType().isOccluding());
+                                    || neighbor.getType().isOccluding()
+                                    || neighbor.getBlockData()
+                                                    instanceof org.bukkit.block.data.type.Gate gate
+                                            && (face.getModX() != 0
+                                                    ? gate.getFacing().getModZ() != 0
+                                                    : gate.getFacing().getModX() != 0));
                 }
                 block.setBlockData(fence, false);
+            } else if (block.getType() == Material.IRON_BARS
+                    && data instanceof org.bukkit.block.data.MultipleFacing bars) {
+                for (var face : bars.getAllowedFaces()) {
+                    Block neighbor = block.getRelative(face);
+                    bars.setFace(
+                            face,
+                            neighbor.getType() == Material.IRON_BARS
+                                    || neighbor.getType().isOccluding());
+                }
+                block.setBlockData(bars, false);
             } else if (block.getType() == Material.REDSTONE_LAMP
                     && data instanceof org.bukkit.block.data.Lightable lamp) {
                 lamp.setLit(
@@ -132,7 +153,7 @@ final class BuildMemoryArena {
     }
 
     void clear(UUID id) {
-        Location c = centers.get(id);
+        Location c = origin(id);
         for (int x = 0; x < size; x++)
             for (int y = 81; y < 85; y++)
                 for (int z = 0; z < size; z++)
@@ -142,7 +163,7 @@ final class BuildMemoryArena {
 
     Map<BuildMemoryPattern.Cell, MemoryBlock> capture(UUID id) {
         Map<BuildMemoryPattern.Cell, MemoryBlock> result = new HashMap<>();
-        Location c = centers.get(id);
+        Location c = origin(id);
         for (int x = 0; x < size; x++)
             for (int y = 0; y < 4; y++)
                 for (int z = 0; z < size; z++) {
@@ -180,7 +201,7 @@ final class BuildMemoryArena {
         List<MemoryBlock> refund =
                 removed.stream().map(current::get).filter(Objects::nonNull).toList();
         if (!canRefund.test(refund)) return List.of();
-        Location c = centers.get(id);
+        Location c = origin(id);
         for (var position : removed) {
             var value = current.get(position);
             if (value == null) continue;

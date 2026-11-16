@@ -135,6 +135,11 @@ final class PillarsSession implements GameSession {
     private PillarsPerks perks;
     private AdhdModifier adhd;
     private BukkitTask adhdTask;
+    private FloodModifier flood;
+    private BukkitTask floodTask;
+    private Location floodPosition;
+    private PillarsSky sky;
+    private PillarsReplays replays;
     /** Item Frenzy divides the item cooldown by this. */
     private int itemSpeed = 1;
 
@@ -168,6 +173,9 @@ final class PillarsSession implements GameSession {
     public void onStart() throws CommandFailure {
         try { start(); }
         catch (CommandFailure | RuntimeException error) {
+            if (replays != null) replays.close();
+            closeFlood();
+            if (sky != null) sky.close();
             if (perks != null) perks.close();
             if (events != null) events.close();
             if (shuffleItems != null) shuffleItems.close();
@@ -264,6 +272,18 @@ final class PillarsSession implements GameSession {
             player.setFallDistance(0);
         }
 
+        if (mode.flood.get() || rules.modifiers().contains("flood")) {
+            flood = new FloodModifier(world, (int) Math.floor(config.platformHeight.get()) + 1, center, spots);
+            floodPosition = center.clone();
+            Bukkit.getPluginManager().registerEvents(flood, services.plugin());
+            floodTask = Bukkit.getScheduler().runTaskTimer(services.plugin(), this::tickFlood, 1L, 1L);
+        }
+
+        replays = PillarsReplays.open(services.plugin(), world, modeId);
+        if (replays != null) {
+            for (PillarPlayer pillarPlayer : alive) replays.start(pillarPlayer.player());
+        }
+
         if (mode.bossBar.get()) {
             bossBar = services.bossBars().create(Component.empty(), BossBar.Color.PINK, BossBar.Overlay.NOTCHED_10);
             for (PillarPlayer pillarPlayer : alive) {
@@ -277,7 +297,7 @@ final class PillarsSession implements GameSession {
         timeLeft = mode.timeLimitSeconds();
         itemCountdown = itemCooldown();
         startCountdown = Math.max(0, config.startCountdown.get());
-        started = startCountdown <= 0;
+        started = startCountdown <= 0 && (flood == null || flood.isReady());
         if (!started) {
             for (PillarPlayer pillarPlayer : alive) {
                 pillarPlayer.player().setInvulnerable(true);
@@ -312,6 +332,9 @@ final class PillarsSession implements GameSession {
         } else if (adhd != null) {
             announce(I18n.tr("pillars.play.adhd.enabled").color(NamedTextColor.GOLD));
         }
+        if (flood != null) {
+            announce(I18n.tr("pillars.play.flood.enabled", flood.surfaceY()).color(NamedTextColor.AQUA));
+        }
         services.plugin().getLogger().info("Pillars (" + modeId + (rules.modifiers().isEmpty() ? ""
                 : ": " + String.join("+", rules.modifiers())) + ") started in arena " + arena.name() + " with "
                 + alive.size() + " players and " + items.size() + " items in the pool");
@@ -324,8 +347,6 @@ final class PillarsSession implements GameSession {
 
     private void applyArenaSettings() {
         world.setGameRule(GameRules.IMMEDIATE_RESPAWN, true);
-        // Each arena keeps its own time of day; an arena can still turn it back on in gamerules.
-        world.setGameRule(GameRules.ADVANCE_TIME, false);
         for (Map.Entry<String, Object> entry : arena.gameRules().entrySet()) {
             GameRule<?> rule = resolveGameRule(entry.getKey());
             if (rule == null || !setGameRule(rule, entry.getValue())) {
@@ -333,9 +354,8 @@ final class PillarsSession implements GameSession {
                         + entry.getKey() + "=" + entry.getValue());
             }
         }
-        if (arena.time() != null) {
-            world.setTime(arena.time());
-        }
+        sky = PillarsSky.roll(ThreadLocalRandom.current());
+        sky.apply(world);
     }
 
     /** Accepts both old camel-case and new names. */
@@ -487,6 +507,31 @@ final class PillarsSession implements GameSession {
         }
     }
 
+    private void tickFlood() {
+        if (ending || alive.isEmpty()) return;
+        if (!started) {
+            flood.prepare();
+            return;
+        }
+        flood.tick();
+        // Death callbacks remove from alive synchronously; traverse backwards without copying the roster.
+        for (int i = alive.size() - 1; i >= 0; i--) {
+            Player player = alive.get(i).player();
+            if (player != null && !player.isDead() && player.getWorld() == world
+                    && FloodModifier.touches(player.getLocation(floodPosition).getY(), flood.surfaceY())) {
+                player.setHealth(0.0);
+            }
+        }
+    }
+
+    private void closeFlood() {
+        if (floodTask != null) {
+            floodTask.cancel();
+            floodTask = null;
+        }
+        if (flood != null) flood.close();
+    }
+
     private boolean adhdActive() {
         return adhd != null && adhd.active();
     }
@@ -528,6 +573,13 @@ final class PillarsSession implements GameSession {
     private void tickStartCountdown() {
         // Release on the tick after the last number so it stays on screen.
         if (startCountdown <= 0) {
+            if (flood != null && !flood.isReady()) {
+                for (Player player : services.participants().onlinePlayers()) {
+                    player.showTitle(Title.title(I18n.tr("pillars.play.flood.preparing"),
+                            Component.empty(), COUNTDOWN_TIMES));
+                }
+                return;
+            }
             release();
             return;
         }
@@ -663,14 +715,14 @@ final class PillarsSession implements GameSession {
     }
 
     /**
-     * Fusion: each of chaos, shuffle, tactical, big_house, adhd and perks with a 50% chance, and party or rave
+     * Fusion: each of chaos, shuffle, tactical, big_house, adhd, perks and flood with a 50% chance, and party or rave
      * with 25% each. Values come from those modes' own settings. Chaos and rave speed items up to
      * their pace; shuffle keeps item-shuffle's, whatever else is on.
      */
     private Rules rollFusion() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         List<String> modifiers = new ArrayList<>();
-        for (String modifier : List.of("chaos", "shuffle", "tactical", "big_house", "adhd", "perks")) {
+        for (String modifier : List.of("chaos", "shuffle", "tactical", "big_house", "adhd", "perks", "flood")) {
             if (random.nextBoolean()) {
                 modifiers.add(modifier);
             }
@@ -1000,10 +1052,13 @@ final class PillarsSession implements GameSession {
         if (pillarPlayer == null || !alive.contains(pillarPlayer) || ending) {
             return;
         }
-        if (perks != null) {
-            perks.hold(event);
-            if (perks.immuneToVoid(event.getPlayer())) return;
+        if (perks != null) perks.hold(event);
+        if (started && flood != null && event.getTo().getWorld() == world
+                && FloodModifier.touches(event.getTo().getY(), flood.surfaceY())) {
+            event.getPlayer().setHealth(0.0);
+            return;
         }
+        if (perks != null && perks.immuneToVoid(event.getPlayer())) return;
         if (!started) {
             // Hold horizontal movement only, so players above the pillar settle onto it.
             if (event.getFrom().getX() != event.getTo().getX() || event.getFrom().getZ() != event.getTo().getZ()) {
@@ -1193,6 +1248,9 @@ final class PillarsSession implements GameSession {
                 ? I18n.tr("pillars.play.info.time", TimeFormat.words(timeLeft), itemSecondsLeft())
                 : I18n.tr("pillars.play.info.countdown", TimeFormat.words(timeLeft), startCountdown, itemSecondsLeft()))
                 .color(NamedTextColor.GRAY));
+        if (flood != null) {
+            lines.add(I18n.tr("pillars.play.flood.info", flood.surfaceY()).color(NamedTextColor.AQUA));
+        }
         lines.add(I18n.tr("pillars.play.info.pool", items.size(),
                 items.stream().mapToLong(ItemPool.PoolItem::weight).sum()).color(NamedTextColor.GRAY));
         lines.add(I18n.tr("pillars.play.info.groups", groups.size(), String.join(", ",
@@ -1210,6 +1268,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onParticipantQuit(Player player) {
+        if (replays != null) replays.stop(player);
         if (perks != null) perks.disconnected(player);
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         if (pillarPlayer == null || ending || !alive.contains(pillarPlayer)) {
@@ -1242,6 +1301,7 @@ final class PillarsSession implements GameSession {
             if (!alive.contains(pillarPlayer)) {
                 // Grace expired while away.
                 placeEliminated(pillarPlayer);
+                if (replays != null) replays.start(player);
                 return;
             }
             if (perks != null && !perks.isGhost(player) && player.getGameMode() == GameMode.SPECTATOR) {
@@ -1258,6 +1318,7 @@ final class PillarsSession implements GameSession {
                 player.setFallDistance(0);
             }
             pillarPlayer.disconnectedAt = null;
+            if (replays != null) replays.start(player);
             announce(I18n.tr("pillars.play.reconnected", player.getName()).color(NamedTextColor.YELLOW));
             updateHud();
         });
@@ -1265,6 +1326,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onParticipantLeave(Player player) {
+        if (replays != null) replays.stop(player);
         if (perks != null) perks.playerGone(player);
         PillarPlayer pillarPlayer = players.get(player.getUniqueId());
         player.setInvulnerable(false);
@@ -1385,6 +1447,9 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onEnd(EndReason reason) {
+        if (replays != null) replays.close();
+        closeFlood();
+        if (sky != null) sky.close();
         if (perks != null) perks.close();
         if (adhdTask != null) {
             adhdTask.cancel();

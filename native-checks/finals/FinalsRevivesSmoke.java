@@ -148,6 +148,8 @@ public final class FinalsRevivesSmoke {
                                                 && p.getY() < 115;
                                     }
                                     case "fallback" -> fallback.clone();
+                                    case "recovery" -> a[0].equals(carrier.id) ? carrier.location.clone() : fallback.clone();
+                                    case "safeRecovery" -> a[0] != null;
                                     case "complete" -> {
                                         UUID id = (UUID) a[0];
                                         check(
@@ -258,8 +260,17 @@ public final class FinalsRevivesSmoke {
             check(
                     !thrown.isValid()
                             && item(target.id).isValid()
-                            && point(target.id).distanceSquared(fallback) < 1e-7,
-                    "A statue lost below map bounds recovers without losing its downed target");
+                            && point(target.id).distanceSquared(carrier.location.clone().add(0, .25, 0)) < 1e-7,
+                    "A thrown statue lost below map bounds returns to its carrier's departure point");
+            Item recovered = item(target.id);
+            recovered.teleport(new Location(world, 970.5, 98, 970.5));
+            tick(42);
+            check(!recovered.isValid() && point(target.id).distanceSquared(carrier.location.clone().add(0, .25, 0)) < 1e-7,
+                    "Crossing the custom death floor above the world bottom also returns the statue");
+            check(item(target.id).getVelocity().lengthSquared() == 0,
+                    "A recovered statue loses its falling or thrown velocity");
+            item(target.id).teleport(fallback);
+            tick(43);
 
             target.online = true;
             carrier.sneaking = true;

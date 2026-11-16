@@ -47,13 +47,15 @@ sourceSets.main {
 
 tasks.processResources {
     val pluginVersion = version.toString()
+    val apiVersion = mc
     from("i18n/locales") {
         into("i18n")
     }
-    // Declared, or a version bump leaves the old plugin.yml in place.
+    // Declared, or a version bump leaves stale plugin metadata in place.
     inputs.property("version", pluginVersion)
-    filesMatching("plugin.yml") {
-        expand("version" to pluginVersion)
+    inputs.property("apiVersion", apiVersion)
+    filesMatching("paper-plugin.yml") {
+        expand("version" to pluginVersion, "apiVersion" to apiVersion)
     }
 }
 
@@ -91,6 +93,18 @@ val checkPillarsAdhd by tasks.registering(JavaExec::class) {
     dependsOn(checks.classesTaskName)
     classpath = checks.runtimeClasspath
     mainClass.set("me.petr1furious.potatominigames.games.pillars.AdhdModifierCheck")
+}
+
+val checkPillarsFlood by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.FloodModifierCheck")
+}
+
+val checkPillarsSky by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.pillars.PillarsSkyCheck")
 }
 
 val checkPartyPvp by tasks.registering(JavaExec::class) {
@@ -148,7 +162,7 @@ val checkPillarsPerks by tasks.registering(JavaExec::class) {
 }
 
 tasks.check {
-    dependsOn(checkPillarsPresets, checkSniperDuel, checkPillarsMath, checkPillarsShuffle, checkPillarsAdhd,
+    dependsOn(checkPillarsPresets, checkSniperDuel, checkPillarsMath, checkPillarsShuffle, checkPillarsAdhd, checkPillarsFlood, checkPillarsSky,
             checkPartyPvp, checkPartySumo, checkPartyArmsRace, checkPartySurvival, checkPartyRuntime, checkPvpClasses, checkPartyGroupCombat, checkPartyMiners, checkPillarsPerks)
 }
 
@@ -190,6 +204,14 @@ val checkPartyGames by tasks.registering(JavaExec::class) {
     classpath = checks.runtimeClasspath
     mainClass.set("me.petr1furious.potatominigames.games.party.PartyGamesCheck")
 }
+
+val checkGarticPhone by tasks.registering(JavaExec::class) {
+    dependsOn(checks.classesTaskName)
+    classpath = checks.runtimeClasspath
+    mainClass.set("me.petr1furious.potatominigames.games.party.GarticPhoneCheck")
+}
+
+tasks.check { dependsOn(checkGarticPhone) }
 tasks.check { dependsOn(checkPartyGames) }
 val checkPartyArenas by tasks.registering(JavaExec::class) {
     dependsOn(checks.classesTaskName)
@@ -252,8 +274,10 @@ tasks.check { dependsOn(checkFinalsSession) }
 
 
 for ((taskName, checkClass) in mapOf(
+    "checkFinalsTutorial" to "FinalsTutorialCheck",
     "checkFinalsWeapons" to "FinalsWeaponsCheck",
     "checkFinalsRegeneration" to "FinalsRegenerationCheck",
+    "checkFinalsHitHealth" to "FinalsHitHealthCheck",
     "checkFinalsGadgets" to "FinalsGadgetsCheck",
     "checkFinalsEquipment" to "FinalsEquipmentCheck",
     "checkFinalsMaps" to "FinalsMapsCheck",
@@ -299,3 +323,20 @@ val checkCounterStrike by tasks.registering(JavaExec::class) {
     mainClass.set("me.petr1furious.potatominigames.games.cs.CsCheck")
 }
 tasks.check { dependsOn(checkCounterStrike) }
+
+for ((taskName, checkClass) in mapOf(
+    "checkTanks" to "TanksRulesCheck",
+    "checkTanksBallistics" to "TanksBallisticsCheck",
+    "checkTanksGeometry" to "TanksGeometryCheck",
+    "checkTankVisual" to "TankVisualCheck",
+    "checkTanksRadar" to "TanksRadarCheck",
+    "checkTanksScope" to "TanksScopeCheck",
+    "checkTanksAudio" to "TanksAudioCheck",
+    "checkTanksSession" to "TanksSessionCheck")) {
+    val tanksCheck = tasks.register<JavaExec>(taskName) {
+        dependsOn(checks.classesTaskName)
+        classpath = checks.runtimeClasspath
+        mainClass.set("me.petr1furious.potatominigames.games.tanks.$checkClass")
+    }
+    tasks.check { dependsOn(tanksCheck) }
+}

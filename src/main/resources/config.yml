@@ -70,6 +70,7 @@ queues:
     color_floor: {enabled: true, minPlayers: 2, maxPlayers: 12}
     anvils: {enabled: true, minPlayers: 2, maxPlayers: 12}
     build_memory: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    gartic_phone: {enabled: true, minPlayers: 2, maxPlayers: 12}
     tool_race: {enabled: true, minPlayers: 2, maxPlayers: 12}
     parkour_race: {enabled: true, minPlayers: 2, maxPlayers: 12}
     party_games: {enabled: true, minPlayers: 2, maxPlayers: 12}
@@ -78,3 +79,5 @@ queues:
     default: {enabled: true, minPlayers: 2, maxPlayers: 10}
     deathmatch: {enabled: true, minPlayers: 2, maxPlayers: 16}
     wingman: {enabled: true, minPlayers: 2, maxPlayers: 10}
+  tanks:
+    default: {enabled: true, minPlayers: 2, maxPlayers: 12}

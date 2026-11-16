@@ -4,24 +4,80 @@ Server fork of [Petr1Furious/potato-minigames](https://github.com/Petr1Furious/p
 preserving the upstream Git history and the server's downstream patches.
 The original Apache-2.0 license and attribution are retained in `LICENSE` and `NOTICE`.
 
-One Paper plugin with seven game categories on a shared framework, built for a server
+One Paper plugin with eight game categories on a shared framework, built for a server
 anybody can join and play at any time: players queue for a game, wait in a lobby,
 and the game starts by itself. Different games run side by side.
 Targets Paper/AdvancedSlimePaper **26.3** (26.2 still builds, see Building), Java 25.
+
+## Want to play?
+
+Install [Potato Launcher](https://github.com/Petr1Furious/potato-launcher) and follow instructions in launcher's repo to connect with minigames' server instance via [instance manifest](https://mc.emptiness.observer:14885/data/instance_manifest.json) (requires Telegram account).
 
 ## Games
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `perks`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `perks`, `flood`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. `flood` adds rising lethal water that shelters cannot block. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
 | **Party / Вечеринка** | `/party` | `pvp`, `sumo`, `pvp_ffa`, `pvp_select`, `sumo_ffa`, `arms_race`, `one_shot`, `tnt_run`, `mob_count`, `rhino`, `miners`, `magic_battle`, `parkour_race` | PvP and sumo have round-robin BO3 tournaments and simultaneous one-life FFA variants. Arms Race is a simultaneous free-for-all with weapon progression and respawns. TNT Run, mob counting and ravager/mine dodging are one-life survival games. Miners combines private ore mining with random equipment upgrades, consumable loot and underground PvP. Magic Battle starts with up to two chosen basic wands and offers forty-two spells as chest loot on the imported Lighthouse sky-island map. |
 | **Counter-Strike** | `/cs` | `default`, `deathmatch`, `wingman` | Classic bomb defusal, A-side Wingman or a timed free-for-all with respawns and free weapon selection on Dust II. |
 | **The Finals** | `/finals` | — | Two teams open vaults, carry cash boxes and defend or steal cashouts in a disposable arena. The first team to $20,000 wins, or the richer team after ten minutes. |
+| **World of Tanks** | `/tanks` | — | Light, medium and heavy tanks with independent turrets, armor, AP/HE shells, spotting, smoke and team base capture. Join with `/play tanks`. |
+
+### World of Tanks
+
+Join with `/play tanks` or the lobby compass. Two balanced red/blue teams of up to
+six tanks battle in Iron Valley. One tank, one life: eliminate the enemy team or
+capture their base. Defenders contest capture; damage resets the damaged tank's
+contribution. The six-minute default limit ends in a draw. Tank state survives
+disconnects, and the abandoned hull remains vulnerable. Permanent leaving forfeits
+participation. Winners receive three points; `/tanks test` is solo practice without
+points. No client mod or resource pack is required.
+
+**Controls:** W/S drive and reverse, A/D turn the hull, mouse aims the independently
+traversing turret. Right-click slots 1/2 for AP/HE. Slot 3 uses the single repair kit
+(tracks and 15% HP); slot 4 deploys one six-second smoke screen. Left-click with
+AP/HE to toggle zoom, then right-click to fire while zoomed. Slot 5 also toggles
+zoom with right-click and fires with left-click. Zoom uses vanilla dynamic FOV
+(the client's FOV Effects setting controls its strength).
+F5 offers Minecraft's third-person camera. Before battle, right-click slots 7–9
+or use `/tanks light`, `/tanks medium`, `/tanks heavy` to choose a chassis.
+
+Light tanks trade armor for speed, view range and concealment; mediums balance
+mobility and firepower; heavies have stronger armor and guns with slower traverse.
+AP checks plate angle and may ricochet. HE trades penetration for reduced damage
+on armor impacts; it is a direct-hit shell in this compact adaptation. Low hits
+can break tracks, including a blocked hull hit. The private gun circle previews
+the actual ballistic trajectory; green indicates penetration, orange blocked armor
+and cyan an ally. Moving and turning widen dispersion. Muzzle walls, your own
+depressed barrel and allied tanks obstruct shells.
+
+The offhand tactical map displays allies and team-spotted enemies. Cover, light-tank
+concealment and smoke affect spotting; smoke does not stop shells. Destroyed team
+members retain team spotting rather than receiving omniscient enemy information.
+Three-dimensional tank models animate tracks, hull, turret and barrel separately;
+impacts, ricochets, reloads, damage and wrecks have distinct vanilla feedback.
+Settings are in `games/tanks.yml` and `/tanks config`.
+
+The adaptation intentionally has fewer vehicles, simpler armor/modules, one flat
+arena and vanilla art/audio.
+Run `checkTanks checkTanksBallistics checkTanksGeometry checkTankVisual
+checkTanksRadar checkTanksSession checkTanksScope checkTanksAudio checkI18n`; native instructions live in
+`native-checks/tanks/README.md`.
 
 ### The Finals
+
+**Tutorial:** `/finals tutorial` starts a private solo practice arena, even while a
+normal Finals match is running. Players open a vault, pick up and deposit a cashbox,
+watch a short practice payout, steal an enemy cashout, try all three classes, and
+change their weapon, gadget and specialization using the real loadout menu.
+Practice choices apply immediately and leave saved loadouts untouched. Use
+`/finals tutorial help` to repeat instructions or `/play leave` to exit.
+The first Finals queue attempt offers **Play tutorial** or **Continue queueing**;
+the suggestion is remembered in the player's persistent data. Closing the popup
+cancels that queue attempt. The tutorial remains replayable through its command.
 
 Join with `/play finals` or use the lobby compass. Two players can play against
 each other; the queue supports 2–12 players split between red and blue teams.
@@ -46,8 +102,8 @@ destroying their support makes them fall and settle on terrain. Their labels,
 deposit/steal interactions and ongoing payout timers follow their current positions.
 Active cashouts alternate between vanilla **Pigstep** and **Lava Chicken** at 30%
 volume in the Jukebox/Note Blocks sound category. Nearby players hear the music
-within 32 blocks of the station. The background track follows each listener while
-they remain in range, with a smoothed overhead sound source to reduce movement jitter.
+within 32 blocks of the station. Music comes from the cashout's direction and fades with distance. A smoothed private
+sound source preserves that direction while extending vanilla attenuation to 32 blocks.
 Leaving the radius makes the same track inaudible; returning continues its current
 playback position, with a brief two-tick fade at the boundary. Payout, disconnect, world changes, and
 match end stop it. Respawning/reconnecting starts a fresh stream because vanilla
@@ -154,8 +210,10 @@ shorter time to kill, with the same firing cadence. Gunshots, including reflecte
 bullets, do not knock players back. The dagger rewards backstabs, the spear has longer
 reach, and the hammer's right-click destroys nearby cover. Hold right-click with
 the Riot Shield to reduce frontal damage. Hold right-click with Dual Blades to guard:
-frontal bullets are reflected back at the shooter, with damage credited to the
-defender. Melee attacks and explosions are not reflected.
+bullets within a 14-degree cone around the crosshair (including vertical aim) are
+reflected back at the shooter, with damage credited to the defender. Guarded ranged
+hits still deal 70% damage. Frontal melee hits deal 75% damage while guarding and
+are never reflected. Explosions are not reflected.
 
 Passive health regeneration replaces Minecraft's food healing. After the last
 damage taken, Light waits 8 seconds, Medium 9, and Heavy 10, then heals 4 Minecraft
@@ -276,10 +334,15 @@ gold outlines while the cashbox is available or carried; after depositing it, on
 the occupied cashout is highlighted. Labels remain visible through walls and follow
 falling stations. Distant cashouts show a bold A or B above their timer and distance,
 using a nearby direction marker so the letter remains readable beyond entity render range.
+Loose and carried cashboxes also have a gold direction marker with their real distance,
+including beyond entity render range. The carrier does not see a marker on their own body.
 Teammates have private outlines and name markers visible only to
 their allies, including a marker at their death location while they respawn. Normal
 overhead player names are hidden during Finals. Visibility is still subject to the
 server's entity tracking and the client's rendering distance.
+After a contestant takes damage, opponents see their current/max HP above their
+head for five seconds. Further damage refreshes the timer. These HP labels stay
+behind walls, disappear on death, and do not create distant direction markers.
 
 The Tab player list shows each contestant's equipped class and match kill count.
 Only teammates (including yourself) see current/max HP or a respawning indicator.
@@ -304,9 +367,12 @@ headroom and objective spacing. Map jump pads can connect rooftops:
 - Save with `/finals map save NAME`. Both endpoints must be safe standing locations
   inside the selected map. A targeted pad without a destination cannot be saved.
 
-Pads appear as protected slime blocks in matches; setup previews identify launch
-points and destinations. Targeted launches guide players along an arc using velocity,
-and stop when blocked by terrain. They do not teleport through buildings. Old maps
+Pads appear as protected slime blocks in matches. Only targeted pads glow, and only
+for viewers within 16 blocks (including vertical distance); vertical pads never glow.
+The setup previews identify launch
+points and destinations. Targeted launches guide players along a smooth timed arc using velocity,
+at 1.5 times their original flight speed, and stop when blocked by terrain. They do
+not teleport through buildings. Upward pads preserve horizontal momentum. Old maps
 without configured pads continue to work.
 
 Set a map's instant-death floor with `/finals map deathheight NAME 40`: contestants
@@ -316,6 +382,10 @@ die when their feet move below Y=40 (exactly Y=40 is safe). Use
 shows the draft setting. Each playable map stores its own value, including areas
 created from the same imported world; changing map A never changes map B.
 Existing maps default to off, while normal arena-boundary deaths still apply.
+Cashboxes and revive statues crossing this floor return to the carrier's last safe
+ground position before jumping or falling, or the thrower's last grounded position
+when thrown. A statue created by a falling player's death uses that player's departure
+point. Recovery clears the object's velocity; destroyed departure ledges use a fallback.
 
 Use `/finals map time NAME night` to set the match's fixed time of day. Presets are
 `sunrise` (0), `day` (1000), `noon` (6000), `sunset` (12000), `night` (13000), and
@@ -346,6 +416,33 @@ match, or `/finals start @a rooftop` to force a saved map. `/finals stop` ends i
 Timing and score settings are in `games/finals.yml`, editable with
 `/finals config`; changes apply next match. All game text uses the shared
 English/Russian i18n catalogs, selected by each player's client language.
+
+### Gartic Phone
+
+Join **Party → Gartic Phone** or run `/play party gartic_phone` (2–12 players).
+This is a standalone mode: it is excluded from the Party Games rotation, including
+custom pool configurations. `/party test gartic_phone` allows solo practice.
+
+Everyone writes a private prompt in chat, then players alternate between building
+the latest text and guessing the latest build. Chains rotate one player each turn;
+only the previous contribution is visible. The match has one turn per player,
+with at least three turns for two-player games and solo practice. Each completed
+chain is revealed in order with its authors. There is no winner or point award.
+
+Build in Creative mode in a private, enclosed **11×8×11** plot. Right-click to place;
+left-click to instantly erase. Right-click the **chest in slot 8** to choose from
+50 blocks; selecting one puts it in slot 1 and keeps the six recent blocks beside
+it. Blocks refill automatically. Right-click the **emerald in slot 9** to lock
+your build. A chat answer locks immediately and is limited to 120 characters.
+Turns finish when everyone is ready or time runs out. Missing prompts receive a
+starter idea, unfinished builds are preserved, and missing guesses are marked.
+Leaving withdraws a player for the match; reconnecting players can spectate.
+
+Defaults in `games/party.yml` under `garticPhone`: `promptSeconds: 30`,
+`buildSeconds: 90`, `guessSeconds: 30`, `revealSeconds: 6` per contribution.
+Changes apply next session. English and Russian text follows the client language.
+`checkGarticPhone` covers rotation, timeouts, private-room geometry, snapshots,
+editing and ready locks, departed-player chat, queue registration and pool exclusion.
 
 ### Party Games and new party games
 
@@ -1453,7 +1550,7 @@ are left intact. SUPERHOT cannot return frozen items from a previous set.
 
 `fusion` rolls its rules every game: chaos (random layout, chaos-speed items), shuffle (at
 item-shuffle's own pace outside ADHD bursts), tactical (with shuffle, everyone gets the same
-set), big_house and adhd, each with a 50% chance, perks with a 50% chance, and party or rave with 25% each. The values come from
+set), big_house, adhd, perks and flood, each with a 50% chance, and party or rave with 25% each. The values come from
 those modes' settings. The roll is announced at the start and shown in the summary.
 
 ## Pillars ADHD / СДВГ
@@ -1486,6 +1583,113 @@ Burst timing lives in `games/pillars.yml`: `adhd.meanSeconds` and
 /pillars test adhd
 ```
 
+## Pillars Flood
+
+`/play pillars flood` starts ordinary Pillars with a rising lethal flood. Add `flood`
+to a saved mix (`/pillars preset save rising tactical flood`), or enable it on another
+mode with `/pillars config modes.<mode>.flood true`. Fusion rolls it independently
+with a 50% chance.
+
+The initial water surface is **20 blocks below the player's feet on the pillar**.
+After the opening countdown, it rises **one block every ten seconds**. Contact with
+the surface or anything below it kills an alive participant, even if they stand
+still inside a solid box. Blocks, roofs, doors, sponges and temporary perk
+invulnerability do not provide shelter. Spectators and other game worlds are unaffected.
+
+Flood is a **client-only water surface**, not a real fluid volume: it does not edit
+terrain, schedule fluid ticks, recalculate lighting or provide buoyancy. The server
+still applies the lethal height, including beyond the visible rectangle.
+
+The usual footprint is **7×7 chunks**, keeping pillars in the central 5×5. Wider
+layouts expand the rectangle only enough to retain a one-chunk pillar margin;
+`big_house` and large rosters keep their configured spacing. Other loaded chunks
+are not scanned or painted, and no chunk is loaded/generated just for Flood.
+
+The initial and next-layer caches are prepared during the opening countdown,
+and GO waits until initial preparation/delivery to already-sent chunks is ready.
+Only the current/next surfaces are retained. Later rises are prepared ahead, and
+bounded chunk batches are delivered round-robin with nearby chunks first. Late
+joins and chunk resends receive the current plane, not a backlog of submerged
+layers. An idle plane is not repeatedly repainted.
+
+Each callback has a shared 2048-unit terrain-read/packet-cell budget; this bounds
+work, not a wall-clock deadline. Large audiences can briefly trail visually while
+the lethal height advances on schedule. Previous fake cells restore the current
+real block state, preserving construction. Cleanup stops callbacks and listeners,
+restores still-visible fake cells, and leaves the template/lobby unchanged.
+
+## Passive Pillars sky
+
+Every Pillars game, including built-in modes and player presets, independently
+chooses **day**, **night** or **custom sky** with a **one-third probability each**.
+The selected sky remains fixed for that game, with clear weather. Custom skies
+randomize the sky colour and star brightness using vanilla Minecraft environment
+attributes, without a client mod or resource pack. Stars themselves retain their
+vanilla colour; Minecraft does not expose an independent star-colour attribute.
+
+The custom draw independently selects one of 64 sky hues and one of four star
+brightness values (0.15, 0.30, 0.70, 0.90). A Paper bootstrap discovers the generated
+256-profile dimension/timeline datapack before registries are synchronized to
+vanilla clients. Only the match clone switches to the selected registered profile;
+no shared vanilla registry value or biome is edited.
+
+Sky selection replaces per-arena `time` and `advance_time` settings. Other arena
+gamerules still apply, but cannot override the passive sky's fixed clock/weather.
+Only the disposable Pillars world changes: the lobby, templates and other games
+retain their own settings.
+
+## Pillars replays
+
+With [Flashback Server](https://modrinth.com/plugin/flashback-server) installed,
+every Pillars match automatically records its participants, including all built-in
+modes and player presets. The integration uses the public recording API without
+bundling the recorder. Flashback Server **1.2.4** is verified on ASP **26.3**;
+without an enabled compatible recorder, Pillars still works but logs that
+recording is unavailable.
+
+Recording starts after the players enter the arena, includes the countdown and
+continues after elimination while they watch the match. Leaving or disconnecting
+saves that player's segment; reconnecting starts the next numbered segment.
+Normal completion, forced stop and start failure close owned recordings before
+restoring Flood/sky, returning players or unloading the arena. Graceful plugin
+shutdown waits for pending saves. Lobby players and unrelated games are not
+automatically recorded; manually started recordings are not taken over.
+
+Files are local compressed packet/state replays, **not video or CoreProtect audit
+logs**, grouped by UTC match timestamp and mode:
+
+```text
+plugins/FlashbackServer/replays/pillars/<match>/<player-uuid>-part1.flashback
+```
+
+Each file contains one participant's perspective and received terrain, not an
+omniscient world log. It remains usable after the temporary arena is deleted;
+outbound client-only Flood water is recorded too. The recorder can include
+supported messages sent during the match, so keep replay files private.
+No automatic retention/deletion is added. Configure the recorder explicitly:
+
+```yaml
+clips:
+  auto-clip-on-death: false
+telemetry:
+  enabled: false
+```
+
+Players need no mod to play or be recorded. To view a downloaded `.flashback`
+file, use [Flashback](https://modrinth.com/mod/flashback) on a matching Minecraft
+26.3 Fabric client, with its required Fabric API. This is not an in-server vanilla
+replay viewer. Operators can decode-check a file with
+`/replay verify pillars/<match>/<player-uuid>-part1.flashback`
+(`flashbackserver.replay`, OP by default).
+
+The native fixture `native-checks/pillars/PillarsReplaySmoke.java` verifies real
+packet encoding, quit/rejoin segments, forced and natural completion, deleted
+arenas, movement, block changes and client-only Flood packets. Its five-second
+two-player Flood sample saved approximately **96 KiB per perspective**; this is
+not a size or memory estimate for a full match. Full recordings buffer data in
+RAM until saving: a JVM crash loses an unfinished recording. Decode verification
+does not replace checking rendered playback in the Fabric client.
+
 ## Player Pillars presets
 
 Every player can save up to **five** named, fixed Fusion mixes. Names are shared
@@ -1499,7 +1703,7 @@ Ownership and the limit use the player's UUID, including across restarts.
 /pillars preset delete duel
 ```
 
-Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`, `perks`.
+Choose any of `chaos`, `shuffle`, `tactical`, `big_house`, `party`, `rave`, `adhd`, `perks`, `flood`.
 `party` and `rave` are mutually exclusive. With no modifiers, `save` creates plain
 Pillars with Fusion's base settings. Unlike Fusion, the selected modifiers always
 apply: there is no random roll. Their settings and precedence are the same as
@@ -1529,9 +1733,9 @@ Enable it on another built-in mode with `/pillars config modes.<mode>.perks true
 Sniper Duel keeps its five logs and sixth crossbow; perks can replace later drops.
 
 Each item draw has a **20%** chance to become a special perk instead. Configure
-`perks.dropChance` in `games/pillars.yml` for the next session. The twenty-three ordinary
+`perks.dropChance` in `games/pillars.yml` for the next session. The thirty-five ordinary
 perks have weight 4 each; the two legendary weapons have weight 1 each. Each
-legendary therefore has a **0.213%** chance per item draw at the default setting,
+legendary therefore has a **0.141%** chance per item draw at the default setting,
 four times rarer than each ordinary perk. Tactical presets share perk kinds and
 ordinary item rolls, with separate item instances/charges per player.
 
@@ -1549,7 +1753,7 @@ Active items use the main hand; normal items with the same material have no perk
 | Clock / Отмотка | Right-click to return to the position from 60 ticks ago. Requires three seconds of recorded history and a clear destination. Health, items and charges are never rolled back. One use. |
 | Brick / Карманный домик | Right-click for a wooden house only 3×3 externally: one-player interior, two blocks of headroom, door, windows and torch. Existing blocks are preserved; a blocked footprint refuses the cast. One use. |
 | Blue ice / Ледяной луч | Right-click a ray up to 32 blocks. A hit encases the opponent in protected ice for four seconds; they cannot move, attack, use items or take damage. One attempt, including misses. |
-| Legendary bow / До свидания | Punch 100, one arrow included. The bow breaks after its single shot, including a miss. |
+| Legendary bow / До свидания | Extreme knockback, including crouching targets, one arrow included. The bow breaks after its single shot, including a miss. |
 | Legendary crossbow / TNT-почта | Right-click to throw primed TNT; three shots, two-second fuse. No ordinary ammunition required. |
 | Leather boots / Плотник | First equip starts a five-second timer: permanent planks appear underfoot, including over the void. Removing, stealing or re-equipping never restarts the timer. Afterwards the boots retain ordinary leather protection. |
 | Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for three seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
@@ -1559,12 +1763,34 @@ Active items use the main hand; normal items with the same material have no perk
 | Carved pumpkin / Проклятая тыква | Right-click to throw a pumpkin straight along your view. A direct hit puts a carved pumpkin with Curse of Binding on an active opponent's head. Their previous helmet goes into their inventory, or drops at their feet if full. The projectile disappears on impact without exploding. One throw, including misses. |
 | TNT / Атомная бомба | Right-click a block to place already primed TNT in the adjacent free cell. Four-second fuse; native explosion power 16 instead of ordinary TNT's 4, increasing blast range fourfold. It damages players and terrain, including its owner, while respecting protected perk terrain. One use. |
 | Stick / Тяжёлый прогноз | Aim at a block up to 192 blocks away and right-click. After one second, nine damaging anvils fall from 24 blocks above the target in shuffled order, three ticks apart: one per cell of a 3×3 square. They land as ordinary anvils without dropping items if placement fails. One use. |
-| Amethyst shard / Алхимик | Right-click a block within six blocks. All touching blocks, connected through faces rather than diagonals, turn into one randomly selected material. Containers release their contents; protected ice and liquids are excluded. Includes bedrock. Components larger than 4096 blocks or reaching unloaded chunks are refused before any changes, preserving the charge. One use. |
+| Amethyst shard / Алхимик | Right-click a block within six blocks. All touching blocks, connected through faces rather than diagonals, turn into the block material held in the offhand, or one randomly selected material if the offhand holds no block. Containers release their contents; protected ice and liquids are excluded. Includes bedrock. Components larger than 4096 blocks or reaching unloaded chunks are refused before any changes, preserving the charge. One use. |
 | Nether star / Благословение | Right-click for 60 seconds of Fire Resistance, Resistance I, Strength II, Regeneration II and Absorption IV. One use. |
 | Eye of ender / Перевёртыш | Right-click to reverse only your own gravity for three seconds, then recharge for fifteen seconds. Reusable; copies and item transfers cannot bypass the user's cooldown. Normal gravity is restored on expiry, elimination, disconnect and stop. |
 | Oak planks / Блок-обманка | Four right-click placements. Looks like ordinary planks to everyone, but the world remains air and players fall straight through. Build within six blocks, including extending from another fake block's visible face. Left-click a fake to remove it without drops. Real construction replaces the visual; remaining visuals disappear when their builder leaves or the match stops. |
 | Sugar / Подозрительные таблетки | Right-click to affect one random active opponent, never yourself. For 60 seconds only that player hears phantom footsteps, landings, attacks, arrows or a TNT fuse from random positions nearby, at four-to-six-second intervals. No damage or actual entities. Reapplication refreshes one schedule instead of stacking; death, disconnect and match end clear it. No eligible opponent preserves the charge. One use. |
 | Zombie egg / Двойник | Right-click a nearby block to summon a stationary mannequin with your skin, name, armour and held items. Opponent melee/projectile hits trigger one small explosion: power 1.5, damage capped at two hearts before armour, no fire or terrain damage, owner immune. Owner hits and environmental damage never trigger it. Copied gear cannot be removed and never drops. One egg; at most two active copies per owner, lasting 60 seconds or until owner exit/match end. |
+
+New perks also use the ordinary weighted pool and `/pillars perk <id>`:
+
+| ID | Effect |
+| --- | --- |
+| `tree` | Right-click a nearby block to grow an oak with a nine-block trunk and a broad persistent canopy. Existing builds remain intact. |
+| `aquarium` | Aim at an opponent within 32 blocks: a breakable 5×5×5 glass aquarium, water and two pufferfish appear for 20 seconds. Existing blocks remain intact. |
+| `drone` | Reusable bow, arrow supplied. Fire a slow, gravity-free arrow and steer with the mouse while the camera follows it. Five-second player cooldown, maximum eight-second flight; sneak, impact or damage to your body ends control. Arrows are not consumed. Your body remains vulnerable at the firing position. |
+| `aura` | Ten seconds of repelling opponents within 4.5 blocks. |
+| `invulnerability` | Ten seconds without damage or knockback, including the death-height check. |
+| `morph` | Become one of ten random mobs for 15 seconds. Other players see the mob with your name, and hits on it damage you. This changes appearance, not your abilities. |
+| `metro` | A 2×10 loop in your facing direction with powered straight rails, curved corners and three rideable minecarts. Requires free space ahead. Carts last 60 seconds; the railway stays. |
+| `puppet` | One-shot bow, arrow supplied. A hit gives five seconds of movement/jump/look control over the victim and a camera through their eyes. Both bodies remain vulnerable; damage to the controller ends control. |
+| `genie` | Place a sign and write an English item registry name. Grants one ordinary item with the nearest Levenshtein name; spaces and `minecraft:` are accepted, ties resolve alphabetically. One wish per sign, owned by its caster. |
+| `infection` | Place a slime seed. Every second each surviving infection block grows into one random adjacent air cell, up to 512 blocks per seed and eight active seeds per match. One active seed per player, 60-second lifetime. Blocks are breakable; existing terrain is preserved. |
+| `lightning` | One targeted lightning strike within 48 blocks removes half the opponent's maximum health before absorption, ignoring armour/resistance. Invulnerability still protects. |
+| `apocalypse` | Aim at a block within 192 blocks: 36 adult zombies rain over a 6×6 area, 24 blocks above it, with random 0.5–5-second delays. They gain slow falling within five blocks of terrain. Zombies last 60 seconds, drop no loot and may attack the caster too. Maximum 144 pending/live zombies per match. |
+
+Remote cameras use the Mojang-named Paper camera packet while keeping players in survival.
+Unsupported camera runtimes refuse a drone shot or control attempt instead of changing game modes.
+Remote control, disguises and pending spawns are cleared on exit. Temporary terrain is restored on expiry or match end.
+The bows share the native bow material but have separate persistent perk identities.
 
 Special effects, entities, history and pending block leases are scoped to the match
 and cleaned on stop. Temporary terrain never overwrites existing blocks or deletes
@@ -1577,7 +1803,7 @@ disconnect and stop; reconnecting never grants extra charges.
 For live testing, admins in a running perks match can use `/pillars perk <type>`:
 `save`, `reroll`, `steal`, `ghost`, `anchor`, `jump`, `rewind`, `house`, `freeze`,
 `bow`, `crossbow`, `planks`, `break`, `sheep`, `smoke`, `fireball`, `pumpkin`,
-`atomic_bomb`, `anvil_rain`, `transmute`, `blessing`, `gravity`, `fake_block`, `pills`, `decoy` (tab completion).
+`atomic_bomb`, `anvil_rain`, `transmute`, `blessing`, `gravity`, `fake_block`, `pills`, `decoy`, plus the new IDs above (tab completion).
 This grants the item to the command sender after the countdown. Multiplayer
 balance and client interactions still require live playtesting.
 
@@ -1697,7 +1923,7 @@ segment at a time.
 /pillars config modes.chaos                  # one section
 /pillars config modes.chaos.layout random    # set: prints `path: old → new`
 /pillars config modes.chaos.layout default   # reset a declared setting, removing it from the file
-/pillars config arenas.lodestone.time night
+/pillars config modes.original.flood true   # enable rising lethal water on this mode
 /pillars config items.blacklist add bedrock  # flat lists: add / remove <entry>
 /pm config queues.pillars.chaos.maxPlayers 12
 /pm config gadgets.himars.cooldown 5
@@ -2102,6 +2328,11 @@ all sixteen spawn points, including the farthest-from-enemies selection.
 elimination and one-shot timeout penalties.
 `checkPillarsShuffle` checks dropped items and container stashes, cursor/crafting
 cleanup, entity equipment/storage, unloaded chunks, reconnects and ender-chest isolation.
+`checkPillarsFlood` checks exact rise boundaries and lethal contact without relying
+on player movement. `checkPillarsSky` checks equal profile selection and bounded
+custom colours/star intensity; `native-checks/pillars` exercises client water delivery,
+pre-start readiness, bounded per-tick work, late viewers, unchanged native blocks,
+session contact/cleanup and registered native sky data on a disposable server.
 `checkPillarsPerks` checks all twenty-five weighted outcomes and rarity, atomic TNT power/fuse/owner,
 decoy enemy-only one-shot triggers, damage cap and owner/terrain immunity,
 shuffled 3×3 anvil plans, face-connected and atomic transmutation, gravity duration/cooldown,

@@ -5,46 +5,16 @@
  */
 package me.petr1furious.potatominigames.games.pillars;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /** Slime template keeps the original world's coordinates; each game uses a throwaway copy. */
-public record PillarsArena(String name, String template, double x, double z, Long time,
-        Map<String, Object> gameRules) {
+public record PillarsArena(String name, String template, double x, double z, Map<String, Object> gameRules) {
 
-    /** Names accepted by {@code /time set}. */
-    private static final Map<String, Long> NAMED_TIMES = Map.of(
-            "day", 1000L,
-            "noon", 6000L,
-            "sunset", 12000L,
-            "night", 13000L,
-            "midnight", 18000L,
-            "sunrise", 23000L);
-
-    public static List<String> timeNames() {
-        return NAMED_TIMES.entrySet().stream().sorted(Map.Entry.comparingByValue()).map(Map.Entry::getKey).toList();
-    }
 
     /** Default template: {@code slime_worlds/pillars_<name>.slime}. */
     public static String templateFor(String arenaName) {
         return "pillars_" + arenaName.toLowerCase(Locale.ROOT);
     }
 
-    /** Tick or {@code /time set} name; null if neither. */
-    public static Long parseTimeOfDay(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String text = raw.trim().toLowerCase(Locale.ROOT);
-        Long named = NAMED_TIMES.get(text);
-        if (named != null) {
-            return named;
-        }
-        try {
-            return Math.floorMod(Long.parseLong(text), 24000L);
-        } catch (NumberFormatException exception) {
-            return null;
-        }
-    }
 }

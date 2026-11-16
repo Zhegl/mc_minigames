@@ -1,0 +1,5 @@
+name: TanksLoadSmoke
+version: 1.0
+main: TanksLoadSmoke
+api-version: '1.21'
+depend: [PotatoMinigames]

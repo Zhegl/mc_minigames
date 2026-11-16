@@ -20,7 +20,7 @@ import me.petr1furious.potatominigames.i18n.I18n;
 /** Player-owned fixed Fusion mixes; memory changes only after an atomic save succeeds. */
 final class PillarsPresets {
     static final int LIMIT = 5;
-    static final List<String> MODIFIERS = List.of("chaos", "shuffle", "tactical", "big_house", "party", "rave", "adhd", "perks");
+    static final List<String> MODIFIERS = List.of("chaos", "shuffle", "tactical", "big_house", "party", "rave", "adhd", "perks", "flood");
 
     record Preset(UUID owner, String ownerName, String name, List<String> modifiers) {
         Preset {

@@ -57,7 +57,63 @@ public final class FinalsHighlightsCheck {
         timedObjectiveLabels();
         downedTeammateLabels();
         distantProjection();
+        cashboxProjection();
+        enemyHealthVisibility();
         System.out.println("FinalsHighlightsCheck: " + checks + " checks passed");
+    }
+
+    private static void enemyHealthVisibility() throws Exception {
+        Fixture f = new Fixture();
+        Player enemy = f.player("enemy", f.arena.world, 40, 2);
+        Player ally = f.player("ally", f.arena.world, 3, 2);
+        Player outsider = f.player("master", f.arena.world, 4, 2);
+        f.teams.put(enemy.getUniqueId(), 1); f.teams.put(ally.getUniqueId(), 0);
+        f.active.addAll(List.of(enemy.getUniqueId(), ally.getUniqueId(), outsider.getUniqueId()));
+        var players = List.of(f.viewer, enemy, ally, outsider);
+        var labels = FinalsHighlights.enemyHealthMarkers(f.viewer, players, f.teams, p -> true);
+        require(labels.size() == 1 && labels.getFirst().key().equals("enemy-health-" + enemy.getUniqueId()),
+                "Only an opposing contestant receives an HP label, never self, allies or game master");
+        require(plain(labels.getFirst().label(), Locale.ENGLISH).equals("17/25 HP"),
+                "HP is rounded up and includes the current class maximum");
+        require(plain(labels.getFirst().label(), Locale.forLanguageTag("ru")).equals("17/25 ОЗ"),
+                "Enemy HP labels use the viewer's language");
+        require(labels.getFirst().location().distance(enemy.getLocation().clone().add(0, 2.1, 0)) < .000001,
+                "HP label follows the scaled player's actual head height");
+        Method placement = FinalsHighlights.class.getDeclaredMethod("placement", Player.class, FinalsHighlights.Marker.class);
+        placement.setAccessible(true);
+        Object distant = placement.invoke(null, f.viewer, labels.getFirst());
+        require(!(boolean) value(distant, "projected") && value(distant, "block") == null,
+                "Enemy HP never creates a distant direction proxy or glowing body");
+        require(FinalsHighlights.enemyHealthMarkers(f.viewer, players, f.teams, p -> false).isEmpty(),
+                "Expired reveal windows remove enemy HP");
+        f.active.remove(enemy.getUniqueId());
+        require(FinalsHighlights.enemyHealthMarkers(f.viewer, players, f.teams, p -> true).isEmpty(),
+                "Dead opponents have no HP label");
+        require(FinalsHighlights.enemyHealthMarkers(outsider, players, f.teams, p -> true).isEmpty(),
+                "An unteamed spectator does not receive enemy HP labels");
+    }
+
+    private static void cashboxProjection() throws Exception {
+        Fixture f = new Fixture();
+        Location point = new Location(f.arena.world, 1001.5, 90, 2002.5);
+        for (var phase : List.of(FinalsState.Phase.CASHBOX_AVAILABLE, FinalsState.Phase.CARRIED)) {
+            var marker = FinalsHighlights.cashboxMarker(phase, point);
+            require(marker != null && marker.key().equals("cashbox") && marker.block() == Material.GOLD_BLOCK,
+                    "Loose and carried cashboxes have an objective marker");
+            Method placement = FinalsHighlights.class.getDeclaredMethod("placement", Player.class, marker.getClass());
+            placement.setAccessible(true);
+            Object projected = placement.invoke(null, f.viewer, marker);
+            require((boolean) value(projected, "projected"), "A distant cashbox projects into rendered chunks");
+            require(f.viewer.getEyeLocation().distance((Location) value(projected, "label")) <= 8.000001,
+                    "The distant cashbox label remains close and readable");
+            Component text = (Component) value(projected, "text");
+            require(plain(text, Locale.ENGLISH).contains("Cashbox") && plain(text, Locale.ENGLISH).contains("blocks"),
+                    "The distant cashbox label includes its name and actual distance");
+        }
+        require(FinalsHighlights.cashboxMarker(FinalsState.Phase.CASHOUT, point) == null,
+                "Depositing a cashbox removes its marker");
+        require(FinalsHighlights.cashboxMarker(FinalsState.Phase.CASHBOX_AVAILABLE, null) == null,
+                "No cashbox marker is made without a known location");
     }
 
     private static void distantProjection() throws Exception {
@@ -535,6 +591,10 @@ public final class FinalsHighlightsCheck {
                                     switch (method.getName()) {
                                         case "getUniqueId" -> id;
                                         case "getName", "toString" -> name;
+                                        case "getHealth" -> 16.2;
+                                        case "getMaxHealth" -> 25d;
+                                        case "getHeight" -> 1.8;
+                                        case "canSee" -> true;
                                         case "displayName", "name" -> Component.text(name);
                                         case "getLocation" -> locations.get(id);
                                         case "getEyeLocation" ->

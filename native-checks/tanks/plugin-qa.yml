@@ -1,0 +1,12 @@
+name: TanksClientQa
+version: 1.0
+main: TanksClientQa
+api-version: '1.21'
+depend: [PotatoMinigames]
+commands:
+  tanksqa:
+    description: Manual private-playtest tank placement and state inspection
+    permission: tanksqa.use
+permissions:
+  tanksqa.use:
+    default: op

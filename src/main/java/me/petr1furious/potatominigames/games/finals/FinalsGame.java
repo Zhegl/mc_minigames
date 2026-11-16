@@ -32,6 +32,7 @@ public final class FinalsGame implements Minigame {
     private final FinalsMapPreview previews;
     private final FinalsLoadouts loadouts;
     private final FinalsEventCommands events;
+    private FinalsTutorials tutorials;
     private FinalsSession current;
 
     public FinalsGame(JavaPlugin plugin, ConfigRegistry configs) {
@@ -50,7 +51,9 @@ public final class FinalsGame implements Minigame {
                         player -> {
                             if (current != null && current.isInGame(player))
                                 current.loadoutChanged(player);
+                            if (tutorials != null) tutorials.loadoutChanged(player);
                         });
+        tutorials = new FinalsTutorials(plugin, config, loadouts);
         events = new FinalsEventCommands(plugin, () -> current);
     }
 
@@ -68,9 +71,20 @@ public final class FinalsGame implements Minigame {
 
     @Override
     public void extendCommands(LiteralArgumentBuilder<CommandSourceStack> root) {
+        tutorials.register(root);
         loadouts.register(root);
         events.register(root);
         new FinalsMapCommands(maps, previews).register(root);
+    }
+
+    public void configureTutorials(me.petr1furious.potatominigames.core.session.SessionManager sessions,
+            me.petr1furious.potatominigames.core.queue.QueueService queues) {
+        tutorials.configure(sessions, queues);
+    }
+
+    @Override
+    public boolean beforeQueue(org.bukkit.entity.Player player, Runnable continueQueue) {
+        return tutorials.suggest(player, continueQueue);
     }
 
     @Override

@@ -4,6 +4,7 @@ pillars.play
 pillars.effects
 party.duels
 party.rounds
+party.memory_materials
 bingo
 warfare
 chase
@@ -12,3 +13,4 @@ dummy
 gadgets
 party.magic
 cs
+tanks

@@ -28,7 +28,7 @@ import me.petr1furious.potatominigames.core.config.PropertyCodec;
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
     static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky", "tactical", "big_house",
-            "sniper_duel", "party", "rave", "adhd", "perks", "fusion");
+            "sniper_duel", "party", "rave", "adhd", "perks", "flood", "fusion");
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
@@ -82,6 +82,7 @@ public final class PillarsConfig {
         /** Intermittent accelerated shuffle/rave, also available on otherwise ordinary modes. */
         public final Property<Boolean> adhd;
         public final Property<Boolean> perks;
+        public final Property<Boolean> flood;
 
         Mode(String id, PropertyBag bag, int cooldown, String timeLimit, String color, boolean actionBar,
                 boolean bossBar, String layout, String pillarMaterial, boolean luckyBlocks, boolean sameItems,
@@ -108,6 +109,7 @@ public final class PillarsConfig {
                     .validate(value -> value >= 0);
             this.adhd = bag.define("adhd", PropertyCodec.BOOL, id.equals("adhd"));
             this.perks = bag.define("perks", PropertyCodec.BOOL, id.equals("perks"));
+            this.flood = bag.define("flood", PropertyCodec.BOOL, id.equals("flood"));
         }
 
         private static boolean isBlock(String value) {
@@ -143,8 +145,6 @@ public final class PillarsConfig {
         configs.key(FILE, "arenas.*.x", PropertyCodec.INT);
         configs.key(FILE, "arenas.*.z", PropertyCodec.INT);
         configs.key(FILE, "arenas.*.template", PropertyCodec.STRING);
-        configs.key(FILE, "arenas.*.time", PropertyCodec.STRING).type("tick or day/noon/night/...")
-                .suggest(PillarsArena::timeNames).validate(value -> PillarsArena.parseTimeOfDay(value) != null);
         configs.key(FILE, "items.weights.*", PropertyCodec.INT).type("weight, 0 removes the item")
                 .validate(value -> value >= 0);
         addMode("original", 5, "5min", "#FFFFFF", false, true, "circular");
@@ -160,6 +160,7 @@ public final class PillarsConfig {
         addMode("rave", 3, "8min", "#FF2E97", false, true, "circular", "", false, false, 1.0, 30);
         addMode("adhd", 5, "8min", "#FFAA00", false, true, "circular");
         addMode("perks", 5, "5min", "#D477FF", false, true, "circular");
+        addMode("flood", 5, "5min", "#3399FF", false, true, "circular");
         // A random mix of modifiers, rolled every game.
         addMode("fusion", 5, "8min", "#7DF9FF", false, true, "circular", "", false, false, 1.0, 0);
     }
@@ -291,8 +292,7 @@ public final class PillarsConfig {
                 }
             }
             arenas.add(new PillarsArena(name, arena.getString("template", PillarsArena.templateFor(name)),
-                    arena.getDouble("x"), arena.getDouble("z"), PillarsArena.parseTimeOfDay(arena.getString("time")),
-                    gameRules));
+                    arena.getDouble("x"), arena.getDouble("z"), gameRules));
         }
         return arenas;
     }

@@ -21,7 +21,12 @@ record MemoryBlock(Material material, Map<String, String> properties) {
         else if (name.endsWith("WALL_TORCH")) properties.put("facing", "north");
         else if (name.endsWith("_WALL_SIGN")) properties.put("facing", "north");
         else if (name.endsWith("_SIGN")) properties.put("rotation", "0");
-        else if (name.endsWith("_CHAIN") || name.endsWith("_LOG")) properties.put("axis", "y");
+        else if (name.endsWith("_FENCE_GATE")) {
+            properties.put("facing", "north");
+            properties.put("open", "false");
+        } else if (name.endsWith("_CHAIN") || name.endsWith("_LOG") || name.equals("HAY_BLOCK"))
+            properties.put("axis", "y");
+        else if (name.equals("CARVED_PUMPKIN")) properties.put("facing", "north");
         else if (name.equals("LANTERN") || name.equals("SOUL_LANTERN"))
             properties.put("hanging", "false");
         for (String setting : settings) {
@@ -41,18 +46,46 @@ record MemoryBlock(Material material, Map<String, String> properties) {
                         : serialized.substring(start + 1, serialized.length() - 1).split(","));
     }
 
+    /** Keep rendering/support state intact; only grading ignores sign direction. */
+    static boolean sameForBuild(MemoryBlock expected, MemoryBlock actual) {
+        if (expected == null || actual == null) return expected == actual;
+        if (expected.material != actual.material) return false;
+        boolean sign = expected.material.name().endsWith("_SIGN");
+        boolean closedGate =
+                expected.material.name().endsWith("_FENCE_GATE")
+                        && "false".equals(expected.properties.get("open"))
+                        && "false".equals(actual.properties.get("open"));
+        if (!sign && !closedGate) return expected.equals(actual);
+        var first = new HashMap<>(expected.properties);
+        var second = new HashMap<>(actual.properties);
+        for (var properties : List.of(first, second)) {
+            if (sign) {
+                properties.remove("facing");
+                properties.remove("rotation");
+            } else {
+                // Opposite facings render the same closed gate; its axis still matters.
+                String facing = properties.get("facing");
+                if ("south".equals(facing)) properties.put("facing", "north");
+                if ("west".equals(facing)) properties.put("facing", "east");
+            }
+        }
+        return first.equals(second);
+    }
+
     String dataString() {
         String name = "minecraft:" + material.name().toLowerCase(Locale.ROOT);
-        return properties.isEmpty()
+        Map<String, String> rendered = new TreeMap<>(properties);
+        // Player-placed leaves persist; the displayed model must not decay while memorizing.
+        if (material.name().endsWith("_LEAVES")) rendered.put("persistent", "true");
+        return rendered.isEmpty()
                 ? name
                 : name
                         + "["
                         + String.join(
                                 ",",
-                                new TreeMap<>(properties)
-                                        .entrySet().stream()
-                                                .map(e -> e.getKey() + "=" + e.getValue())
-                                                .toList())
+                                rendered.entrySet().stream()
+                                        .map(e -> e.getKey() + "=" + e.getValue())
+                                        .toList())
                         + "]";
     }
 

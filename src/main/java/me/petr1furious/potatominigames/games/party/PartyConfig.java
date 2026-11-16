@@ -9,6 +9,14 @@ import org.bukkit.configuration.ConfigurationSection;
 
 public final class PartyConfig {
     private final PropertyBag bag = new PropertyBag("party");
+    public final Property<Integer> garticPromptSeconds =
+            bag.define("garticPhone.promptSeconds", PropertyCodec.INT, 30).validate(n -> n >= 10 && n <= 120);
+    public final Property<Integer> garticBuildSeconds =
+            bag.define("garticPhone.buildSeconds", PropertyCodec.INT, 90).validate(n -> n >= 20 && n <= 300);
+    public final Property<Integer> garticGuessSeconds =
+            bag.define("garticPhone.guessSeconds", PropertyCodec.INT, 30).validate(n -> n >= 10 && n <= 120);
+    public final Property<Integer> garticRevealSeconds =
+            bag.define("garticPhone.revealSeconds", PropertyCodec.INT, 6).validate(n -> n >= 3 && n <= 20);
     public final Property<Integer> roundSeconds =
             bag.define("pvp.roundSeconds", PropertyCodec.INT, 90)
                     .validate(n -> n >= 20 && n <= 300);
@@ -97,7 +105,7 @@ public final class PartyConfig {
     public final Property<Integer> anvilWaves =
             bag.define("anvils.waves", PropertyCodec.INT, 10).validate(n -> n >= 2 && n <= 20);
     public final Property<Integer> anvilPvpWave =
-            bag.define("anvils.pvpWave", PropertyCodec.INT, 3).validate(n -> n >= 1 && n <= 20);
+            bag.define("anvils.pvpWave", PropertyCodec.INT, 1).validate(n -> n >= 1 && n <= 20);
     public final Property<Integer> buildMemoryStages =
             bag.define("buildMemory.stages", PropertyCodec.INT, 8).validate(n -> n >= 1 && n <= 8);
     public final Property<Integer> toolRaceSeconds =

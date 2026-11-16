@@ -64,6 +64,11 @@ import me.petr1furious.potatominigames.core.text.Messages;
  * start everyone left in any of its queues becomes a spectator.
  */
 public final class QueueService implements Listener {
+    private java.util.function.BiConsumer<Player, Queue> afterOnboarding = (player, queue) -> {};
+
+    public void setAfterOnboarding(java.util.function.BiConsumer<Player, Queue> callback) {
+        afterOnboarding = callback;
+    }
     private static final Messages QUEUE =
             new Messages(Bukkit::getServer, Messages.tag(I18n.tr("core.queue.tag").color(NamedTextColor.YELLOW)));
 
@@ -370,6 +375,14 @@ public final class QueueService implements Listener {
         if (current.isPresent() && current.get().isParticipant(player)) {
             throw new CommandFailure(I18n.tr("core.queue.already_playing", current.get().displayName()));
         }
+        if (queue.game.beforeQueue(player, () -> {
+            try {
+                join(player, queue);
+                if (queue.contains(player.getUniqueId())) afterOnboarding.accept(player, queue);
+            } catch (CommandFailure failure) {
+                player.sendMessage(failure.text());
+            }
+        })) return;
         touch(player);
 
         Optional<ActiveSession> running = sessions.sessionOf(queue.game);

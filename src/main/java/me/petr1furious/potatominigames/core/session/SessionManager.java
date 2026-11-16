@@ -267,6 +267,8 @@ public final class SessionManager {
     }
 
     public String playCommand(Minigame game, String mode) {
+        String direct = game.replayCommand(mode);
+        if (direct != null) return direct;
         return !game.showModes() || mode == null || mode.isEmpty()
                 ? "/play " + game.id()
                 : "/play " + game.id() + " " + mode;

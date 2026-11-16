@@ -59,6 +59,7 @@ public final class PartyInteractionCheck {
                         PartyInteractionCheck::toolMining,
                         PartyInteractionCheck::memoryMining,
                         PartyInteractionCheck::daylight,
+                        MobCountSessionCheck::run,
                         PartyInteractionCheck::armsReconnect,
                         PartyInteractionCheck::cancelRecovery,
                         PartyInteractionCheck::spectatorTeleport,
@@ -170,7 +171,8 @@ public final class PartyInteractionCheck {
 
     private static void daylight() throws Exception {
         var session = fixture(ToolRaceSession.class);
-        for (String mode : List.of("tool_race", "anvils", "color_floor", "build_memory")) {
+        for (String mode :
+                List.of("tool_race", "anvils", "color_floor", "build_memory", "mob_count")) {
             set(session, "id", mode);
             check(session.arenaTime() == 6000, "Daylight in " + mode);
         }
@@ -183,6 +185,8 @@ public final class PartyInteractionCheck {
         var session = fixture(BuildMemorySession.class);
         Set<UUID> ready = new HashSet<>();
         set(session, "ready", ready);
+        Set<UUID> dirty = new HashSet<>();
+        set(session, "dirty", dirty);
         set(session, "arena", new BuildMemoryArena(world.world, List.of(ID)));
         phase(session, "BUILD");
         var hit = interact(Action.LEFT_CLICK_BLOCK, world.block(16, 81, 0));
@@ -204,6 +208,11 @@ public final class PartyInteractionCheck {
                 "Building clicks reach native placement instead of returning before item use");
         var placed = world.block(16, 81, 0);
         placed.setType(Material.OAK_PLANKS, false);
+        hit = interact(Action.RIGHT_CLICK_BLOCK, placed);
+        session.onPlayerInteract(hit);
+        check(
+                dirty.contains(ID),
+                "Native interactive block changes are observed for completion timing");
         var replaced =
                 (org.bukkit.block.BlockState)
                         Proxy.newProxyInstance(

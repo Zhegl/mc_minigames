@@ -17,6 +17,12 @@ public interface Minigame {
     /** Also the command root, e.g. "bingo". */
     String id();
 
+    /** Optional onboarding before queue membership changes. True defers this attempt. */
+    default boolean beforeQueue(org.bukkit.entity.Player player, Runnable continueQueue) { return false; }
+
+    /** A direct replay entry for private experiences without a public queue. */
+    default String replayCommand(String mode) { return null; }
+
     Component displayName();
 
     /** One queue per mode. Single modes are hidden unless showModes() is overridden. */

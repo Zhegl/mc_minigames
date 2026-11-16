@@ -91,6 +91,7 @@ public final class FinalsSessionCheck {
         cashoutMovesOnlyAfterPayout();
         fixedCountdownAnchor();
         mapDeathHeight();
+        objectiveRecovery();
         sharedTeamStartingPoints();
         mapPreparationGates();
         countdownLoadoutWindow();
@@ -1367,6 +1368,41 @@ public final class FinalsSessionCheck {
         check(frozen.red.health == 20, "Countdown freeze takes precedence over the death floor");
     }
 
+    private static void objectiveRecovery() throws Exception {
+        Fixture f = new Fixture();
+        set(f.session, "arena", proxy(FinalsMapArena.class, (p, method, args) ->
+                switch (method.getName()) {
+                    case "deathHeight" -> 60d;
+                    case "contains" -> ((Location) args[0]).getWorld().equals(f.world.world);
+                    default -> method.invoke(f.arena, args);
+                }));
+        Location ledge = new Location(f.world.world, 10.5, 80, 10.5);
+        f.world.block(10, 79, 10).setType(Material.STONE);
+        f.red.location = ledge.clone();
+        f.red.grounded = true;
+        f.session.onPlayerMove(new PlayerMoveEvent(f.red.player, ledge, ledge.clone()));
+        f.red.grounded = false;
+        f.red.location = ledge.clone().add(4, -25, 0);
+        f.session.onPlayerMove(new PlayerMoveEvent(f.red.player, f.red.location, f.red.location));
+        var recovery = FinalsSession.class.getDeclaredMethod("recoveryPoint", UUID.class);
+        recovery.setAccessible(true);
+        check(recovery.invoke(f.session, RED).equals(ledge), "Falling below the death floor preserves the departure ledge");
+        set(f.session, "cashboxRecovery", recovery.invoke(f.session, RED));
+        var returnBox = FinalsSession.class.getDeclaredMethod("cashboxReturnPoint");
+        returnBox.setAccessible(true);
+        check(returnBox.invoke(f.session).equals(ledge.clone().add(0, .25, 0)),
+                "Cashbox returns just above its last grounded departure, not the vault or airborne release");
+        var ctx = FinalsSession.class.getDeclaredMethod("reviveContext"); ctx.setAccessible(true);
+        var revive = (FinalsRevives.Context) ctx.invoke(f.session);
+        check(revive.recovery(RED).equals(ledge), "Statues use the same departure anchor as the cashbox");
+        check(!revive.inside(f.red.location), "Statue movement treats a custom death floor as out of bounds");
+        Location boundary = ledge.clone(); boundary.setY(60);
+        check(revive.inside(boundary), "Objects exactly at the death floor remain valid");
+        f.world.block(10, 79, 10).setType(Material.AIR);
+        check(!revive.safeRecovery(ledge), "A destroyed departure ledge is no longer a valid return location");
+        check(!recovery.invoke(f.session, RED).equals(ledge), "Destroyed ledges use a supported fallback");
+    }
+
     private static void fixedCountdownAnchor() throws Exception {
         Fixture f = new Fixture();
         f.red.walkSpeed = .3f;
@@ -1538,6 +1574,7 @@ public final class FinalsSessionCheck {
         final Player player;
         Location location;
         boolean dead;
+        boolean grounded;
         double health = 20;
         Player killer;
         int sounds;
@@ -1615,6 +1652,7 @@ public final class FinalsSessionCheck {
                                             yield null;
                                         }
                                         case "isDead" -> dead;
+                                        case "isOnGround" -> grounded;
                                         case "setHealth" -> { health = (double) args[0]; yield null; }
                                         case "getKiller" -> killer;
                                         case "playSound" -> { sounds++; yield null; }
@@ -1773,6 +1811,8 @@ public final class FinalsSessionCheck {
                                 case "getY" -> y;
                                 case "getZ" -> z;
                                 case "getType" -> blocks.getOrDefault(at, Material.AIR);
+                                case "isPassable" -> blocks.getOrDefault(at, Material.AIR) == Material.AIR;
+                                case "isLiquid" -> false;
                                 case "setType" -> {
                                     blocks.put(at, (Material) args[0]);
                                     data.remove(at);
