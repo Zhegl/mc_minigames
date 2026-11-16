@@ -13,3 +13,4 @@ dummy
 gadgets
 party.magic
 cs
+tanks

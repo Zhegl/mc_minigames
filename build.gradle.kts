@@ -323,3 +323,20 @@ val checkCounterStrike by tasks.registering(JavaExec::class) {
     mainClass.set("me.petr1furious.potatominigames.games.cs.CsCheck")
 }
 tasks.check { dependsOn(checkCounterStrike) }
+
+for ((taskName, checkClass) in mapOf(
+    "checkTanks" to "TanksRulesCheck",
+    "checkTanksBallistics" to "TanksBallisticsCheck",
+    "checkTanksGeometry" to "TanksGeometryCheck",
+    "checkTankVisual" to "TankVisualCheck",
+    "checkTanksRadar" to "TanksRadarCheck",
+    "checkTanksScope" to "TanksScopeCheck",
+    "checkTanksAudio" to "TanksAudioCheck",
+    "checkTanksSession" to "TanksSessionCheck")) {
+    val tanksCheck = tasks.register<JavaExec>(taskName) {
+        dependsOn(checks.classesTaskName)
+        classpath = checks.runtimeClasspath
+        mainClass.set("me.petr1furious.potatominigames.games.tanks.$checkClass")
+    }
+    tasks.check { dependsOn(tanksCheck) }
+}
