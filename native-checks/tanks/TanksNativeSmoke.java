@@ -142,6 +142,17 @@ public final class TanksNativeSmoke extends JavaPlugin {
     }
 
     private void checkSeatGeometry() throws Exception {
+        Class<?> avatar = Class.forName("net.minecraft.world.entity.Avatar");
+        Field nativeAttachmentField = avatar.getDeclaredField("DEFAULT_VEHICLE_ATTACHMENT");
+        nativeAttachmentField.setAccessible(true);
+        Object nativeAttachment = nativeAttachmentField.get(null);
+        double playerAttachmentY = nativeAttachment.getClass().getField("y").getDouble(nativeAttachment);
+        Field nativeStandingField = avatar.getDeclaredField("STANDING_DIMENSIONS");
+        nativeStandingField.setAccessible(true);
+        Object nativeStanding = nativeStandingField.get(null);
+        double playerEyeHeight = ((Number) nativeStanding.getClass().getMethod("eyeHeight").invoke(nativeStanding)).doubleValue();
+        near(playerAttachmentY, .6, "native Avatar vehicle attachment subtracts .6 from Player feet");
+        near(playerEyeHeight, 1.62, "native standing Avatar eye height comes from native dimensions");
         List<Object> visuals = new ArrayList<>();
         List<ArmorStand> riders = new ArrayList<>();
         List<Entity> seats = new ArrayList<>();
@@ -165,6 +176,9 @@ public final class TanksNativeSmoke extends JavaPlugin {
                     double pivot = switch (i) { case 0 -> 1.22; case 1 -> 1.42; default -> 1.56; };
                     near(seat.getLocation().getY(), 65 + pivot + .68 * scale - .74,
                             "native Interaction anchor accounts for Player's .6 riding attachment");
+                    double nativePlayerEye = seat.getLocation().getY() - playerAttachmentY + playerEyeHeight;
+                    near(nativePlayerEye - (65 + pivot + .68 * scale), .28,
+                            "native Avatar attachment and eye dimensions place standing camera above the turret roof");
                     offsets[i] = rider.getLocation().getY() - seat.getLocation().getY();
                     require(rider.getVehicle() == seat && Double.isFinite(offsets[i]), "native Interaction passenger settles on its actual attachment");
                     stage("native seat geometry " + chassis[i] + ": seatY=" + seat.getLocation().getY()
@@ -182,7 +196,28 @@ public final class TanksNativeSmoke extends JavaPlugin {
                             near(rider.getLocation().getX(), seat.getLocation().getX(), "settled passenger follows native Interaction X");
                             near(rider.getLocation().getZ(), seat.getLocation().getZ(), "settled passenger follows native Interaction Z");
                             near(rider.getLocation().getY() - seat.getLocation().getY(), offsets[i], "native attachment offset is stable through motion");
+                            int owned = ((Collection<?>) call(visuals.get(i), "entities")).size();
+                            for (int reconnect = 0; reconnect < 3; reconnect++) {
+                                Entity discarded = seat;
+                                discarded.eject();
+                                discarded.remove();
+                                seat = (Entity) call(visuals.get(i), "seat");
+                                require(seat != discarded && seat.isValid(), "missing logout seat is recovered before native remount");
+                                Collection<?> entities = (Collection<?>) call(visuals.get(i), "entities");
+                                require(entities.size() == owned && entities.contains(seat) && !entities.contains(discarded),
+                                        "seat recovery swaps exactly one owned entity without recreating the hull");
+                                require(seat instanceof Interaction && !(seat instanceof LivingEntity)
+                                                && seat.isInvulnerable() && !seat.isPersistent() && !seat.isVisibleByDefault(),
+                                        "recovered Interaction retains hidden nonliving seat configuration");
+                                require(seat.addPassenger(rider) && rider.getVehicle() == seat,
+                                        "each recovered seat accepts an actual native passenger");
+                                update(visuals.get(i), new Location(world, i * 8 + 5 + reconnect, 65, -38, 90, 0), 110, 0, 500, 1000);
+                                require(rider.getVehicle() == seat && seat.getPassengers().contains(rider),
+                                        "native movement retains the recovered seat passenger");
+                            }
+                            seats.set(i, seat);
                         }
+                        stage("all chassis recover three deleted logout seats and retain actual native passengers through movement");
                     } catch (Throwable problem) { failure = problem; }
                     finally {
                         for (Object visual : visuals) try { call(visual, "remove"); } catch (Throwable ignored) { }
@@ -206,6 +241,14 @@ public final class TanksNativeSmoke extends JavaPlugin {
         require(number(call(arena, "progress")).doubleValue() == 1, "arena completes all slices");
         long labels = world.getEntitiesByClass(TextDisplay.class).size();
         require(labels == 2, "arena builds two native base labels (actual=" + labels + ", all=" + world.getEntities().size() + ")");
+        int leafCount = 0;
+        for (int x = -64; x < 64; x++) for (int z = -64; z < 64; z++) for (int y = 65; y <= 74; y++) {
+            if (world.getBlockAt(x, y, z).getBlockData() instanceof org.bukkit.block.data.type.Leaves leaves) {
+                leafCount++;
+                require(leaves.isPersistent(), "arena foliage remains stable under native random ticks at " + x + "," + y + "," + z);
+            }
+        }
+        require(leafCount > 0, "native leaf persistence assertion covers actual arena foliage");
         require((boolean) call(arena, "buildSlice", new Class<?>[]{int.class}, 1), "completed build remains complete");
         require(world.getEntitiesByClass(TextDisplay.class).size() == labels, "repeated completion does not duplicate labels");
         for (int team = 0; team < 2; team++) {
@@ -365,39 +408,40 @@ public final class TanksNativeSmoke extends JavaPlugin {
             newAttribute.setBaseValue(.1);
             attribute.addTransientModifier(new org.bukkit.attribute.AttributeModifier(unrelated, .02,
                     org.bukkit.attribute.AttributeModifier.Operation.ADD_NUMBER));
+            double baseline = attribute.getValue(), replacementBaseline = newAttribute.getValue();
             UUID id = UUID.randomUUID();
             Player transport = scopeTransport(id, attribute);
             Player reconnected = scopeTransport(id, newAttribute);
             require((boolean) call(scope, "toggle", new Class<?>[]{Player.class, long.class}, transport, 100L),
                     "native scope accepts the first toggle");
             require((boolean) call(scope, "active", new Class<?>[]{Player.class}, transport), "native scope reports active ownership");
-            near(attribute.getValue(), .024, "native scalar modifier produces20percent movement ratio for FOV zoom");
+            near(attribute.getValue(), baseline * .2, "native scalar modifier produces20percent movement ratio for FOV zoom");
             require(attribute.getModifier(key) != null && attribute.getModifier(key).getAmount() == -.8,
                     "native scope installs its own keyed modifier");
             require(!(boolean) call(scope, "toggle", new Class<?>[]{Player.class, long.class}, transport, 101L),
                     "same-click duplicate scope event is debounced");
-            near(attribute.getValue(), .024, "debounced scope event does not stack or remove zoom");
+            near(attribute.getValue(), baseline * .2, "debounced scope event does not stack or remove zoom");
             require((boolean) call(scope, "toggle", new Class<?>[]{Player.class, long.class}, transport, 104L),
                     "later accepted click toggles zoom off");
-            near(attribute.getValue(), .12, "native toggle-off restores original movement calculation");
+            near(attribute.getValue(), baseline, "native toggle-off restores original movement calculation");
             require(attribute.getModifier(key) == null && attribute.getModifier(unrelated) != null,
                     "scope removes only its own modifier");
             call(scope, "toggle", new Class<?>[]{Player.class, long.class}, transport, 108L);
             call(scope, "clear");
-            near(attribute.getValue(), .12, "scope cleanup restores native attribute calculation");
+            near(attribute.getValue(), baseline, "scope cleanup restores native attribute calculation");
             require(!(boolean) call(scope, "active", new Class<?>[]{Player.class}, transport), "scope cleanup clears ownership");
             call(scope, "toggle", new Class<?>[]{Player.class, long.class}, transport, 112L);
             call(scope, "toggle", new Class<?>[]{Player.class, long.class}, reconnected, 116L);
-            near(attribute.getValue(), .12, "reconnect clears the old native connection's modifier");
-            near(newAttribute.getValue(), .02, "reconnect applies zoom only to the replacement connection");
+            near(attribute.getValue(), baseline, "reconnect clears the old native connection's modifier");
+            near(newAttribute.getValue(), replacementBaseline * .2, "reconnect applies zoom only to the replacement connection");
             call(scope, "stop", new Class<?>[]{Player.class}, transport);
             require((boolean) call(scope, "active", new Class<?>[]{Player.class}, reconnected),
                     "stale connection cleanup cannot clear replacement ownership");
-            near(newAttribute.getValue(), .02, "stale connection cleanup preserves the replacement's native modifier");
+            near(newAttribute.getValue(), replacementBaseline * .2, "stale connection cleanup preserves the replacement's native modifier");
             call(scope, "clear");
-            near(newAttribute.getValue(), .1, "final scope cleanup removes replacement zoom");
+            near(newAttribute.getValue(), replacementBaseline, "final scope cleanup removes replacement zoom");
             call(scope, "stop", new Class<?>[]{Player.class}, reconnected);
-            near(newAttribute.getValue(), .1, "repeated scope stop is idempotent");
+            near(newAttribute.getValue(), replacementBaseline, "repeated scope stop is idempotent");
         } finally {
             call(scope, "clear");
             first.remove();

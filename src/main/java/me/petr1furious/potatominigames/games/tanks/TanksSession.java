@@ -36,6 +36,7 @@ final class TanksSession implements GameSession, Listener {
         double speed, trackSpeed;
         int settled;
         long revealedUntil;
+        long smokeUntil;
         Component feedback = Component.empty();
         long feedbackUntil;
         TanksRules.Chassis chassis;
@@ -184,6 +185,7 @@ final class TanksSession implements GameSession, Listener {
         world =
                 services.worlds()
                         .createVoid("tanks_" + UUID.randomUUID().toString().replace("-", ""));
+        configureArenaView(world);
         services.arena().applyStandardGameRules(world);
         world.setTime(9000);
         world.setStorm(false);
@@ -235,6 +237,12 @@ final class TanksSession implements GameSession, Listener {
                                 },
                                 1,
                                 1);
+    }
+
+    private static void configureArenaView(World arenaWorld) {
+        // Party defaults cap entity tracking below scout range even when target chunks are sent.
+        arenaWorld.setViewDistance(8);
+        arenaWorld.setSendViewDistance(8);
     }
 
     private void retainArenaChunks() {
@@ -327,14 +335,35 @@ final class TanksSession implements GameSession, Listener {
             p.setFallDistance(0);
             p.addPotionEffect(
                     new PotionEffect(PotionEffectType.INVISIBILITY, 1_000_000, 0, false, false));
-            p.teleport(v.at.clone().add(0, 3, 0));
-            v.visual.seat().addPassenger(p);
-            kit(p, a);
+            attachDriver(p, v);
+            prepareKit(p, a, reset);
             p.showBossBar(timer);
             p.sendMessage(tr("controls"));
         } finally {
             internalTeleport = false;
         }
+    }
+
+    private boolean attachDriver(Player p, Vehicle v) {
+        boolean previous = internalTeleport;
+        internalTeleport = true;
+        try {
+            p.leaveVehicle();
+            p.teleport(v.at.clone().add(0, 3, 0));
+            Entity seat = v.visual.seat();
+            boolean attached = seat.addPassenger(p) && p.getVehicle() == seat;
+            if (!attached) v.speed = v.trackSpeed = 0;
+            return attached;
+        } finally {
+            internalTeleport = previous;
+        }
+    }
+
+    private void prepareKit(Player p, TanksMatch.Actor a, boolean reset) {
+        // Replacing an otherwise identical offhand map during remount can lose its client hand
+        // render state.
+        if (reset) kit(p, a);
+        else p.getInventory().setHeldItemSlot(a.shell() == TanksRules.Shell.HE ? 1 : 0);
     }
 
     private void kit(Player p, TanksMatch.Actor a) {
@@ -370,6 +399,7 @@ final class TanksSession implements GameSession, Listener {
                         && p != null
                         && p.getWorld().equals(world)
                         && !p.isDead();
+        if (control && p.getVehicle() != v.visual.seat()) control = attachDriver(p, v);
         double throttle =
                 control && input != null
                         ? (input.isForward() ? 1 : 0) - (input.isBackward() ? 1 : 0)
@@ -379,7 +409,7 @@ final class TanksSession implements GameSession, Listener {
                         ? (input.isLeft() ? -1 : 0) + (input.isRight() ? 1 : 0)
                         : 0;
         if (a.trackTicks() > 0) throttle = turn = 0;
-        double speed = TanksRules.accelerate(v.speed, throttle, a.chassis().speed());
+        double speed = TanksRules.accelerate(v.speed, throttle, a.chassis());
         if (!control || a.trackTicks() > 0) speed = 0;
         float previousYaw = v.at.getYaw();
         float nextYaw = (float) TanksRules.steerYaw(v.at.getYaw(), turn, a.chassis());
@@ -406,15 +436,6 @@ final class TanksSession implements GameSession, Listener {
         v.turretPitch += (float) Math.clamp(pitch - v.turretPitch, -1.5, 1.5);
         v.settled = Math.abs(v.speed) < .01 && Math.abs(error) < 1 && turn == 0 ? v.settled + 1 : 0;
         v.visual.update(v.at, v.turretYaw, v.turretPitch, a.hp(), a.chassis().maxHp());
-        if (control && p.getVehicle() != v.visual.seat()) {
-            internalTeleport = true;
-            try {
-                p.teleport(v.at.clone().add(0, 3, 0));
-                v.visual.seat().addPassenger(p);
-            } finally {
-                internalTeleport = false;
-            }
-        }
     }
 
     private boolean clearOfTanks(UUID self, Location at) {
@@ -448,15 +469,14 @@ final class TanksSession implements GameSession, Listener {
             feedback(a, tr("reloading", seconds(a.reloadTicks())), Sound.BLOCK_DISPENSER_FAIL);
             return;
         }
-        double spread =
-                TanksRules.dispersion(
-                        a.chassis(),
-                        v.speed,
-                        TanksRules.angleDelta(v.turretYaw, p.getLocation().getYaw()),
-                        v.settled);
-        Location aim = muzzle.clone();
-        aim.setYaw(v.turretYaw + (float) (random.nextGaussian() * spread * .45));
-        aim.setPitch(v.turretPitch + (float) (random.nextGaussian() * spread * .45));
+        double spread = shotSpread(a, v, p);
+        var aim =
+                TanksBallistics.spreadDirection(
+                        v.turretYaw,
+                        v.turretPitch,
+                        spread,
+                        random.nextGaussian(),
+                        random.nextGaussian());
         v.revealedUntil = tick + 100;
         for (TanksAudio.Tone tone : TanksAudio.cannon(a.chassis(), a.shell()))
             playTone(muzzle, tone);
@@ -478,7 +498,8 @@ final class TanksSession implements GameSession, Listener {
                         a.chassis(),
                         a.shell(),
                         muzzle,
-                        aim.getDirection().multiply(TanksBallistics.SHELL_SPEED)));
+                        new Vector(aim.x(), aim.y(), aim.z())
+                                .multiply(TanksBallistics.SHELL_SPEED)));
     }
 
     private record BarrelPreflight(
@@ -879,6 +900,13 @@ final class TanksSession implements GameSession, Listener {
                                                     : aimStatus(a, v, p);
             if (scopes.active(p))
                 status = status.append(Component.text(" • ")).append(tr("scope-active"));
+            var smokePhase = TanksSmokeVisual.phase(tick, v.smokeUntil);
+            if (smokePhase == TanksSmokeVisual.Phase.ACTIVE)
+                status =
+                        status.append(Component.text(" • "))
+                                .append(tr("smoke-active", seconds((int) (v.smokeUntil - tick))));
+            else if (smokePhase == TanksSmokeVisual.Phase.FADING)
+                status = status.append(Component.text(" • ")).append(tr("smoke-expired"));
             p.sendActionBar(
                     tr(
                             "hud",
@@ -919,13 +947,20 @@ final class TanksSession implements GameSession, Listener {
     }
 
     private Component aimStatus(TanksMatch.Actor a, Vehicle v, Player p) {
-        double spread =
-                TanksRules.dispersion(
-                        a.chassis(),
-                        v.speed,
-                        TanksRules.angleDelta(v.turretYaw, p.getLocation().getYaw()),
-                        v.settled);
-        return tr("aim", String.format(Locale.ROOT, "%.1f", spread));
+        return tr(
+                "aim",
+                String.format(
+                        Locale.ROOT,
+                        "%.1f",
+                        TanksBallistics.confidence95Angle(shotSpread(a, v, p))));
+    }
+
+    private double shotSpread(TanksMatch.Actor a, Vehicle v, Player p) {
+        return TanksRules.dispersion(
+                a.chassis(),
+                v.speed,
+                TanksRules.angleDelta(v.turretYaw, p.getLocation().getYaw()),
+                v.settled);
     }
 
     private TanksBallistics.Aim aimAtCrosshair(Player p, TanksMatch.Actor a, Vehicle v) {
@@ -1007,14 +1042,15 @@ final class TanksSession implements GameSession, Listener {
             }
         }
         for (Smoke s : smoke)
-            world.spawnParticle(
-                    Particle.CAMPFIRE_SIGNAL_SMOKE,
-                    s.at.clone().add(0, 1.5, 0),
-                    45,
-                    2.1,
-                    1.2,
-                    2.1,
-                    .015);
+            if (TanksSmokeVisual.emits(tick, s.until))
+                world.spawnParticle(
+                        TanksSmokeVisual.particle(),
+                        s.at.clone().add(0, 1.5, 0),
+                        TanksSmokeVisual.PARTICLES_PER_BURST,
+                        2.1,
+                        1.2,
+                        2.1,
+                        .015);
     }
 
     private List<TanksRadar.Blip> radarBlips(Player viewer) {
@@ -1138,26 +1174,44 @@ final class TanksSession implements GameSession, Listener {
                             ? Color.AQUA
                             : result.penetrated() ? Color.LIME : Color.ORANGE;
         }
-        double distance = Math.sqrt(from.distanceSquared(prediction.at));
-        Location center = prediction.at.clone().subtract(direction.clone().multiply(.06));
-        var desired = aimAtCrosshair(driver, a, v);
-        double spread =
-                TanksRules.dispersion(
-                        a.chassis(),
-                        v.speed,
-                        TanksRules.angleDelta(v.turretYaw, desired.yaw()),
-                        v.settled);
-        double radius = Math.clamp(Math.tan(Math.toRadians(spread)) * distance, .065, 2);
-        Vector right = direction.clone().crossProduct(new Vector(0, 1, 0)).normalize(),
-                up = right.clone().crossProduct(direction).normalize();
+        var plane =
+                TanksBallistics.markerPlane(
+                        new TanksBallistics.Point(from.getX(), from.getY(), from.getZ()),
+                        new TanksBallistics.Point(
+                                prediction.at.getX(), prediction.at.getY(), prediction.at.getZ()),
+                        new TanksBallistics.Direction(
+                                direction.getX(), direction.getY(), direction.getZ()));
+        Location center = new Location(world, plane.x(), plane.y(), plane.z());
+        TanksBallistics.Point[] contour;
+        if (prediction.blocked) {
+            // Barrel obstructions happen before dispersion; show their exact guarded endpoint.
+            contour = new TanksBallistics.Point[TanksBallistics.RETICLE_POINTS];
+            Vector right = direction.clone().crossProduct(new Vector(0, 1, 0)).normalize(),
+                    up = right.clone().crossProduct(direction).normalize();
+            for (int i = 0; i < contour.length; i++) {
+                double angle = i * Math.PI * 2 / contour.length;
+                Location point =
+                        center.clone()
+                                .add(right.clone().multiply(Math.cos(angle) * .065))
+                                .add(up.clone().multiply(Math.sin(angle) * .065));
+                contour[i] = new TanksBallistics.Point(point.getX(), point.getY(), point.getZ());
+            }
+        } else
+            contour =
+                    TanksBallistics.dispersionContour(
+                            new TanksBallistics.Point(from.getX(), from.getY(), from.getZ()),
+                            v.turretYaw,
+                            v.turretPitch,
+                            shotSpread(a, v, driver),
+                            new TanksBallistics.Point(center.getX(), center.getY(), center.getZ()),
+                            new TanksBallistics.Direction(
+                                    direction.getX(), direction.getY(), direction.getZ()));
         var dust = new Particle.DustOptions(color, .45f);
-        for (int i = 0; i < 8; i++) {
-            double angle = i * Math.PI / 4;
+        for (var point : contour) {
+            if (point == null) continue;
             driver.spawnParticle(
                     Particle.DUST,
-                    center.clone()
-                            .add(right.clone().multiply(Math.cos(angle) * radius))
-                            .add(up.clone().multiply(Math.sin(angle) * radius)),
+                    new Location(world, point.x(), point.y(), point.z()),
                     1,
                     0,
                     0,
@@ -1238,7 +1292,9 @@ final class TanksSession implements GameSession, Listener {
         }
         if (slot == 3) {
             if (a.smoke()) {
-                smoke.add(new Smoke(vehicles.get(a.id()).at.clone(), tick + a.smokeTicks()));
+                Vehicle v = vehicles.get(a.id());
+                v.smokeUntil = tick + a.smokeTicks();
+                smoke.add(new Smoke(v.at.clone(), v.smokeUntil));
                 feedback(a, tr("smoke-deployed"), Sound.BLOCK_FIRE_EXTINGUISH);
             } else feedback(a, tr("smoke-unavailable"), Sound.BLOCK_DISPENSER_FAIL);
         }
@@ -1409,6 +1465,15 @@ final class TanksSession implements GameSession, Listener {
         scopes.stop(p);
         var a = actor(p);
         if (a == null) return;
+        // Detach before Paper's logout pass removes a player's root vehicle.
+        internalTeleport = true;
+        try {
+            p.leaveVehicle();
+        } finally {
+            internalTeleport = false;
+        }
+        Vehicle v = vehicles.get(a.id());
+        if (v != null) v.speed = v.trackSpeed = 0;
         a.disconnect();
         connections.remove(a.id());
         inputs.remove(a.id());
@@ -1435,7 +1500,7 @@ final class TanksSession implements GameSession, Listener {
         connections.put(a.id(), p);
         inputs.put(a.id(), p.getCurrentInput());
         if (!built) return;
-        if (a.alive()) mount(p, a, vehicles.get(a.id()), true);
+        if (a.alive()) mount(p, a, vehicles.get(a.id()), false);
         else {
             internalTeleport = true;
             try {

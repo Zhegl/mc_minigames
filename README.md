@@ -49,13 +49,16 @@ Light tanks trade armor for speed, view range and concealment; mediums balance
 mobility and firepower; heavies have stronger armor and guns with slower traverse.
 AP checks plate angle and may ricochet. HE trades penetration for reduced damage
 on armor impacts; it is a direct-hit shell in this compact adaptation. Low hits
-can break tracks, including a blocked hull hit. The private gun circle previews
-the actual ballistic trajectory; green indicates penetration, orange blocked armor
-and cyan an ally. Moving and turning widen dispersion. Muzzle walls, your own
+can break tracks, including a blocked hull hit. The private gun marker previews
+the ballistic impact and a 95% shot-area contour; Gaussian dispersion can still
+send shots outside that contour. Marker color describes the central predicted
+impact: green penetration, orange blocked armor and cyan an ally. Moving and
+turning widen dispersion. Muzzle walls, your own
 depressed barrel and allied tanks obstruct shells.
 
 The offhand tactical map displays allies and team-spotted enemies. Cover, light-tank
-concealment and smoke affect spotting; smoke does not stop shells. Destroyed team
+concealment and smoke affect normal spotting. At less than 10 blocks, proximity
+detection reveals enemies even through walls or smoke; smoke does not stop shells. Destroyed team
 members retain team spotting rather than receiving omniscient enemy information.
 Three-dimensional tank models animate tracks, hull, turret and barrel separately;
 impacts, ricochets, reloads, damage and wrecks have distinct vanilla feedback.

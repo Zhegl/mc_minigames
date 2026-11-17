@@ -51,7 +51,7 @@ final class TankVisual {
     private final TanksRules.Chassis chassis;
     private final List<Entity> entities = new ArrayList<>();
     private final List<Part> parts = new ArrayList<>();
-    private final Interaction seat;
+    private Interaction seat;
     private final TextDisplay health;
     private final float scale;
     private final NamedTextColor teamColor;
@@ -72,21 +72,7 @@ final class TankVisual {
         Material armor = side == 0 ? Material.GREEN_TERRACOTTA : Material.CYAN_TERRACOTTA;
         Material darkArmor = side == 0 ? Material.GREEN_CONCRETE : Material.CYAN_CONCRETE;
         Material team = side == 0 ? Material.RED_CONCRETE : Material.BLUE_CONCRETE;
-        seat =
-                world.spawn(
-                        seatAt(hull),
-                        Interaction.class,
-                        stand -> {
-                            // Nonliving seats preserve vehicle input without native mount HP.
-                            stand.setInteractionWidth(0);
-                            stand.setInteractionHeight(0);
-                            stand.setResponsive(false);
-                            stand.setInvulnerable(true);
-                            stand.setGravity(false);
-                            stand.setSilent(true);
-                            stand.setPersistent(false);
-                            stand.setVisibleByDefault(false);
-                        });
+        seat = createSeat();
         entities.add(seat);
         // Long track belts, beveled ends, five distinct road wheels and bright axle hubs.
         for (int sign : new int[] {-1, 1}) {
@@ -386,6 +372,23 @@ final class TankVisual {
                 0);
     }
 
+    private Interaction createSeat() {
+        return world.spawn(
+                seatAt(hull),
+                Interaction.class,
+                stand -> {
+                    // Nonliving seats preserve vehicle input without native mount HP.
+                    stand.setInteractionWidth(0);
+                    stand.setInteractionHeight(0);
+                    stand.setResponsive(false);
+                    stand.setInvulnerable(true);
+                    stand.setGravity(false);
+                    stand.setSilent(true);
+                    stand.setPersistent(false);
+                    stand.setVisibleByDefault(false);
+                });
+    }
+
     void wreck() {
         if (wrecked || removed) return;
         wrecked = true;
@@ -416,6 +419,14 @@ final class TankVisual {
     }
 
     Entity seat() {
+        if (!removed && !wrecked && !seat.isValid()) {
+            // Paper can remove a player's root mount during logout. Keep the model and
+            // combat state, replacing only its missing passenger anchor on the next attach.
+            entities.remove(seat);
+            seat.remove();
+            seat = createSeat();
+            entities.add(seat);
+        }
         return seat;
     }
 

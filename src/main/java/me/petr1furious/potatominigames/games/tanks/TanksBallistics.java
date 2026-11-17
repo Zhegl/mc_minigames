@@ -3,6 +3,84 @@ package me.petr1furious.potatominigames.games.tanks;
 /** Pure continuous collision against the same conservative footprint as the vehicle controller. */
 final class TanksBallistics {
     static final double SHELL_SPEED = 2.6, GRAVITY = .012;
+    static final int RETICLE_POINTS = 16;
+    static final double GAUSSIAN_SIGMA = .45, CONFIDENCE_95 = Math.sqrt(-2 * Math.log(.05));
+
+    record Direction(double x, double y, double z) {}
+
+    record Point(double x, double y, double z) {}
+
+    static Point markerPlane(Point muzzle, Point impact, Direction normal) {
+        double forward =
+                (impact.x - muzzle.x) * normal.x
+                        + (impact.y - muzzle.y) * normal.y
+                        + (impact.z - muzzle.z) * normal.z;
+        double offset = Math.min(.06, Math.max(0, forward) * .5);
+        return new Point(
+                impact.x - normal.x * offset,
+                impact.y - normal.y * offset,
+                impact.z - normal.z * offset);
+    }
+
+    /** Radial95% contour for the existing pair of independent Gaussian angular errors. */
+    static double confidence95Angle(double spread) {
+        return spread * GAUSSIAN_SIGMA * CONFIDENCE_95;
+    }
+
+    /** Keep the original two Gaussian draws, .45 multiplier and float-angle rounding exactly. */
+    static Direction spreadDirection(
+            float yaw, float pitch, double spread, double gaussianYaw, double gaussianPitch) {
+        float shotYaw = yaw + (float) (gaussianYaw * spread * GAUSSIAN_SIGMA);
+        float shotPitch = pitch + (float) (gaussianPitch * spread * GAUSSIAN_SIGMA);
+        double yr = Math.toRadians(shotYaw),
+                pr = Math.toRadians(shotPitch),
+                horizontal = Math.cos(pr);
+        return new Direction(-horizontal * Math.sin(yr), -Math.sin(pr), horizontal * Math.cos(yr));
+    }
+
+    /** Projects one actual tick-integrated trajectory onto the marker's impact plane. */
+    static Point projectShot(Point start, Direction initial, Point plane, Direction normal) {
+        double x = start.x, y = start.y, z = start.z;
+        double vx = initial.x * SHELL_SPEED,
+                vy = initial.y * SHELL_SPEED,
+                vz = initial.z * SHELL_SPEED;
+        double side =
+                (x - plane.x) * normal.x + (y - plane.y) * normal.y + (z - plane.z) * normal.z;
+        if (Math.abs(side) < 1e-10) return start;
+        for (int age = 0; age < 65; age++) {
+            double next = side + vx * normal.x + vy * normal.y + vz * normal.z;
+            if ((side < 0 && next >= 0) || (side > 0 && next <= 0)) {
+                double t = side / (side - next);
+                return new Point(x + vx * t, y + vy * t, z + vz * t);
+            }
+            x += vx;
+            y += vy;
+            z += vz;
+            vy -= GRAVITY;
+            side = next;
+        }
+        return null;
+    }
+
+    /**
+     * Pure projection: fixed-size private reticle, no radius cap, terrain reads or hit sampling.
+     */
+    static Point[] dispersionContour(
+            Point start, float yaw, float pitch, double spread, Point plane, Direction normal) {
+        Point[] contour = new Point[RETICLE_POINTS];
+        for (int i = 0; i < contour.length; i++) {
+            double angle = i * Math.PI * 2 / contour.length;
+            Direction direction =
+                    spreadDirection(
+                            yaw,
+                            pitch,
+                            spread,
+                            CONFIDENCE_95 * Math.cos(angle),
+                            CONFIDENCE_95 * Math.sin(angle));
+            contour[i] = projectShot(start, direction, plane, normal);
+        }
+        return contour;
+    }
 
     private TanksBallistics() {}
 

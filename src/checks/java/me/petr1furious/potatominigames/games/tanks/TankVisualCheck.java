@@ -124,6 +124,24 @@ public final class TankVisualCheck {
                     render.transforms == transforms,
                     "stationary tanks do not resend model transforms");
             check(render.particles - before <= 12, "damage smoke has a bounded update rate");
+            int ownedCount = visual.entities().size();
+            for (int reconnect = 0; reconnect < 3; reconnect++) {
+                Entity discardedSeat = visual.seat();
+                discardedSeat.remove();
+                Entity replacement = visual.seat();
+                check(replacement != discardedSeat && replacement.isValid(),
+                        "a removed logout seat is replaced before remount");
+                check(visual.entities().size() == ownedCount
+                                && !visual.entities().contains(discardedSeat)
+                                && visual.entities().contains(replacement),
+                        "seat recovery owns one current anchor without duplicating the model");
+                RenderEntity state = render.states.get(replacement);
+                check(state.invulnerable && !state.gravity && !state.persistent && !state.visibleByDefault,
+                        "recovered seats retain privacy and nonpersistent vehicle configuration");
+                check(Math.abs(state.position.getY() - mount.position.getY()) < .001,
+                        "recovered seats retain the class-specific camera anchor");
+            }
+            mount = render.states.get(visual.seat());
             visual.wreck();
             check(mount.ejected, "wreck ejects its pilot");
             List<Entity> owned = List.copyOf(visual.entities());
@@ -168,6 +186,7 @@ public final class TankVisualCheck {
         Matrix4f matrix;
         Location position;
         boolean retainedPassengers, ejected, removed;
+        boolean invulnerable, gravity = true, persistent = true, visibleByDefault = true;
     }
 
     private static final class RenderWorld {
@@ -236,6 +255,11 @@ public final class TankVisualCheck {
                                                                                     "remove"))
                                                                                 state.removed =
                                                                                         true;
+                                                                            else if (name.equals("isValid")) return !state.removed;
+                                                                            else if (name.equals("setInvulnerable")) state.invulnerable = (boolean) values[0];
+                                                                            else if (name.equals("setGravity")) state.gravity = (boolean) values[0];
+                                                                            else if (name.equals("setPersistent")) state.persistent = (boolean) values[0];
+                                                                            else if (name.equals("setVisibleByDefault")) state.visibleByDefault = (boolean) values[0];
                                                                             else if (name.equals(
                                                                                     "equals"))
                                                                                 return object

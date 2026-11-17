@@ -46,9 +46,9 @@ public final class TanksRules {
     }
 
     public enum Chassis {
-        LIGHT(800, .24, 62, 150, 160, 85, 55, 35, 4.5, 2.8),
-        MEDIUM(1100, .19, 84, 190, 220, 125, 85, 55, 3.5, 2.1),
-        HEAVY(1500, .14, 112, 235, 300, 180, 115, 75, 2.5, 1.55);
+        LIGHT(1000, .30, 44, 170, 180, 80, 50, 30, 5.5, 3.8),
+        MEDIUM(1150, .21, 68, 210, 240, 130, 80, 50, 3.6, 2.5),
+        HEAVY(1450, .14, 120, 230, 300, 185, 105, 65, 1.6, 1.25);
         private final double maxHp, speed, penetration, damage, frontArmor, sideArmor, rearArmor;
         private final double turretDegreesPerTick, hullDegreesPerTick;
         private final int reloadTicks;
@@ -266,26 +266,56 @@ public final class TanksRules {
 
     /** Bounded throttle and friction prevent instantaneous reversing and runaway speeds. */
     public static double accelerate(double current, double throttle, double maxSpeed) {
+        return accelerate(current, throttle, maxSpeed, .012);
+    }
+
+    /** Chassis acceleration gives the scout an actual escape advantage from a standing start. */
+    public static double accelerate(double current, double throttle, Chassis chassis) {
+        Objects.requireNonNull(chassis, "chassis");
+        double acceleration = switch (chassis) {
+            case LIGHT -> .024;
+            case MEDIUM -> .016;
+            case HEAVY -> .010;
+        };
+        return accelerate(current, throttle, chassis.speed(), acceleration);
+    }
+
+    private static double accelerate(double current, double throttle, double maxSpeed, double acceleration) {
         finite(current, throttle, maxSpeed);
         if (maxSpeed <= 0) throw new IllegalArgumentException("Nonpositive top speed");
         throttle = clamp(throttle, -1, 1);
         double target = throttle * maxSpeed * (throttle < 0 ? .55 : 1);
-        double acceleration = throttle == 0 ? .018 : .012;
+        if (throttle == 0) acceleration *= 1.5;
         return clamp(
                 current + clamp(target - current, -acceleration, acceleration),
                 -maxSpeed * .55,
                 maxSpeed);
     }
 
-    /** Aiming cone half-angle in degrees; motion and a lagging turret widen the cone. */
+    /** Nominal Gaussian angular spread scale in degrees; motion and a lagging turret widen it. */
     public static double dispersion(
             Chassis chassis, double speed, double turretErrorDegrees, int stationaryTicks) {
         Objects.requireNonNull(chassis, "chassis");
         finite(speed, turretErrorDegrees);
-        double settling = 1 - clamp(stationaryTicks / 40.0, 0, 1);
+        int settleTicks = switch (chassis) {
+            case LIGHT -> 20;
+            case MEDIUM -> 30;
+            case HEAVY -> 40;
+        };
+        double settlePenalty = switch (chassis) {
+            case LIGHT -> .5;
+            case MEDIUM -> 1;
+            case HEAVY -> 1.4;
+        };
+        double motionPenalty = switch (chassis) {
+            case LIGHT -> .9;
+            case MEDIUM -> 1.7;
+            case HEAVY -> 2.8;
+        };
+        double settling = 1 - clamp(stationaryTicks / (double) settleTicks, 0, 1);
         return .45
-                + settling * 1.4
-                + clamp(Math.abs(speed) / chassis.speed(), 0, 1) * 2.5
+                + settling * settlePenalty
+                + clamp(Math.abs(speed) / chassis.speed(), 0, 1) * motionPenalty
                 + Math.min(3, Math.abs(turretErrorDegrees) / 20);
     }
 

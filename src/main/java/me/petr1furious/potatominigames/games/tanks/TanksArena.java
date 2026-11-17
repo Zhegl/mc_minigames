@@ -5,6 +5,7 @@ import me.petr1furious.potatominigames.i18n.I18n;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.data.type.Leaves;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.TextDisplay;
 
@@ -36,7 +37,16 @@ final class TanksArena {
             int column = cell / (MAX_Y - MIN_Y + 1);
             int x = column % WIDTH - HALF_X, z = column / WIDTH - HALF_Z;
             Material material = materialAt(x, y, z);
-            if (material != Material.AIR) world.getBlockAt(x, y, z).setType(material, false);
+            if (material != Material.AIR) {
+                var block = world.getBlockAt(x, y, z);
+                block.setType(material, false);
+                if (material == Material.SPRUCE_LEAVES) {
+                    // Decorative cover must survive random ticks without item drops.
+                    Leaves leaves = (Leaves) block.getBlockData();
+                    leaves.setPersistent(true);
+                    block.setBlockData(leaves, false);
+                }
+            }
         }
         if (cursor == TOTAL && !labelled) {
             labelled = true;

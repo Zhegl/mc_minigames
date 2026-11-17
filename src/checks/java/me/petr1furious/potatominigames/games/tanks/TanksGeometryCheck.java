@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.type.Leaves;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayDeque;
@@ -27,6 +28,13 @@ public final class TanksGeometryCheck {
         } while (!complete);
         check(arena.progress() == 1, "completed progress");
         check(arena.buildSlice(1), "completion is idempotent");
+        long leafCount =
+                map.blocks.values().stream().filter(m -> m == Material.SPRUCE_LEAVES).count();
+        check(leafCount > 0, "arena contains tree crowns");
+        check(
+                map.persistentLeaves.size() == leafCount
+                        && map.persistentLeaves.values().stream().allMatch(Boolean::booleanValue),
+                "every arena leaf is persistent: random ticks cannot erase cover or drop items");
         for (int side = 0; side < 2; side++) {
             for (int i = 0; i < 6; i++) {
                 Location spawn = arena.spawn(side, i);
@@ -148,6 +156,7 @@ public final class TanksGeometryCheck {
 
     static final class WorldMap {
         final Map<String, Material> blocks = new HashMap<>();
+        final Map<String, Boolean> persistentLeaves = new HashMap<>();
         int writes;
         final World world =
                 (World)
@@ -187,6 +196,41 @@ public final class TanksGeometryCheck {
                                         case "setType" -> {
                                             writes++;
                                             blocks.put(key, (Material) args[0]);
+                                            persistentLeaves.remove(key);
+                                            yield null;
+                                        }
+                                        case "getBlockData" -> {
+                                            check(
+                                                    blocks.get(key) == Material.SPRUCE_LEAVES,
+                                                    "leaf metadata only");
+                                            boolean[] persistent = {
+                                                persistentLeaves.getOrDefault(key, false)
+                                            };
+                                            yield Proxy.newProxyInstance(
+                                                    Leaves.class.getClassLoader(),
+                                                    new Class<?>[] {Leaves.class},
+                                                    (data, operation, values) ->
+                                                            switch (operation.getName()) {
+                                                                case "setPersistent" -> {
+                                                                    persistent[0] =
+                                                                            (boolean) values[0];
+                                                                    yield null;
+                                                                }
+                                                                case "isPersistent" ->
+                                                                        persistent[0];
+                                                                default ->
+                                                                        throw new AssertionError(
+                                                                                "Leaves: "
+                                                                                        + operation
+                                                                                                .getName());
+                                                            });
+                                        }
+                                        case "setBlockData" -> {
+                                            check(
+                                                    !(boolean) args[1],
+                                                    "leaf persistence avoids physics updates");
+                                            persistentLeaves.put(
+                                                    key, ((Leaves) args[0]).isPersistent());
                                             yield null;
                                         }
                                         case "getType" -> blocks.getOrDefault(key, Material.AIR);

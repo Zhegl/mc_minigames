@@ -20,6 +20,7 @@ public final class TanksLoadSmoke extends JavaPlugin {
     private Object arena, session, match, scope;
     private Class<?> chassisType, actorType, vehicleType, shellType, flightType;
     private final List<Unit> units = new ArrayList<>();
+    private final Set<UUID> expectedEntityIds = new HashSet<>();
     private final List<String> stages = new ArrayList<>();
     private final Map<String, Method> methods = new HashMap<>();
     private final long[] cpu = new long[200], intervals = new long[199];
@@ -54,7 +55,10 @@ public final class TanksLoadSmoke extends JavaPlugin {
                     }));
             require(world != null, "dedicated empty native load world created");
             world.setViewDistance(3);world.setSimulationDistance(3);world.setTime(18000);
+            world.setStorm(false);world.setThundering(false);
             world.setGameRule(GameRules.SPAWN_MOBS, false);
+            world.setGameRule(GameRules.ADVANCE_TIME, false);
+            world.setGameRule(GameRules.ADVANCE_WEATHER, false);
             match = make(type("TanksMatch"), new Class<?>[]{int.class, int.class, boolean.class}, 20000, 1000, false);
             Class<?> servicesType = outside("core.game.SessionServices");
             Constructor<?> servicesConstructor = servicesType.getDeclaredConstructors()[0];
@@ -79,7 +83,17 @@ public final class TanksLoadSmoke extends JavaPlugin {
     }
 
     @SuppressWarnings("unchecked") private void spawn() throws Exception {
+        int leaves = 0, unstableLeaves = 0;
+        for (int x = -64; x <= 64; x++) for (int z = -50; z <= 50; z++) for (int y = 65; y <= 75; y++) {
+            if (world.getBlockAt(x, y, z).getBlockData() instanceof org.bukkit.block.data.type.Leaves foliage) {
+                leaves++;
+                if (!foliage.isPersistent()) unstableLeaves++;
+            }
+        }
+        require(leaves > 0 && unstableLeaves == 0, "every native arena leaf is persistent under normal random ticks: " + unstableLeaves + "/" + leaves);
+        stage("native persistent foliage " + leaves + " blocks; normal random ticks remain enabled");
         baseline = world.getEntities().size();
+        for (Entity entity : world.getEntities()) expectedEntityIds.add(entity.getUniqueId());
         require(world.getEntitiesByClass(TextDisplay.class).size() == 2,
                 "arena has two base labels after registry settling: total="+baseline+", types="+world.getEntities().stream().map(e->e.getType().toString()).toList());
         Map<UUID, Object> vehicles = (Map<UUID, Object>) field(session, "vehicles");
@@ -97,9 +111,12 @@ public final class TanksLoadSmoke extends JavaPlugin {
             u.vehicle = make(vehicleType, new Class<?>[]{Location.class}, u.at);
             set(u.vehicle, "chassis", u.chassis);set(u.vehicle, "visual", u.visual);set(u.vehicle, "settled", 80);
             vehicles.put(u.id, u.vehicle);names.put(u.id, "Load" + i);
-            u.attributeBody = world.spawn(u.at.clone().add(0, 12, 0), Zombie.class, body -> {
+            // Attribute bodies are deterministic fixtures, not randomized baby/jockey mob spawns.
+            u.attributeBody = world.spawn(u.at.clone().add(0, 12, 0), Zombie.class, false, body -> {
                 body.setAI(false);body.setGravity(false);body.setInvulnerable(true);body.setSilent(true);body.setPersistent(false);
             });
+            for (Entity entity : u.entities) expectedEntityIds.add(entity.getUniqueId());
+            expectedEntityIds.add(u.attributeBody.getUniqueId());
             var speed = u.attributeBody.getAttribute(Attribute.MOVEMENT_SPEED);
             speed.setBaseValue(.1);
             speed.addTransientModifier(new AttributeModifier(new NamespacedKey("tanks_load", "preserved"), .02, AttributeModifier.Operation.ADD_NUMBER));
@@ -154,7 +171,10 @@ public final class TanksLoadSmoke extends JavaPlugin {
                 }
                 call(match, "tick");
                 int entities = world.getEntities().size();peak = Math.max(peak, entities);
-                if (entities != expectedEntities) throw new AssertionError("entity count drifted during replay: " + entities + " vs " + expectedEntities);
+                if (entities != expectedEntities) throw new AssertionError("entity count drifted during replay: " + entities + " vs " + expectedEntities
+                        + "; unexpected=" + world.getEntities().stream().filter(e -> !expectedEntityIds.contains(e.getUniqueId()))
+                                .map(e -> e.getType()+ (e instanceof Item item ? "[" + item.getItemStack().getType() + "]" : "")
+                                        +"@"+e.getLocation().getBlockX()+","+e.getLocation().getBlockY()+","+e.getLocation().getBlockZ()).toList());
                 if (age >= 0) cpu[age] = System.nanoTime() - start;
                 if (++age < 200) return;
                 cancel();
@@ -210,7 +230,8 @@ public final class TanksLoadSmoke extends JavaPlugin {
         require(visibleBlips.size() == 7, "production radar adds exactly the spotted enemy");
         fire(shooter);
         for (int i = 0; i < 12 && !shells().isEmpty(); i++) call(session, "flyShells");
-        require(hp(enemy) == enemyHp - 160, "actual production fire and native swept flight penetrate enemy rear armor");
+        double expectedRearDamage = number(call(shooter.chassis, "damage")).doubleValue();
+        require(hp(enemy) == enemyHp - expectedRearDamage, "actual production fire and native swept flight penetrate enemy rear armor");
         call(enemy.actor, "base", new Class<?>[]{int.class}, 0);
         for (int i = 0; i < 3; i++) call(match, "tick");
         require(number(call(enemy.actor, "captureTicks")).intValue() > 0, "enemy has capture contribution before module damage");
@@ -222,7 +243,8 @@ public final class TanksLoadSmoke extends JavaPlugin {
         require(number(call(enemy.actor, "trackTicks")).intValue() == 70
                         && number(call(enemy.actor, "captureTicks")).intValue() == 0,
                 "production low hull hit damages tracks and resets only the damaged capture contribution");
-        for (int i = 0; i < 6 && (boolean) call(enemy.actor, "alive"); i++)
+        int finishingHits = (int) Math.ceil(hp(enemy) / expectedRearDamage) + 1;
+        for (int i = 0; i < finishingHits && (boolean) call(enemy.actor, "alive"); i++)
             call(session, "hitTank", new Class<?>[]{flightType, UUID.class, Location.class}, flight, enemy.id, trackHit);
         require(!(boolean) call(enemy.actor, "alive") && number(call(shooter.actor, "kills")).intValue() == 1,
                 "production destruction creates a wreck and attributes exactly one kill");
