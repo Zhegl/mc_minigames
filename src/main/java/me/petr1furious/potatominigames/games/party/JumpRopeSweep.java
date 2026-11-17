@@ -2,6 +2,8 @@ package me.petr1furious.potatominigames.games.party;
 
 import org.bukkit.util.BoundingBox;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 final class JumpRopeSweep {
@@ -11,44 +13,71 @@ final class JumpRopeSweep {
     static final double BOTTOM = .13;
     static final double HEIGHT = .29;
     private static final double END_Z = 9.5;
+    private static final int MINIMUM_REST = 12;
 
     private JumpRopeSweep() {}
 
-    static int ticks(int stage) {
-        return stage == 0 ? 104 : Math.max(29, 69 - (stage - 1));
-    }
-
-    static int pauseTicks(int stage, Random random) {
-        int jitter = pauseJitter(stage);
-        return minimumPause(stage) + (jitter == 0 ? 0 : random.nextInt(jitter + 1));
-    }
-
-    private static int minimumPause(int stage) {
-        // Even at the end wall, a player has time to land before the reversal.
-        return Math.max(14, 30 - 2 * ((stage - 1) / 4));
-    }
-
-    private static int pauseJitter(int stage) {
-        return Math.min(12, (stage - 1) / 3);
-    }
-
-    static int warningTicks(int stage) {
-        return Math.max(8, 20 - stage / 4);
-    }
-
-    static int durationSeconds() {
-        int total = 0;
-        for (int stage = 0; stage <= SCORED_SWEEPS; stage++) {
-            total += minimumPause(stage) + pauseJitter(stage) + ticks(stage);
+    static List<Pass> course(Random random) {
+        List<Pass> passes = new ArrayList<>(SCORED_SWEEPS + 1);
+        passes.add(new Pass(104, 30, 20, Pace.STEADY));
+        Pace[] paces = Pace.values();
+        for (int stage = 1; stage <= SCORED_SWEEPS; stage++) {
+            Pace pace = stage == 1 ? Pace.STEADY : paces[random.nextInt(paces.length)];
+            int travelBase = Math.max(18, 58 - (stage - 1) * 5);
+            // Players at the wall still need enough time to land before jumping back.
+            int restBase = Math.max(MINIMUM_REST, 28 - (stage - 1) * 2);
+            int travel = travelBase + pace.travelOffset + random.nextInt(pace.travelChoices);
+            int rest = restBase + pace.restOffset + random.nextInt(pace.restChoices);
+            int warning = Math.max(6, 16 - (stage - 1) * 2);
+            passes.add(new Pass(travel, rest, warning, pace));
         }
+        return List.copyOf(passes);
+    }
+
+    static int durationSeconds(List<Pass> passes) {
+        int total = passes.stream().mapToInt(pass -> pass.restTicks() + pass.travelTicks()).sum();
         return (total + 19) / 20 + 2;
     }
 
-    static double position(int direction, long age, int stage) {
-        double progress = Math.clamp((double) age / ticks(stage), 0, 1);
-        double acceleration = Math.clamp((stage - 7) / 90.0, 0, .36);
-        progress -= acceleration * progress * (1 - progress);
-        return direction * END_Z * (2 * progress - 1);
+    enum Pace {
+        STEADY(1, 4, 6, 12),
+        RUSH(-3, 3, 0, 6),
+        SURGE(2, 4, 4, 10),
+        HESITATE(6, 4, 17, 15);
+
+        private final int travelOffset;
+        private final int travelChoices;
+        private final int restOffset;
+        private final int restChoices;
+
+        Pace(int travelOffset, int travelChoices, int restOffset, int restChoices) {
+            this.travelOffset = travelOffset;
+            this.travelChoices = travelChoices;
+            this.restOffset = restOffset;
+            this.restChoices = restChoices;
+        }
+
+        private double progress(double time) {
+            return switch (this) {
+                case STEADY -> time;
+                case RUSH -> time + .36 * time * (1 - time);
+                case SURGE -> time - .48 * time * (1 - time);
+                case HESITATE -> {
+                    if (time < .3) yield time;
+                    if (time < .6) yield .3 + .5 * (time - .3);
+                    yield .45 + 1.375 * (time - .6);
+                }
+            };
+        }
+    }
+
+    record Pass(int travelTicks, int restTicks, int warningTicks, Pace pace) {
+        double position(int direction, long age) {
+            if (age <= 0) return -direction * END_Z;
+            if (age >= travelTicks) return direction * END_Z;
+            double progress = pace.progress((double) age / travelTicks);
+            return direction * END_Z * (2 * progress - 1);
+        }
     }
 
     static boolean hits(BoundingBox from, BoundingBox to, double fromZ, double toZ, double floorY) {

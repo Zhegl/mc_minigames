@@ -71,76 +71,103 @@ public final class HotPotatoJumpRopeCheck {
     }
 
     private static void ropeSweepsTheWholeFloorAndSpeedsUp() {
-        check(JumpRopeSweep.ticks(0) > JumpRopeSweep.ticks(1), "Practice is slower than scoring");
-        check(JumpRopeSweep.ticks(3) > JumpRopeSweep.ticks(6), "Later stages speed up");
-        int last = JumpRopeSweep.ticks(50);
-        check(JumpRopeSweep.position(1, 0, 50) < -9, "The forward rope starts behind the lane");
-        check(JumpRopeSweep.position(1, last, 50) > 9, "The forward rope reaches the far edge");
-        check(JumpRopeSweep.position(-1, 0, 50) > 9, "The return rope starts on the far side");
-        check(JumpRopeSweep.position(-1, last, 50) < -9, "The return rope reaches the near edge");
-        double openingStep = JumpRopeSweep.position(1, 1, 50) - JumpRopeSweep.position(1, 0, 50);
-        double closingStep =
-                JumpRopeSweep.position(1, last, 50) - JumpRopeSweep.position(1, last - 1, 50);
-        check(closingStep > openingStep * 1.4, "The late rope accelerates into its approach");
+        for (int seed = 0; seed < 24; seed++) {
+            var course = JumpRopeSweep.course(new Random(seed));
+            var practice = course.getFirst();
+            var opening = course.get(1);
+            check(practice.travelTicks() > opening.travelTicks(), "Practice is slower than scoring");
+            check(course.get(10).travelTicks() * 2 <= opening.travelTicks(),
+                    "By sweep ten, the rope crosses in at most half the opening time");
+            check(course.get(6).warningTicks() <= opening.warningTicks() / 2,
+                    "Warnings shorten during the first six scored passes");
+            for (var pass : course) {
+                for (int direction : new int[] {-1, 1}) {
+                    double first = direction * pass.position(direction, 0);
+                    double last = direction * pass.position(direction, pass.travelTicks());
+                    check(first < -9 && last > 9, "Every pass reaches both ends of the court");
+                    for (int age = 1; age <= pass.travelTicks(); age++) {
+                        check(direction * (pass.position(direction, age)
+                                - pass.position(direction, age - 1)) > 0,
+                                "All paces travel monotonically without an untelegraphed reversal");
+                    }
+                }
+            }
+        }
+        var smooth = new JumpRopeSweep.Pass(20, 12, 6, JumpRopeSweep.Pace.STEADY);
+        var rush = new JumpRopeSweep.Pass(20, 12, 6, JumpRopeSweep.Pace.RUSH);
+        var surge = new JumpRopeSweep.Pass(20, 12, 6, JumpRopeSweep.Pace.SURGE);
+        var hesitation = new JumpRopeSweep.Pass(20, 12, 6, JumpRopeSweep.Pace.HESITATE);
+        check(rush.position(1, 10) > smooth.position(1, 10)
+                        && surge.position(1, 10) < smooth.position(1, 10),
+                "Rush and surge have different arrival times at center court");
+        double stepBefore = hesitation.position(1, 5) - hesitation.position(1, 4);
+        double stepDuring = hesitation.position(1, 10) - hesitation.position(1, 9);
+        double stepAfter = hesitation.position(1, 16) - hesitation.position(1, 15);
+        check(stepDuring < stepBefore * .6 && stepAfter > stepDuring * 2,
+                "Some passes approach, visibly slow down, then lunge");
     }
 
     private static void ropeFitsAllFiftySweepsIntoTheRound() {
-        check(JumpRopeSweep.SCORED_SWEEPS == 50, "Fifty scoring sweeps follow practice");
-        Random random = new Random(118);
-        long total = 0;
-        var latePauses = new HashSet<Integer>();
-        for (int stage = 0; stage <= 50; stage++) {
-            int pause = JumpRopeSweep.pauseTicks(stage, random);
-            total += pause + JumpRopeSweep.ticks(stage);
-            check(pause >= JumpRopeSweep.warningTicks(stage), "The warning fits inside the pause");
-            if (stage >= 35) latePauses.add(pause);
+        for (int seed = 0; seed < 24; seed++) {
+            var course = JumpRopeSweep.course(new Random(seed));
+            check(course.size() == 51, "Fifty scoring sweeps follow practice");
+            int total = 0;
+            var lateRestTimes = new HashSet<Integer>();
+            var lateTravelTimes = new HashSet<Integer>();
+            var lateLaunchIntervals = new HashSet<Integer>();
+            var latePaces = new HashSet<JumpRopeSweep.Pace>();
+            for (int stage = 0; stage < course.size(); stage++) {
+                var pass = course.get(stage);
+                total += pass.restTicks() + pass.travelTicks();
+                check(pass.restTicks() >= pass.warningTicks() && pass.warningTicks() >= 6,
+                        "The warning fits inside the pause and has a minimum lead time");
+                if (stage >= 12) {
+                    lateRestTimes.add(pass.restTicks());
+                    lateTravelTimes.add(pass.travelTicks());
+                    lateLaunchIntervals.add(course.get(stage - 1).travelTicks() + pass.restTicks());
+                    latePaces.add(pass.pace());
+                }
+            }
+            check(total < JumpRopeSweep.durationSeconds(course) * 20L,
+                    "A perfect run reaches its fiftieth sweep");
+            check(latePaces.size() == 4 && lateRestTimes.size() >= 10 && lateTravelTimes.size() >= 7,
+                    "Late sweeps mix four pace profiles, varied travel times and different pauses");
+            check(lateLaunchIntervals.size() >= 12,
+                    "Late sweeps cannot be played at a constant launch period");
         }
-        check(
-                total < JumpRopeSweep.durationSeconds() * 20L,
-                "A perfect run reaches its fiftieth sweep");
-        check(latePauses.size() >= 4, "The final sweeps vary the time between launches");
-        check(
-                JumpRopeSweep.warningTicks(50) < JumpRopeSweep.warningTicks(1),
-                "The late audible warning is shorter");
     }
 
     private static void ropeLeavesTimeToJumpAgainAtTheEndWall() {
-        Random random = new Random(950);
-        for (double z : new double[] {-8.65, 0.15, 8.65}) {
-            BoundingBox grounded = box(0, 0, z);
-            long previousJump = -20;
-            long start = 0;
-            for (int stage = 1; stage <= 50; stage++) {
-                start += JumpRopeSweep.pauseTicks(stage, random);
-                int direction = stage % 2 == 0 ? 1 : -1;
-                int ticks = JumpRopeSweep.ticks(stage);
-                int contactTick = 1;
-                while (contactTick <= ticks
-                        && !JumpRopeSweep.hits(
-                                grounded,
-                                grounded,
-                                JumpRopeSweep.position(direction, contactTick - 1, stage),
-                                JumpRopeSweep.position(direction, contactTick, stage),
-                                81)) contactTick++;
-                check(contactTick <= ticks, "The rope reaches each player's lane");
-                int jumpAt = contactTick - 3;
-                check(
-                        start + jumpAt - previousJump >= 12,
-                        "A player can land before jumping again");
-                for (int age = 1; age <= ticks; age++) {
-                    BoundingBox from = box(0, jumpHeight(age - 1 - jumpAt), z);
-                    BoundingBox to = box(0, jumpHeight(age - jumpAt), z);
-                    check(
-                            !JumpRopeSweep.hits(
-                                    from,
-                                    to,
-                                    JumpRopeSweep.position(direction, age - 1, stage),
-                                    JumpRopeSweep.position(direction, age, stage),
-                                    81),
-                            "A regular jump can clear each sweep at the ends and the middle");
+        for (int seed = 0; seed < 24; seed++) {
+            var course = JumpRopeSweep.course(new Random(seed));
+            for (int lane = 0; lane <= 32; lane++) {
+                double z = 8.7 * (lane - 16) / 16;
+                BoundingBox grounded = box(0, 0, z);
+                long previousJump = -20;
+                long start = course.getFirst().restTicks() + course.getFirst().travelTicks();
+                for (int stage = 1; stage < course.size(); stage++) {
+                    var pass = course.get(stage);
+                    start += pass.restTicks();
+                    int direction = stage % 2 == 0 ? 1 : -1;
+                    int contactTick = 1;
+                    while (contactTick <= pass.travelTicks()
+                            && !JumpRopeSweep.hits(grounded, grounded,
+                                    pass.position(direction, contactTick - 1),
+                                    pass.position(direction, contactTick), 81)) contactTick++;
+                    check(contactTick <= pass.travelTicks(), "The rope reaches every lane");
+                    int jumpAt = contactTick - 3;
+                    check(start + jumpAt - previousJump >= 12,
+                            "A player can land before jumping again, even next to a gate");
+                    for (int age = 1; age <= pass.travelTicks(); age++) {
+                        BoundingBox from = box(0, jumpHeight(age - 1 - jumpAt), z);
+                        BoundingBox to = box(0, jumpHeight(age - jumpAt), z);
+                        check(!JumpRopeSweep.hits(from, to, pass.position(direction, age - 1),
+                                        pass.position(direction, age), 81),
+                                "A normal jump can clear every pace throughout the court");
+                    }
+                    previousJump = start + jumpAt;
+                    start += pass.travelTicks();
                 }
-                previousJump = start + jumpAt;
-                start += ticks;
             }
         }
     }

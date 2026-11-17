@@ -45,6 +45,7 @@ final class WaitForItArena {
     private final World world;
     private final int count;
     private WaitForItRound.Task current;
+    private WaitForItLayout layout;
 
     WaitForItArena(World world, int count) {
         this.world = world;
@@ -86,26 +87,38 @@ final class WaitForItArena {
                     default -> List.of();
                 };
         List<Button> switches = task == BUTTON ? switches(random) : List.of();
+        WaitForItLayout next = WaitForItLayout.generate(task, random);
         for (int bay = 0; bay < count; bay++) {
             clear(bay);
             switch (task) {
                 case FLOWER, CROP -> plant(bay, plants, task == CROP);
-                case CRAFT ->
+                case CRAFT, LADDER, BOOTS ->
                         block(bay, WORKBENCH.x, 1, WORKBENCH.z)
                                 .setType(Material.CRAFTING_TABLE, false);
                 case BUTTON -> buildButtonSearch(bay, switches);
+                default -> {
+                    for (var fixture : next.tiles.entrySet())
+                        fixture.getValue().place(block(bay, fixture.getKey()));
+                }
             }
         }
+        layout = next;
         current = task;
     }
 
     private void clear(int bay) {
+        if (layout != null) {
+            for (var tile : layout.tiles.keySet())
+                block(bay, tile).setType(tile.y() == 0 ? FLOOR_BLOCK : Material.AIR, false);
+            for (var position : layout.placements.keySet())
+                block(bay, position).setType(Material.AIR, false);
+        }
         if (current == FLOWER || current == CROP)
             for (Cell cell : BEDS) {
                 block(bay, cell.x, 1, cell.z).setType(Material.AIR, false);
                 block(bay, cell.x, 0, cell.z).setType(FLOOR_BLOCK, false);
             }
-        else if (current == CRAFT)
+        else if (current != null && current.action == WaitForItRound.Action.CRAFT)
             block(bay, WORKBENCH.x, 1, WORKBENCH.z).setType(Material.AIR, false);
         else if (current == BUTTON) {
             clearPosts(bay, LEFT_POSTS);
@@ -233,7 +246,7 @@ final class WaitForItArena {
                 && location.getX() >= originX(bay) + 1
                 && location.getX() < originX(bay) + SIZE - 1
                 && location.getY() > FLOOR
-                && location.getY() < FLOOR + 4
+                && location.getY() < FLOOR + 6
                 && location.getZ() >= originZ(bay) + 1
                 && location.getZ() < originZ(bay) + SIZE - 1;
     }
@@ -242,8 +255,17 @@ final class WaitForItArena {
         return contains(bay, block.getLocation()) && block.getType() == Material.CRAFTING_TABLE;
     }
 
+    boolean isBarrel(int bay, Block block) {
+        return current == TREASURE && owns(bay, block) && block.getType() == Material.BARREL;
+    }
+
+    WaitForItLayout.Placement placementAt(int bay, Block block) {
+        if (!owns(bay, block)) return null;
+        return layout.placements.get(relative(bay, block));
+    }
+
     WaitForItRound.Goal targetAt(int bay, WaitForItRound.Task task, Block block) {
-        if (!contains(bay, block.getLocation())) return null;
+        if (current != task || !owns(bay, block)) return null;
         return switch (task) {
             case FLOWER ->
                     switch (block.getType()) {
@@ -267,8 +289,31 @@ final class WaitForItArena {
                             : block.getX() - originX(bay) < SIZE / 2
                                     ? WaitForItRound.Goal.BUTTON_LEFT
                                     : WaitForItRound.Goal.BUTTON_RIGHT;
-            case CRAFT -> null;
+            default -> {
+                var target = layout.tiles.get(relative(bay, block));
+                yield target != null && target.material() == block.getType() ? target.goal() : null;
+            }
         };
+    }
+
+    private boolean owns(int bay, Block block) {
+        var local = relative(bay, block);
+        return world.equals(block.getWorld())
+                && local.x() >= 1
+                && local.x() < SIZE - 1
+                && local.z() >= 1
+                && local.z() < SIZE - 1
+                && local.y() >= 0
+                && local.y() < 5;
+    }
+
+    private WaitForItLayout.Point relative(int bay, Block block) {
+        return new WaitForItLayout.Point(
+                block.getX() - originX(bay), block.getY() - FLOOR, block.getZ() - originZ(bay));
+    }
+
+    private Block block(int bay, WaitForItLayout.Point point) {
+        return block(bay, point.x(), point.y(), point.z());
     }
 
     private Block block(int bay, int x, int y, int z) {

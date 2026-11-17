@@ -4,7 +4,9 @@ import static me.petr1furious.potatominigames.games.party.WaitForItRound.Goal.*;
 import static me.petr1furious.potatominigames.games.party.WaitForItRound.Progress.*;
 import static me.petr1furious.potatominigames.games.party.WaitForItRound.Task.*;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
@@ -14,14 +16,49 @@ public final class WaitForItCheck {
     private static final List<UUID> PLAYERS = List.of(ALICE, BOB);
 
     public static void main(String[] args) {
-        var round = new WaitForItRound(PLAYERS);
+        variedSamplesKeepTheRoundShort();
+        scoringAndTransitions();
+        orderedTasksRequireTheFullRoute();
+        allGoalsCountExactlyOncePerTask();
+        System.out.println("Wait For It passed");
+    }
+
+    private static void variedSamplesKeepTheRoundShort() {
+        Set<WaitForItRound.Task> seen = EnumSet.noneOf(WaitForItRound.Task.class);
+        for (int seed = 0; seed < 120; seed++) {
+            var sample = WaitForItRound.selectTasks(new Random(seed));
+            check(sample.size() == 6 && Set.copyOf(sample).size() == 6, "Six different tasks");
+            check(
+                    sample.stream().map(task -> task.family).distinct().count() == 4,
+                    "All four families represented");
+            seen.addAll(sample);
+            var round = new WaitForItRound(PLAYERS, sample);
+            long start = 0;
+            for (var task : sample) {
+                check(
+                        round.task() == task && round.secondsLeft(start) == task.seconds,
+                        "No gap before any task");
+                start = round.deadline();
+                check(
+                        round.advance(start, PLAYERS).task() == task,
+                        "Every sampled task runs through its deadline");
+            }
+            check(
+                    round.finished() && start <= WaitForItRound.maxSeconds() * 20L,
+                    "Round stays under hard limit");
+        }
         check(
-                round.task() == FLOWER && round.secondsLeft(0) == FLOWER.seconds,
-                "Flower starts at tick 0");
-        check(round.record(ALICE, POPPY, 0) == PARTIAL, "First flower counts at tick 0");
+                seen.equals(EnumSet.allOf(WaitForItRound.Task.class)) && seen.size() >= 16,
+                "All available tasks appear");
         check(
-                round.record(ALICE, POPPY, 1) == IGNORED,
-                "Same species cannot replace a different one");
+                WaitForItRound.maxSeconds() < 180,
+                "Worst-case active time stays under three minutes");
+    }
+
+    private static void scoringAndTransitions() {
+        var round = new WaitForItRound(PLAYERS, List.of(FLOWER, CRAFT, CROP, BUTTON));
+        check(round.record(ALICE, POPPY, 0) == PARTIAL, "First task starts immediately");
+        check(round.record(ALICE, POPPY, 1) == IGNORED, "Duplicate species cannot score");
         check(round.record(ALICE, PICKAXE, 1) == IGNORED, "Wrong goal cannot count");
         check(round.record(new UUID(0, 3), ALLIUM, 1) == IGNORED, "Spectators cannot score");
         check(
@@ -32,13 +69,9 @@ public final class WaitForItCheck {
         check(round.record(ALICE, CORNFLOWER, craft - 1) == COMPLETE, "Last active tick counts");
         check(round.record(ALICE, CORNFLOWER, craft - 1) == IGNORED, "One point per task");
         check(round.advance(craft - 1, PLAYERS) == null, "Others keep the full time window");
-        var previous = round.advance(craft, PLAYERS);
         check(
-                previous.task() == FLOWER && previous.completed().equals(Set.of(ALICE)),
+                round.advance(craft, PLAYERS).completed().equals(Set.of(ALICE)),
                 "Previous results persist");
-        check(
-                round.task() == CRAFT && round.secondsLeft(craft) == CRAFT.seconds,
-                "Craft opens on timeout tick");
         check(round.record(BOB, PICKAXE, craft - 1) == IGNORED, "Stale events cannot count");
         check(
                 round.record(BOB, PICKAXE, craft) == COMPLETE,
@@ -49,63 +82,50 @@ public final class WaitForItCheck {
         check(
                 round.result(Set.of(BOB)).places().equals(List.of(List.of(BOB))),
                 "Withdrawn players cannot place");
-        var early = round.advance(craft + 1, List.of(BOB));
         check(
-                early.task() == CRAFT && early.completed().equals(Set.of(BOB)),
+                round.advance(craft + 1, List.of(BOB)).task() == CRAFT,
                 "Departures cannot prolong a completed task");
         check(
-                round.task() == CROP && round.record(BOB, WHEAT, craft + 1) == PARTIAL,
-                "Crop opens on early transition tick");
-        check(round.count(ALICE, WHEAT) == 0, "Harvest progress is personal");
-        long cropEnd = round.deadline();
-        for (int i = 1; i < CROP.required(WHEAT); i++)
-            check(round.record(BOB, WHEAT, cropEnd - 1) == PARTIAL, "Wheat counts individually");
-        check(
-                round.record(BOB, WHEAT, cropEnd - 1) == IGNORED,
-                "Extra wheat cannot replace carrots");
-        for (int i = 1; i < CROP.required(CARROT); i++)
-            check(
-                    round.record(BOB, CARROT, cropEnd - 1) == PARTIAL,
-                    "Carrots have their own quota");
-        check(round.record(BOB, CARROT, cropEnd - 1) == COMPLETE, "Both quotas finish the harvest");
-        round.advance(cropEnd, PLAYERS);
-        check(
-                round.task() == BUTTON && round.record(ALICE, BUTTON_LEFT, cropEnd) == PARTIAL,
-                "One button counts");
-        check(
-                round.record(ALICE, BUTTON_LEFT, cropEnd + 1) == IGNORED,
-                "Same button cannot score twice");
-        check(
-                round.record(ALICE, BUTTON_RIGHT, cropEnd + 1) == COMPLETE,
-                "Second button scores the point");
+                round.record(BOB, WHEAT, craft + 1) == PARTIAL && round.count(ALICE, WHEAT) == 0,
+                "Next task starts immediately with personal progress");
+    }
 
-        var timeouts = new WaitForItRound(PLAYERS);
-        for (var task : List.of(FLOWER, CRAFT, CROP, BUTTON))
+    private static void orderedTasksRequireTheFullRoute() {
+        for (var task : List.of(CHECKPOINTS, PARKOUR, STACK)) {
+            var round = new WaitForItRound(PLAYERS, List.of(task));
             check(
-                    timeouts.advance(timeouts.deadline(), PLAYERS).task() == task,
-                    "All four tasks run on timeouts");
-        check(
-                timeouts.finished() && timeouts.deadline() == WaitForItRound.maxSeconds() * 20L,
-                "Maximum duration is exactly four active windows");
-
-        var solo = new WaitForItRound(List.of(ALICE));
-        long tick = 0;
-        check(
-                solo.advance(solo.deadline() - 1, List.of()) == null,
-                "Empty active roster cannot skip a task");
-        for (var task : List.of(FLOWER, CRAFT, CROP, BUTTON)) {
-            check(solo.task() == task && !solo.finished(), "Solo gets every task");
-            check(solo.advance(tick, List.of(ALICE)) == null, "New task cannot end before play");
-            for (var goal : WaitForItRound.Goal.values())
-                for (int i = 0; i < task.required(goal); i++) solo.record(ALICE, goal, tick);
+                    round.record(ALICE, THIRD, 0) == IGNORED
+                            && round.record(ALICE, SECOND, 0) == IGNORED,
+                    "Players cannot skip steps or build out of order");
+            check(round.record(ALICE, FIRST, 0) == PARTIAL, "First step counts");
             check(
-                    solo.advance(++tick, List.of(ALICE)).task() == task,
-                    "Solo completion advances directly");
+                    round.record(ALICE, FIRST, 1) == IGNORED
+                            && round.record(ALICE, THIRD, 1) == IGNORED,
+                    "Repeat or skip cannot advance");
+            check(round.record(ALICE, SECOND, 2) == PARTIAL, "Second step counts");
+            check(round.record(ALICE, THIRD, 3) == COMPLETE, "All ordered steps earn the point");
         }
-        check(solo.finished() && solo.points(ALICE) == 4, "Solo can score in all four tasks");
+        var targets = new WaitForItRound(PLAYERS, List.of(TARGETS));
         check(
-                solo.record(ALICE, BUTTON_LEFT, tick) == IGNORED && solo.secondsLeft(tick) == 0,
-                "Finished round is closed");
+                targets.record(ALICE, THIRD, 0) == PARTIAL,
+                "Archery targets can be hit in any order");
+        check(
+                targets.record(ALICE, THIRD, 1) == IGNORED,
+                "One target cannot be hit for repeated points");
+    }
+
+    private static void allGoalsCountExactlyOncePerTask() {
+        for (var task : WaitForItRound.Task.values()) {
+            var round = new WaitForItRound(List.of(ALICE), List.of(task));
+            check(round.advance(1, List.of()) == null, "An empty roster cannot skip a task");
+            for (var goal : WaitForItRound.Goal.values())
+                for (int i = 0; i < task.required(goal); i++)
+                    check(round.record(ALICE, goal, 0) != IGNORED, "Goal accepted for " + task);
+            check(round.points(ALICE) == 1, "Exactly one point for " + task);
+            check(
+                    round.advance(1, List.of(ALICE)).task() == task && round.finished(),
+                    "Early completion ends the task");
+        }
     }
 
     private static void check(boolean passed, String message) {

@@ -19,6 +19,7 @@ import org.joml.Vector3f;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -29,9 +30,10 @@ final class JumpRopeSession extends PartySurvivalSession {
 
     private final Map<UUID, BoundingBox> lastBodies = new HashMap<>();
     private final Set<UUID> practiceMisses = new HashSet<>();
+    private final List<JumpRopeSweep.Pass> passes = JumpRopeSweep.course(random);
     private JumpRopeArena arena;
     private BlockDisplay rope;
-    private double ropeZ = JumpRopeSweep.position(1, 0, 0);
+    private double ropeZ = passes.getFirst().position(1, 0);
     private int direction = 1;
     private int stage;
     private long sweepStartsAt;
@@ -101,7 +103,7 @@ final class JumpRopeSession extends PartySurvivalSession {
 
     @Override
     int durationSeconds() {
-        return JumpRopeSweep.durationSeconds();
+        return JumpRopeSweep.durationSeconds(passes);
     }
 
     @Override
@@ -122,15 +124,15 @@ final class JumpRopeSession extends PartySurvivalSession {
 
     @Override
     void beginPlay() {
-        sweepStartsAt = JumpRopeSweep.pauseTicks(stage, random);
+        sweepStartsAt = passes.getFirst().restTicks();
     }
 
     @Override
     void playTick(long elapsed) {
         long age = elapsed - sweepStartsAt;
-        int sweepTicks = JumpRopeSweep.ticks(stage);
-        double nextZ = age < 0 ? ropeZ : JumpRopeSweep.position(direction, age, stage);
-        if (age == -JumpRopeSweep.warningTicks(stage)) {
+        JumpRopeSweep.Pass pass = passes.get(stage);
+        double nextZ = age < 0 ? ropeZ : pass.position(direction, age);
+        if (age == -pass.warningTicks()) {
             arena.lightStart(direction, true);
             world.playSound(
                     new Location(world, 0, FLOOR + 3, ropeZ),
@@ -163,7 +165,7 @@ final class JumpRopeSession extends PartySurvivalSession {
             }
         }
         ropeZ = nextZ;
-        if (age < sweepTicks) return;
+        if (age < pass.travelTicks()) return;
         arena.lightStart(direction, false);
         if (stage == JumpRopeSweep.SCORED_SWEEPS) {
             if (!standings.survivors().isEmpty()) say(I18n.tr(KEY + "complete", stage));
@@ -172,7 +174,7 @@ final class JumpRopeSession extends PartySurvivalSession {
         }
         stage++;
         direction = -direction;
-        sweepStartsAt = elapsed + JumpRopeSweep.pauseTicks(stage, random);
+        sweepStartsAt = elapsed + passes.get(stage).restTicks();
         if (stage == 1) {
             say(I18n.tr(KEY + "scoring"));
             PartySounds.play(alivePlayers(), Sound.BLOCK_NOTE_BLOCK_PLING, .75f, 1.3f);
