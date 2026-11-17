@@ -73,6 +73,12 @@ queues:
     gartic_phone: {enabled: true, minPlayers: 2, maxPlayers: 12}
     tool_race: {enabled: true, minPlayers: 2, maxPlayers: 12}
     parkour_race: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    hot_potato: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    jump_rope: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    drop_tower: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    chicken_shooter: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    less_is_better: {enabled: true, minPlayers: 2, maxPlayers: 12}
+    wait_for_it: {enabled: true, minPlayers: 2, maxPlayers: 12}
     party_games: {enabled: true, minPlayers: 2, maxPlayers: 12}
 
   cs:

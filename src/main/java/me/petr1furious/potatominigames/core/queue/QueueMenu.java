@@ -57,6 +57,10 @@ public final class QueueMenu implements Listener {
             new PartyGroup("creative", Material.PURPLE_STAINED_GLASS_PANE, NamedTextColor.LIGHT_PURPLE,
                     List.of("mob_count", "build_memory", "gartic_phone")));
 
+    private static final PartyGroup QUICK_GAMES = new PartyGroup(
+            "quick", Material.LIGHT_BLUE_STAINED_GLASS_PANE, NamedTextColor.AQUA,
+            List.of("hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it"));
+
     private interface Action {
         void click(Player player) throws CommandFailure;
     }
@@ -70,6 +74,7 @@ public final class QueueMenu implements Listener {
         private QueueService.Queue queue;
         /** Party browsing remains open across queue and session changes. */
         private Minigame partyGame;
+        private boolean quickGames;
         private Inventory inventory;
 
         @Override
@@ -102,11 +107,7 @@ public final class QueueMenu implements Listener {
     /** The mode menu of one game. */
     public void open(Player player, Minigame game) {
         if (game.id().equals("party")) {
-            Holder holder = new Holder();
-            holder.partyGame = game;
-            holder.inventory = Bukkit.createInventory(holder, 54, I18n.render(game.displayName(), player));
-            render(holder, player);
-            player.openInventory(holder.inventory);
+            openParty(player, game, false);
             return;
         }
         List<Entry> entries = new ArrayList<>();
@@ -127,6 +128,16 @@ public final class QueueMenu implements Listener {
                 entries,
                 new Entry(viewer -> backIcon(), this::open),
                 null);
+    }
+
+    private void openParty(Player player, Minigame game, boolean quickGames) {
+        Holder holder = new Holder();
+        holder.partyGame = game;
+        holder.quickGames = quickGames;
+        Component title = quickGames ? I18n.tr("core.menu.party.group.quick") : game.displayName();
+        holder.inventory = Bukkit.createInventory(holder, quickGames ? 27 : 54, I18n.render(title, player));
+        render(holder, player);
+        player.openInventory(holder.inventory);
     }
 
     private Optional<Minigame.ModeGroup> modeGroup(Minigame game, String mode) {
@@ -396,8 +407,16 @@ public final class QueueMenu implements Listener {
             holder.entries.put(4, partyEntry(available.get("party_games"), "tournament"));
         }
 
-        for (int groupIndex = 0; groupIndex < PARTY_GROUPS.size(); groupIndex++) {
-            PartyGroup group = PARTY_GROUPS.get(groupIndex);
+        if (!holder.quickGames && QUICK_GAMES.modes().stream().anyMatch(available::containsKey)) {
+            holder.entries.put(6, new Entry(viewer -> infoIcon(Material.CLOCK,
+                    I18n.tr("core.menu.party.group.quick").color(NamedTextColor.AQUA),
+                    List.of(I18n.tr("core.menu.party.quick_hint").color(NamedTextColor.GRAY))),
+                    clicker -> openParty(clicker, game, true)));
+        }
+
+        List<PartyGroup> groups = holder.quickGames ? List.of(QUICK_GAMES) : PARTY_GROUPS;
+        for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
+            PartyGroup group = groups.get(groupIndex);
             int row = (groupIndex + 1) * 9;
             holder.entries.put(row, new Entry(viewer -> infoIcon(group.marker(),
                     I18n.tr("core.menu.party.group." + group.key()).color(group.color()),
@@ -407,13 +426,15 @@ public final class QueueMenu implements Listener {
                 if (queue != null) holder.entries.put(row + 2 + index, partyEntry(queue, group.key()));
             }
         }
-        holder.entries.put(45, new Entry(viewer -> backIcon(), this::open));
-        holder.entries.put(49, new Entry(this::currentQueueIcon, clicker -> {
+        int footer = holder.inventory.getSize() - 9;
+        holder.entries.put(footer, new Entry(viewer -> backIcon(),
+                clicker -> { if (holder.quickGames) open(clicker, game); else open(clicker); }));
+        holder.entries.put(footer + 4, new Entry(this::currentQueueIcon, clicker -> {
             Optional<QueueService.Queue> current = queues.queueOf(clicker);
             if (current.isPresent()) openPicks(clicker, current.get());
         }));
         if (queues.queueOf(player).isPresent()) {
-            holder.entries.put(53, new Entry(viewer -> {
+            holder.entries.put(footer + 8, new Entry(viewer -> {
                 Optional<QueueService.Queue> current = queues.queueOf(viewer);
                 return infoIcon(Material.BARRIER, I18n.tr("core.menu.party.leave_queue").color(NamedTextColor.RED),
                         current.map(queue -> List.<Component>of(I18n.tr("core.menu.party.leave_hint", queue.displayName())

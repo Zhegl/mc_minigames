@@ -29,7 +29,11 @@ public final class PartyPolishCheck {
             selections.add(selected);
         }
         check(
-                pool.size() == 15 && pool.contains("hole_in_the_wall") && pool.contains("magic_battle") && pool.contains("one_shot") && pool.contains("parkour_race") && selections.size() > 20,
+                pool.size() == 20
+                        && pool.contains("hole_in_the_wall")
+                        && pool.contains("one_shot")
+                        && pool.contains("parkour_race")
+                        && selections.size() > 20,
                 "Random six selected from the full pool");
         check(
                 PartyRoundOptions.party().forRound(0).countdownSeconds() == 4,

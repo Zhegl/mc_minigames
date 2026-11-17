@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 
 /** Imported map provenance/geometry, mana budgets, personal clocks and queue/round integration. */
@@ -202,16 +203,23 @@ public final class MagicBattleCheck {
         check(
                 game.createSession(null, "magic_battle") instanceof MagicBattleSession,
                 "Standalone queue creates the spell round");
+        var legacyMatch =
+                new PartyGamesState(
+                        List.of(new UUID(0, 1), new UUID(0, 2)),
+                        List.of("pvp", "magic_battle", "sumo"),
+                        new Random(1));
         check(
-                PartyGamesState.MODES.contains("magic_battle"),
-                "Mixed Party Games can include magic");
+                legacyMatch.schedule().size() == 2
+                        && legacyMatch.schedule().containsAll(List.of("pvp", "sumo")),
+                "Saved pools skip Magic Battle and keep the other rounds");
         var context =
                 new PartyRoundContext(
                         null, List.of(), PartyRoundOptions.party(), (reason, result) -> {});
-        check(
-                PartyRoundFactory.create("magic_battle", null, null, context)
-                        instanceof MagicBattleSession,
-                "Embedded round uses the same implementation");
+        try {
+            PartyRoundFactory.create("magic_battle", null, null, context);
+            throw new AssertionError("Party Games can still create a Magic Battle round");
+        } catch (IllegalArgumentException expected) {
+        }
         try (var stream = MagicBattleCheck.class.getResourceAsStream("/config.yml")) {
             check(stream != null, "Default queue configuration is bundled");
             var queues =
@@ -229,9 +237,9 @@ public final class MagicBattleCheck {
                     YamlConfiguration.loadConfiguration(
                             new InputStreamReader(stream, StandardCharsets.UTF_8));
             check(
-                    List.of(defaults.getString("partyGames.modes").split(","))
+                    !List.of(defaults.getString("partyGames.modes").split(","))
                             .contains("magic_battle"),
-                    "Fresh servers include magic in mixed Party Games");
+                    "The default pool excludes Magic Battle");
             check(
                     defaults.getInt("magicBattle.roundSeconds") == 180
                             && defaults.getInt("magicBattle.countdownSeconds") == 5

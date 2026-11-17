@@ -115,9 +115,10 @@ public final class PartyConfig {
             bag.define(
                     "partyGames.modes",
                     PropertyCodec.STRING,
-                    "pvp,sumo,arms_race,one_shot,tnt_run,mob_count,rhino,miners,color_floor,anvils,build_memory,tool_race,hole_in_the_wall,magic_battle,parkour_race");
+                    String.join(",", PartyGamesState.MODES));
     public final Property<Integer> partyRounds =
-            bag.define("partyGames.rounds", PropertyCodec.INT, 6).validate(n -> n >= 1 && n <= 15);
+            bag.define("partyGames.rounds", PropertyCodec.INT, 6)
+                    .validate(n -> n >= 1 && n <= PartyGamesState.MODES.size());
     public final Property<Integer> partyIntermission =
             bag.define("partyGames.intermissionSeconds", PropertyCodec.INT, 4)
                     .validate(n -> n >= 3 && n <= 30);

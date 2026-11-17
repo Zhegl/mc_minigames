@@ -457,7 +457,7 @@ editing and ready locks, departed-player chat, queue registration and pool exclu
 ### Party Games and new party games
 
 Join **Вечеринка → Party Games**, or run `/play party party_games`.
-The default match picks six distinct games at random from the fifteen-game pool, with
+The default match picks six distinct games at random from the twenty-game pool, with
 2–12 players. PvP and Sumo become simultaneous, one-life free-for-alls inside
 this match; their standalone modes retain the existing round-robin BO3 rules.
 Eliminated players spectate until the next game. Each completed game awards
@@ -474,6 +474,18 @@ sidebar during play; total points appear between games. Arms Race uses five weap
 stages only inside Party Games: diamond sword → iron axe → wooden sword → golden
 shovel → bow, with no crossbow (standalone keeps twelve), with a three-minute limit;
 Miners uses 25 seconds preparation, 120 seconds combat and a 60-second finale.
+
+Open **Party → Quick Games** to queue for any of these rounds individually. The
+same modes are available for solo practice with `/party test <mode>`.
+
+| Game | Mode ID | How to play |
+| --- | --- | --- |
+| Avoid Hot Potato | `hot_potato` | Right-click another player to pass the potato before the fuse runs out. |
+| Jump Rope | `jump_rope` | Try the practice sweep, then jump over the beam as it speeds up. |
+| Drop Tower | `drop_tower` | Find each lit landing on the way down. A miss sends you back to your most recent checkpoint. |
+| Chicken Shooter | `chicken_shooter` | Use the bow to hit targets in your own lane. Early targets stand still. |
+| Less Is Better | `less_is_better` | Right-click your ballot to vote for red or blue. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
+| Wait For It… | `wait_for_it` | Read the preview, then find the flower, craft the item, harvest the crop, or find the button. Score one point per completed task. |
 
 These games are also independently available:
 
@@ -642,7 +654,9 @@ reconnect grace period before an unscored early finish.
 
 Configure the game pool and number of rounds using `partyGames.modes` (a
 comma-separated string of unique mode IDs) and `partyGames.rounds` in
-`games/party.yml`; the round count is capped by the selected pool size.
+`games/party.yml`. The round count is capped by the selected pool size. Saved
+copies of the previous bundled pool pick up all six Quick Games. To add them to
+a custom pool, append the mode IDs from the table above.
 The same file contains wave, stage and match timing settings. Changes apply
 to new games. Solo practice: `/party test <mode>`; admin launch:
 `/party start <mode> @a`; stop: `/party stop`.
@@ -1185,8 +1199,9 @@ and are intended for live playtesting.
 ### Party Magic Battle / Магическая битва
 
 Join **Вечеринка → Магическая битва**, or use `/play party magic_battle`.
-This is a one-life, spell-first free-for-all for **2–12 players**, also included
-in the default mixed Party Games pool. Each mage starts with up to two chosen basic wands
+Party Games skips any `magic_battle` entry in saved pools.
+This standalone one-life, spell-first free-for-all supports **2–12 players**.
+Each mage starts with up to two chosen basic wands
 and 64 wool; native melee and vanilla health regeneration are disabled.
 The last survivor wins; standings award the usual 3/2/1 Party points.
 
@@ -1305,8 +1320,7 @@ mixed match) the border shrinks toward the lighthouse over 30 s; increasing dama
 then prevents infinite camping. Test solo with `/party test magic_battle`.
 
 Configure `magicBattle.roundSeconds`, `magicBattle.countdownSeconds` and
-`magicBattle.chestRechargeSeconds` in `games/party.yml`. On existing servers, add
-`magic_battle` to a customized `partyGames.modes` list to include it in mixed matches.
+`magicBattle.chestRechargeSeconds` in `games/party.yml`.
 All built-in text is available in English and Russian in `i18n/locales/*/party/magic.yml`.
 Compilation and automated model checks do not replace live multiplayer balance
 and visual testing, especially knockback, spell cover and mana economy.
