@@ -57,6 +57,12 @@ public final class PartyGame implements Minigame {
                 "tool_race",
                 "parkour_race",
                 "hole_in_the_wall",
+                "hot_potato",
+                "jump_rope",
+                "drop_tower",
+                "chicken_shooter",
+                "less_is_better",
+                "wait_for_it",
                 "party_games");
     }
 
@@ -126,6 +132,12 @@ public final class PartyGame implements Minigame {
             case "party_games" -> Material.FIREWORK_ROCKET;
             case "build_memory" -> Material.BRICKS;
             case "gartic_phone" -> Material.WRITABLE_BOOK;
+            case "hot_potato" -> Material.BAKED_POTATO;
+            case "jump_rope" -> Material.LEAD;
+            case "drop_tower" -> Material.SLIME_BLOCK;
+            case "chicken_shooter" -> Material.CHICKEN_SPAWN_EGG;
+            case "less_is_better" -> Material.RED_DYE;
+            case "wait_for_it" -> Material.CRAFTING_TABLE;
             default -> icon();
         };
     }
@@ -136,6 +148,7 @@ public final class PartyGame implements Minigame {
                         || mode.equals("sumo")
                         || mode.equals("miners")
                         || mode.equals("magic_battle")
+                        || PartyGamesState.QUICK_MODES.contains(mode)
                         || List.of(
                                         "color_floor",
                                         "anvils",
@@ -157,6 +170,8 @@ public final class PartyGame implements Minigame {
 
     @Override
     public GameSession createSession(SessionServices services, String mode) {
+        if (PartyGamesState.QUICK_MODES.contains(mode))
+            return PartyRoundFactory.create(mode, services, config, PartyRoundContext.standalone(services));
         if (mode.equals("pvp_select")) return new DuelSession(services, config, false, true, true);
         if (mode.equals("gartic_phone")) return new GarticPhoneSession(services, config);
         if (mode.equals("one_shot"))

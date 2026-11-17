@@ -140,6 +140,8 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
             connected.add(participant.id());
         }
         if (names.isEmpty()) throw new CommandFailure(I18n.tr("party.rounds.error.participants"));
+        if (PartyGamesState.QUICK_MODES.contains(id) && names.size() > 12)
+            throw new CommandFailure(I18n.tr("party.rounds.error.quick_capacity", 12));
         standings = new SurvivalStandings(names.keySet());
         countdownEnd =
                 Math.clamp(
@@ -618,6 +620,10 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
 
     @Override
     public final void onCraftItem(CraftItemEvent event) {
+        handleCraftItem(event);
+    }
+
+    protected void handleCraftItem(CraftItemEvent event) {
         event.setCancelled(true);
     }
 

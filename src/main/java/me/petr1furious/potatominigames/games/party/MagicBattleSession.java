@@ -7,6 +7,7 @@ import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 
 import me.petr1furious.potatominigames.core.command.CommandFailure;
 import me.petr1furious.potatominigames.core.game.EndReason;
+import me.petr1furious.potatominigames.core.game.GameSession;
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.core.text.TimeFormat;
 import me.petr1furious.potatominigames.i18n.I18n;
@@ -59,8 +60,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Spell-first SkyWars-style survival on an imported map; standalone or a Party Games round. */
-final class MagicBattleSession implements PartyRoundSession {
+/** Standalone spell-first sky-island survival on the Lighthouse map. */
+final class MagicBattleSession implements GameSession {
     private enum Phase {
         BUILDING,
         SELECTING,
@@ -99,13 +100,9 @@ final class MagicBattleSession implements PartyRoundSession {
     private List<Component> result = List.of();
 
     MagicBattleSession(SessionServices services, PartyConfig config) {
-        this(services, config, PartyRoundContext.standalone(services));
-    }
-
-    MagicBattleSession(SessionServices services, PartyConfig config, PartyRoundContext context) {
-        this.services = context.services();
+        this.services = services;
         this.config = config;
-        this.context = context;
+        this.context = PartyRoundContext.standalone(services);
     }
 
     private Component name(UUID id) {
@@ -163,16 +160,8 @@ final class MagicBattleSession implements PartyRoundSession {
             throw new CommandFailure(I18n.tr("party.magic.players"));
         standings = new SurvivalStandings(names.keySet());
         starters = new MagicStarterChoices(names.keySet());
-        duration =
-                (context.embedded()
-                                ? Math.min(120, config.magicSeconds.get())
-                                : config.magicSeconds.get())
-                        * 20;
-        countdown =
-                (context.embedded()
-                                ? context.options().countdownSeconds()
-                                : config.magicCountdown.get())
-                        * 20;
+        duration = config.magicSeconds.get() * 20;
+        countdown = config.magicCountdown.get() * 20;
         chestRecharge = config.magicChestSeconds.get() * 20;
         var world = context.createVoid("party_magic");
         services.arena().applyStandardGameRules(world);
@@ -888,20 +877,14 @@ final class MagicBattleSession implements PartyRoundSession {
     public void onEnd(EndReason reason) {
         context.hideBars();
         cleanup();
-        if (!context.embedded() && reason == EndReason.FINISHED && !services.isTest())
+        if (reason == EndReason.FINISHED && !services.isTest())
             roundResult().awards().forEach((id, points) -> services.award("party", id, points));
     }
 
-    @Override
-    public PartyRoundResult roundResult() {
+    private PartyRoundResult roundResult() {
         return standings == null
                 ? PartyRoundResult.empty()
                 : standings.result(context.eligible(), tick);
-    }
-
-    @Override
-    public boolean ready() {
-        return phase != Phase.BUILDING;
     }
 
     @Override

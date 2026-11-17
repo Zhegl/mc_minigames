@@ -5,6 +5,10 @@ pillars.effects
 party.duels
 party.rounds
 party.memory_materials
+party.tag_and_timing
+party.drop_and_shoot
+party.less_is_better
+party.wait_for_it
 bingo
 warfare
 chase

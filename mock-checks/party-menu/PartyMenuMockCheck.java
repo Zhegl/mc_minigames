@@ -78,6 +78,21 @@ public final class PartyMenuMockCheck {
             click(menu, player, 53);
             check(queues.queueOf(player).isEmpty(), "Stale leave actions tolerate lost membership");
 
+            click(menu, player, 6);
+            check(player.getOpenInventory().getTopInventory().getSize() == 27,
+                    "Quick Games opens its own board");
+            for (int slot = 11; slot <= 16; slot++) {
+                check(player.getOpenInventory().getTopInventory().getItem(slot) != null,
+                        "All six quick games have a queue icon");
+            }
+            click(menu, player, 11);
+            check(queues.queueOf(player).orElseThrow().mode().equals("hot_potato"),
+                    "The quick game icon joins its standalone queue");
+            click(menu, player, 18);
+            check(player.getOpenInventory().getTopInventory().getSize() == 54,
+                    "Quick Games Back returns to Party");
+            queues.leave(player);
+
             var ctor = ActiveSession.class.getDeclaredConstructors()[0];
             ctor.setAccessible(true);
             var active = (ActiveSession) ctor.newInstance(plugin, sessions, game, "sumo",
@@ -119,7 +134,7 @@ public final class PartyMenuMockCheck {
             var participantView = participant.getOpenInventory().getTopInventory();
             check(participantView == null || participantView.getSize() != 54,
                     "The browsing inventory closes when its viewer becomes an active participant");
-            System.out.println("Party menu: join, Back, leave, stale membership, disabled slots and live session transitions passed");
+            System.out.println("Party menu: join, Quick Games, Back, leave, stale membership, disabled slots and live session transitions passed");
         } finally {
             MockBukkit.unmock();
         }

@@ -3,9 +3,10 @@ package me.petr1furious.potatominigames.games.party;
 import me.petr1furious.potatominigames.i18n.I18n;
 
 import java.util.*;
+import java.util.stream.Stream;
 
 final class PartyGamesState {
-    static final List<String> MODES =
+    private static final List<String> PREVIOUS_DEFAULT =
             List.of(
                     "pvp",
                     "sumo",
@@ -15,13 +16,15 @@ final class PartyGamesState {
                     "mob_count",
                     "rhino",
                     "miners",
-                    "magic_battle",
                     "color_floor",
                     "anvils",
                     "build_memory",
                     "tool_race",
-                    "parkour_race",
-                    "hole_in_the_wall");
+                    "hole_in_the_wall",
+                    "parkour_race");
+    static final List<String> QUICK_MODES = List.of(
+            "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it");
+    static final List<String> MODES = Stream.concat(PREVIOUS_DEFAULT.stream(), QUICK_MODES.stream()).toList();
     private final List<String> schedule;
     private final Set<UUID> roster,
             connected,
@@ -34,11 +37,15 @@ final class PartyGamesState {
     PartyGamesState(List<UUID> roster, List<String> modes, Random random) {
         if (roster.isEmpty() || roster.size() > 12 || new HashSet<>(roster).size() != roster.size())
             throw I18n.exception("party.rounds.party_games.error.roster");
-        if (modes.isEmpty()
-                || !MODES.containsAll(modes)
-                || new HashSet<>(modes).size() != modes.size())
-            throw I18n.exception("party.rounds.party_games.error.modes");
         List<String> shuffled = new ArrayList<>(modes);
+        // Older configs may still list Magic Battle alongside eligible rounds.
+        shuffled.removeIf("magic_battle"::equals);
+        if (shuffled.isEmpty()
+                || !MODES.containsAll(shuffled)
+                || new HashSet<>(shuffled).size() != shuffled.size())
+            throw I18n.exception("party.rounds.party_games.error.modes");
+        if (shuffled.equals(PREVIOUS_DEFAULT))
+            shuffled.addAll(QUICK_MODES);
         Collections.shuffle(shuffled, random);
         schedule = List.copyOf(shuffled);
         this.roster = new LinkedHashSet<>(roster);

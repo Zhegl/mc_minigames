@@ -16,12 +16,17 @@ final class PartyRoundFactory {
             case "tnt_run" -> new TntRunSession(services, config, context);
             case "mob_count" -> new MobCountSession(services, config, context);
             case "rhino" -> new RhinoSession(services, config, context);
-            case "magic_battle" -> new MagicBattleSession(services, config, context);
             case "miners" -> new MinersSession(services, config, context);
             case "color_floor" -> new ColorFloorSession(services, config, context);
             case "anvils" -> new AnvilSession(services, config, context);
             case "build_memory" -> new BuildMemorySession(services, config, context);
             case "tool_race" -> new ToolRaceSession(services, config, context);
+            case "hot_potato" -> new HotPotatoSession(services, config, context);
+            case "jump_rope" -> new JumpRopeSession(services, config, context);
+            case "drop_tower" -> new DropTowerSession(services, config, context);
+            case "chicken_shooter" -> new ChickenShooterSession(services, config, context);
+            case "less_is_better" -> new LessIsBetterSession(services, config, context);
+            case "wait_for_it" -> new WaitForItSession(services, config, context);
             default -> throw new IllegalArgumentException("Unknown party round: " + mode);
         };
     }
@@ -29,7 +34,8 @@ final class PartyRoundFactory {
     static Component title(String mode) {
         return switch (mode) {
             case "gartic_phone", "hole_in_the_wall", "pvp", "sumo", "arms_race", "one_shot", "tnt_run", "mob_count",
-                    "rhino", "miners", "magic_battle", "color_floor", "anvils", "build_memory", "tool_race", "parkour_race" ->
+                    "rhino", "miners", "magic_battle", "color_floor", "anvils", "build_memory", "tool_race", "parkour_race",
+                    "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it" ->
                     I18n.tr("party.rounds.mode." + mode);
             default -> Component.text(mode);
         };
