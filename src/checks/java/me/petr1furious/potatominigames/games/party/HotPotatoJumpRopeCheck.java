@@ -17,6 +17,8 @@ public final class HotPotatoJumpRopeCheck {
         potatoRejectsImmediateTradebackAndKeepsItsFuse();
         potatoReplacesAnAbsentCarrier();
         ropeSweepsTheWholeFloorAndSpeedsUp();
+        ropeFitsAllFiftySweepsIntoTheRound();
+        ropeLeavesTimeToJumpAgainAtTheEndWall();
         ropeTestsThePlayerVolumeThroughoutTheSweep();
     }
 
@@ -71,10 +73,86 @@ public final class HotPotatoJumpRopeCheck {
     private static void ropeSweepsTheWholeFloorAndSpeedsUp() {
         check(JumpRopeSweep.ticks(0) > JumpRopeSweep.ticks(1), "Practice is slower than scoring");
         check(JumpRopeSweep.ticks(3) > JumpRopeSweep.ticks(6), "Later stages speed up");
+        int last = JumpRopeSweep.ticks(50);
         check(JumpRopeSweep.position(1, 0, 50) < -9, "The forward rope starts behind the lane");
-        check(JumpRopeSweep.position(1, 51, 50) > 9, "The forward rope reaches the far edge");
+        check(JumpRopeSweep.position(1, last, 50) > 9, "The forward rope reaches the far edge");
         check(JumpRopeSweep.position(-1, 0, 50) > 9, "The return rope starts on the far side");
-        check(JumpRopeSweep.position(-1, 51, 50) < -9, "The return rope reaches the near edge");
+        check(JumpRopeSweep.position(-1, last, 50) < -9, "The return rope reaches the near edge");
+        double openingStep = JumpRopeSweep.position(1, 1, 50) - JumpRopeSweep.position(1, 0, 50);
+        double closingStep =
+                JumpRopeSweep.position(1, last, 50) - JumpRopeSweep.position(1, last - 1, 50);
+        check(closingStep > openingStep * 1.4, "The late rope accelerates into its approach");
+    }
+
+    private static void ropeFitsAllFiftySweepsIntoTheRound() {
+        check(JumpRopeSweep.SCORED_SWEEPS == 50, "Fifty scoring sweeps follow practice");
+        Random random = new Random(118);
+        long total = 0;
+        var latePauses = new HashSet<Integer>();
+        for (int stage = 0; stage <= 50; stage++) {
+            int pause = JumpRopeSweep.pauseTicks(stage, random);
+            total += pause + JumpRopeSweep.ticks(stage);
+            check(pause >= JumpRopeSweep.warningTicks(stage), "The warning fits inside the pause");
+            if (stage >= 35) latePauses.add(pause);
+        }
+        check(
+                total < JumpRopeSweep.durationSeconds() * 20L,
+                "A perfect run reaches its fiftieth sweep");
+        check(latePauses.size() >= 4, "The final sweeps vary the time between launches");
+        check(
+                JumpRopeSweep.warningTicks(50) < JumpRopeSweep.warningTicks(1),
+                "The late audible warning is shorter");
+    }
+
+    private static void ropeLeavesTimeToJumpAgainAtTheEndWall() {
+        Random random = new Random(950);
+        for (double z : new double[] {-8.65, 0.15, 8.65}) {
+            BoundingBox grounded = box(0, 0, z);
+            long previousJump = -20;
+            long start = 0;
+            for (int stage = 1; stage <= 50; stage++) {
+                start += JumpRopeSweep.pauseTicks(stage, random);
+                int direction = stage % 2 == 0 ? 1 : -1;
+                int ticks = JumpRopeSweep.ticks(stage);
+                int contactTick = 1;
+                while (contactTick <= ticks
+                        && !JumpRopeSweep.hits(
+                                grounded,
+                                grounded,
+                                JumpRopeSweep.position(direction, contactTick - 1, stage),
+                                JumpRopeSweep.position(direction, contactTick, stage),
+                                81)) contactTick++;
+                check(contactTick <= ticks, "The rope reaches each player's lane");
+                int jumpAt = contactTick - 3;
+                check(
+                        start + jumpAt - previousJump >= 12,
+                        "A player can land before jumping again");
+                for (int age = 1; age <= ticks; age++) {
+                    BoundingBox from = box(0, jumpHeight(age - 1 - jumpAt), z);
+                    BoundingBox to = box(0, jumpHeight(age - jumpAt), z);
+                    check(
+                            !JumpRopeSweep.hits(
+                                    from,
+                                    to,
+                                    JumpRopeSweep.position(direction, age - 1, stage),
+                                    JumpRopeSweep.position(direction, age, stage),
+                                    81),
+                            "A regular jump can clear each sweep at the ends and the middle");
+                }
+                previousJump = start + jumpAt;
+                start += ticks;
+            }
+        }
+    }
+
+    private static double jumpHeight(int age) {
+        double height = 0;
+        double velocity = .42;
+        for (int tick = 0; tick < age; tick++) {
+            height += velocity;
+            velocity = (velocity - .08) * .98;
+        }
+        return Math.max(0, height);
     }
 
     private static void ropeTestsThePlayerVolumeThroughoutTheSweep() {

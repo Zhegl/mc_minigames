@@ -1,13 +1,8 @@
 package me.petr1furious.potatominigames.games.party;
 
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Phase.ACTIVE;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Phase.FINISHED;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Phase.PREVIEW;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Phase.RESULT;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Task.BUTTON;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Task.CRAFT;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Task.CROP;
-import static me.petr1furious.potatominigames.games.party.WaitForItRound.Task.FLOWER;
+import static me.petr1furious.potatominigames.games.party.WaitForItRound.Goal.*;
+import static me.petr1furious.potatominigames.games.party.WaitForItRound.Progress.*;
+import static me.petr1furious.potatominigames.games.party.WaitForItRound.Task.*;
 
 import java.util.List;
 import java.util.Set;
@@ -16,113 +11,101 @@ import java.util.UUID;
 public final class WaitForItCheck {
     private static final UUID ALICE = new UUID(0, 1);
     private static final UUID BOB = new UUID(0, 2);
-    private static final UUID CHRIS = new UUID(0, 3);
-    private static final List<UUID> PLAYERS = List.of(ALICE, BOB, CHRIS);
+    private static final List<UUID> PLAYERS = List.of(ALICE, BOB);
 
     public static void main(String[] args) {
-        actionsOnlyScoreDuringTheirOwnTask();
-        missingOneTaskLeavesTheNextTaskPlayable();
-        completingTheSameNumberOfTasksTiesRegardlessOfSpeed();
-        soloPlayersSeeAllFourTasks();
-        allTimeoutsFinishWithinTheRoundDuration();
-        System.out.println("Wait For It passed");
-    }
-
-    private static void actionsOnlyScoreDuringTheirOwnTask() {
         var round = new WaitForItRound(PLAYERS);
-        check(round.phase() == PREVIEW && round.task() == FLOWER, "Flower preview comes first");
         check(
-                round.secondsLeft(1) == WaitForItRound.PREVIEW_SECONDS,
-                "Preview countdown rounds up");
-        check(!round.complete(ALICE, FLOWER, round.deadline() - 1), "Preview cannot award points");
-
-        long start = round.deadline();
-        advanceAtDeadline(round, PLAYERS);
-        check(round.phase() == ACTIVE, "Task opens when the preview ends");
+                round.task() == FLOWER && round.secondsLeft(0) == FLOWER.seconds,
+                "Flower starts at tick 0");
+        check(round.record(ALICE, POPPY, 0) == PARTIAL, "First flower counts at tick 0");
         check(
-                !round.complete(ALICE, FLOWER, start - 1),
-                "An action from the preview stays invalid");
-        check(!round.complete(ALICE, CRAFT, round.deadline() - 2), "Wrong action cannot score");
+                round.record(ALICE, POPPY, 1) == IGNORED,
+                "Same species cannot replace a different one");
+        check(round.record(ALICE, PICKAXE, 1) == IGNORED, "Wrong goal cannot count");
+        check(round.record(new UUID(0, 3), ALLIUM, 1) == IGNORED, "Spectators cannot score");
         check(
-                !round.complete(new UUID(0, 4), FLOWER, round.deadline() - 2),
-                "Spectators cannot score");
-        check(!round.complete(BOB, FLOWER, round.deadline()), "Actions at timeout are too late");
-        check(round.complete(ALICE, FLOWER, round.deadline() - 1), "Last tick counts");
+                round.record(ALICE, ALLIUM, 1) == PARTIAL && round.points(ALICE) == 0,
+                "Partial bouquet");
+        long craft = round.deadline();
+        check(round.record(BOB, POPPY, craft) == IGNORED, "Deadline is exclusive");
+        check(round.record(ALICE, CORNFLOWER, craft - 1) == COMPLETE, "Last active tick counts");
+        check(round.record(ALICE, CORNFLOWER, craft - 1) == IGNORED, "One point per task");
+        check(round.advance(craft - 1, PLAYERS) == null, "Others keep the full time window");
+        var previous = round.advance(craft, PLAYERS);
         check(
-                !round.complete(ALICE, FLOWER, round.deadline() - 1),
-                "One point per player per task");
-        check(round.points(ALICE) == 1 && round.points(BOB) == 0, "Each score is independent");
-    }
-
-    private static void missingOneTaskLeavesTheNextTaskPlayable() {
-        var round = new WaitForItRound(PLAYERS);
-        advanceAtDeadline(round, PLAYERS);
-        advanceAtDeadline(round, PLAYERS);
+                previous.task() == FLOWER && previous.completed().equals(Set.of(ALICE)),
+                "Previous results persist");
         check(
-                round.phase() == RESULT && !round.completed(BOB),
-                "A missed task gets a result phase");
-        advanceAtDeadline(round, PLAYERS);
-        check(round.task() == CRAFT && round.phase() == PREVIEW, "Craft always follows Flower");
-        advanceAtDeadline(round, PLAYERS);
-        check(round.complete(BOB, CRAFT, round.deadline() - 1), "A player may score after a miss");
-        check(round.points(BOB) == 1, "Later success earns a point");
-        advanceAtDeadline(round, PLAYERS);
-        advanceAtDeadline(round, PLAYERS);
-        check(round.task() == CROP && round.phase() == PREVIEW, "Crop always follows Craft");
-        check(!round.completed(BOB), "Only task completion is reset between tasks");
-    }
-
-    private static void completingTheSameNumberOfTasksTiesRegardlessOfSpeed() {
-        var round = new WaitForItRound(PLAYERS);
-        advanceAtDeadline(round, PLAYERS);
-        long ends = round.deadline();
-        check(round.complete(BOB, FLOWER, ends - 40), "Early point counts");
-        check(round.complete(ALICE, FLOWER, ends - 1), "Late point counts");
-        check(!round.advance(ends - 1, PLAYERS), "An unfinished player keeps the full window");
-        check(round.advance(ends - 1, List.of(ALICE, BOB)), "Departure cannot make everyone wait");
-        check(round.phase() == RESULT, "Everybody finishing leads to feedback");
+                round.task() == CRAFT && round.secondsLeft(craft) == CRAFT.seconds,
+                "Craft opens on timeout tick");
+        check(round.record(BOB, PICKAXE, craft - 1) == IGNORED, "Stale events cannot count");
         check(
-                round.result(Set.copyOf(PLAYERS))
-                        .places()
-                        .equals(List.of(List.of(ALICE, BOB), List.of(CHRIS))),
-                "Identical scores share the same place even when completion times differ");
-        check(
-                round.result(Set.of(BOB, CHRIS))
-                        .places()
-                        .equals(List.of(List.of(BOB), List.of(CHRIS))),
-                "Withdrawn players cannot occupy a place");
-    }
-
-    private static void soloPlayersSeeAllFourTasks() {
-        var round = new WaitForItRound(List.of(ALICE));
-        for (var task : List.of(FLOWER, CRAFT, CROP, BUTTON)) {
-            check(round.phase() == PREVIEW && round.task() == task, "Every task gets a preview");
-            long start = round.deadline();
-            advanceAtDeadline(round, List.of(ALICE));
-            check(round.complete(ALICE, task, start), "A solo player can complete " + task);
-            check(round.advance(start, List.of(ALICE)), "Solo completion starts feedback");
-            advanceAtDeadline(round, List.of(ALICE));
-        }
-        check(
-                round.phase() == FINISHED && round.points(ALICE) == 4,
-                "A perfect round earns four points");
-        check(!round.complete(ALICE, BUTTON, round.deadline()), "Finished round is closed");
-    }
-
-    private static void allTimeoutsFinishWithinTheRoundDuration() {
-        var round = new WaitForItRound(PLAYERS);
-        for (int step = 0; step < 12; step++) advanceAtDeadline(round, PLAYERS);
-        check(round.phase() == FINISHED, "Four consecutive misses still finish the round");
-        check(
-                round.deadline() == WaitForItRound.maxSeconds() * 20L,
-                "Round duration covers every phase");
+                round.record(BOB, PICKAXE, craft) == COMPLETE,
+                "Missed players may score immediately");
         check(
                 round.result(Set.copyOf(PLAYERS)).places().equals(List.of(PLAYERS)),
-                "All zero scores tie");
-    }
+                "Equal scores tie");
+        check(
+                round.result(Set.of(BOB)).places().equals(List.of(List.of(BOB))),
+                "Withdrawn players cannot place");
+        var early = round.advance(craft + 1, List.of(BOB));
+        check(
+                early.task() == CRAFT && early.completed().equals(Set.of(BOB)),
+                "Departures cannot prolong a completed task");
+        check(
+                round.task() == CROP && round.record(BOB, WHEAT, craft + 1) == PARTIAL,
+                "Crop opens on early transition tick");
+        check(round.count(ALICE, WHEAT) == 0, "Harvest progress is personal");
+        long cropEnd = round.deadline();
+        for (int i = 1; i < CROP.required(WHEAT); i++)
+            check(round.record(BOB, WHEAT, cropEnd - 1) == PARTIAL, "Wheat counts individually");
+        check(
+                round.record(BOB, WHEAT, cropEnd - 1) == IGNORED,
+                "Extra wheat cannot replace carrots");
+        for (int i = 1; i < CROP.required(CARROT); i++)
+            check(
+                    round.record(BOB, CARROT, cropEnd - 1) == PARTIAL,
+                    "Carrots have their own quota");
+        check(round.record(BOB, CARROT, cropEnd - 1) == COMPLETE, "Both quotas finish the harvest");
+        round.advance(cropEnd, PLAYERS);
+        check(
+                round.task() == BUTTON && round.record(ALICE, BUTTON_LEFT, cropEnd) == PARTIAL,
+                "One button counts");
+        check(
+                round.record(ALICE, BUTTON_LEFT, cropEnd + 1) == IGNORED,
+                "Same button cannot score twice");
+        check(
+                round.record(ALICE, BUTTON_RIGHT, cropEnd + 1) == COMPLETE,
+                "Second button scores the point");
 
-    private static void advanceAtDeadline(WaitForItRound round, List<UUID> players) {
-        check(round.advance(round.deadline(), players), "Phase advances on its deadline");
+        var timeouts = new WaitForItRound(PLAYERS);
+        for (var task : List.of(FLOWER, CRAFT, CROP, BUTTON))
+            check(
+                    timeouts.advance(timeouts.deadline(), PLAYERS).task() == task,
+                    "All four tasks run on timeouts");
+        check(
+                timeouts.finished() && timeouts.deadline() == WaitForItRound.maxSeconds() * 20L,
+                "Maximum duration is exactly four active windows");
+
+        var solo = new WaitForItRound(List.of(ALICE));
+        long tick = 0;
+        check(
+                solo.advance(solo.deadline() - 1, List.of()) == null,
+                "Empty active roster cannot skip a task");
+        for (var task : List.of(FLOWER, CRAFT, CROP, BUTTON)) {
+            check(solo.task() == task && !solo.finished(), "Solo gets every task");
+            check(solo.advance(tick, List.of(ALICE)) == null, "New task cannot end before play");
+            for (var goal : WaitForItRound.Goal.values())
+                for (int i = 0; i < task.required(goal); i++) solo.record(ALICE, goal, tick);
+            check(
+                    solo.advance(++tick, List.of(ALICE)).task() == task,
+                    "Solo completion advances directly");
+        }
+        check(solo.finished() && solo.points(ALICE) == 4, "Solo can score in all four tasks");
+        check(
+                solo.record(ALICE, BUTTON_LEFT, tick) == IGNORED && solo.secondsLeft(tick) == 0,
+                "Finished round is closed");
     }
 
     private static void check(boolean passed, String message) {

@@ -480,12 +480,12 @@ same modes are available for solo practice with `/party test <mode>`.
 
 | Game | Mode ID | How to play |
 | --- | --- | --- |
-| Avoid Hot Potato | `hot_potato` | Right-click another player to pass the potato before the fuse runs out. |
-| Jump Rope | `jump_rope` | Try the practice sweep, then jump over the beam as it speeds up. |
-| Drop Tower | `drop_tower` | Find each lit landing on the way down. A miss sends you back to your most recent checkpoint. |
-| Chicken Shooter | `chicken_shooter` | Use the bow to hit targets in your own lane. Early targets stand still. |
-| Less Is Better | `less_is_better` | Right-click your ballot to vote for red or blue. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
-| Wait For It… | `wait_for_it` | Read the preview, then find the flower, craft the item, harvest the crop, or find the button. Score one point per completed task. |
+| Avoid Hot Potato | `hot_potato` | Left- or right-click a nearby player to pass the potato before the fuse runs out. Chase across a 31-block-wide arena. |
+| Jump Rope | `jump_rope` | Try the practice sweep in the jungle temple, then survive 50 scored sweeps. Later sweeps have shorter warnings, varied pauses, and a faster beam. |
+| Drop Tower | `drop_tower` | Clear eleven drops, two detours, and single-block landings. A miss sends you back to your most recent checkpoint. |
+| Chicken Shooter | `chicken_shooter` | Hit targets in your own lane across ten waves. After a stationary opener, track smaller and faster targets as the waves get shorter. |
+| Less Is Better | `less_is_better` | Stand on the raised red or blue platform when time runs out. Players are hidden from one another until the reveal. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
+| Wait For It… | `wait_for_it` | Pick a bouquet, craft a wooden pickaxe, harvest ripe crops, and find two buttons. Tasks start back to back. Each completed task earns one point. |
 
 These games are also independently available:
 

@@ -48,6 +48,7 @@ final class ChickenShooterSession extends PartySurvivalSession {
     private final Map<UUID, Shot> shots = new HashMap<>();
     private ChickenGallery gallery;
     private int wave = -1;
+    private long waveStartedAt;
 
     ChickenShooterSession(SessionServices services, PartyConfig config, PartyRoundContext context) {
         super(services, config, "chicken_shooter", context);
@@ -127,7 +128,7 @@ final class ChickenShooterSession extends PartySurvivalSession {
 
     @Override
     int durationSeconds() {
-        return ChickenGallery.WAVES * ChickenGallery.TICKS_PER_WAVE / 20;
+        return ChickenGallery.DURATION_TICKS / 20;
     }
 
     @Override
@@ -168,20 +169,18 @@ final class ChickenShooterSession extends PartySurvivalSession {
 
     @Override
     void playTick(long elapsed) {
-        if (elapsed >= durationSeconds() * 20L) {
+        if (elapsed >= ChickenGallery.DURATION_TICKS) {
             for (Player player : alivePlayers())
                 player.sendMessage(
                         text(I18n.tr(KEY + "final_score", gallery.score(player.getUniqueId()))));
             return;
         }
         int currentWave = ChickenGallery.wave(elapsed);
-        if (currentWave != wave) restock(currentWave);
-        else if (elapsed % 2 == 0) {
-            long age = elapsed % ChickenGallery.TICKS_PER_WAVE;
-            for (Target target : targets.values()) {
-                if (target.path().drift() != 0)
-                    target.chicken().teleport(birdAt(target.lane(), target.path(), age));
-            }
+        if (currentWave != wave) restock(currentWave, elapsed);
+        else if (wave > 0) {
+            long age = elapsed - waveStartedAt;
+            for (Target target : targets.values())
+                target.chicken().teleport(birdAt(target.lane(), target.path(), age));
         }
         shots.values()
                 .removeIf(shot -> {
@@ -191,15 +190,16 @@ final class ChickenShooterSession extends PartySurvivalSession {
                 });
     }
 
-    private void restock(int nextWave) {
+    private void restock(int nextWave, long elapsed) {
         clearTargets();
         wave = nextWave;
-        List<ChickenGallery.Bird> pattern = ChickenGallery.birds(wave);
+        waveStartedAt = elapsed;
+        var pattern = ChickenGallery.WAVES.get(wave);
         for (Player player : alivePlayers()) {
             if (!shooting(player)) continue;
             UUID owner = player.getUniqueId();
             Lane lane = lanes.get(owner);
-            for (ChickenGallery.Bird bird : pattern) {
+            for (ChickenGallery.Bird bird : pattern.birds()) {
                 Chicken chicken =
                         world.spawn(
                                 birdAt(lane, bird, 0),
@@ -217,7 +217,7 @@ final class ChickenShooterSession extends PartySurvivalSession {
                                     entity.setRemoveWhenFarAway(false);
                                     entity.setEggLayTime(Integer.MAX_VALUE);
                                     var scale = entity.getAttribute(Attribute.SCALE);
-                                    if (scale != null) scale.setBaseValue(wave == 0 ? 1.9 : 1.55);
+                                    if (scale != null) scale.setBaseValue(pattern.scale());
                                 });
                 targets.put(chicken.getUniqueId(), new Target(owner, lane, bird, chicken));
                 gallery.addBird(chicken.getUniqueId(), owner);
@@ -227,13 +227,16 @@ final class ChickenShooterSession extends PartySurvivalSession {
     }
 
     private Location birdAt(Lane lane, ChickenGallery.Bird bird, long age) {
+        double x = bird.x(age);
+        double z = bird.z(age);
+        float yaw =
+                wave == 0
+                        ? 180
+                        : (float)
+                                Math.toDegrees(
+                                        Math.atan2(x - bird.x(age + 1), bird.z(age + 1) - z));
         return new Location(
-                world,
-                lane.x() + .5 + bird.x(age),
-                FLOOR + 1.85,
-                lane.z() + .5 + bird.z(),
-                wave == 0 ? 180 : bird.x(age + 1) > bird.x(age) ? -90 : 90,
-                0);
+                world, lane.x() + .5 + x, FLOOR + 1.85 + bird.y(age), lane.z() + .5 + z, yaw, 0);
     }
 
     @Override
@@ -317,7 +320,7 @@ final class ChickenShooterSession extends PartySurvivalSession {
 
     @Override
     Component status() {
-        return I18n.tr(KEY + "status", wave + 1, ChickenGallery.WAVES, timeLeft());
+        return I18n.tr(KEY + "status", wave + 1, ChickenGallery.WAVES.size(), timeLeft());
     }
 
     private String timeLeft() {
@@ -328,8 +331,11 @@ final class ChickenShooterSession extends PartySurvivalSession {
     List<Component> sidebarLines(Player player, Component line) {
         UUID id = player.getUniqueId();
         if (!context.eligible().contains(id)) return List.of(line);
-        return List.of(
-                I18n.tr(KEY + "score", gallery.score(id)), I18n.tr(KEY + "time", timeLeft()));
+        Component score = I18n.tr(KEY + "score", gallery.score(id));
+        Component time = I18n.tr(KEY + "time", timeLeft());
+        if (wave < 0) return List.of(score, time);
+        long ticksLeft = ChickenGallery.WAVES.get(wave).ticks() - (elapsed() - waveStartedAt);
+        return List.of(score, time, I18n.tr(KEY + "wave_left", Math.max(0, (ticksLeft + 19) / 20)));
     }
 
     @Override
