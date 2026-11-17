@@ -108,50 +108,66 @@ public final class PartySurvivalCheck {
         Random random = new Random(4);
         int previous = 0;
         for (int round = 1; round <= 100; round++) {
-            MobCountRound question = MobCountRound.generate(round, 36, random);
+            MobCountRound question = MobCountRound.generate(round, random);
             check(question.total() >= previous && question.total() <= 60, "More mobs over time, bounded entity count");
             previous = question.total();
             check(new HashSet<>(question.counts().values()).size() == question.counts().size(), "All species counts are distinct");
             check(question.counts().values().stream().filter(n -> n == question.target()).count() == 1, "Exactly one correct species per announced number");
-            check(question.platforms().size() == 36 && new HashSet<>(question.platforms()).equals(question.counts().keySet()),
-                    "Every species, including the answer, has reachable platforms");
+            check(question.sectors().size() == question.counts().size()
+                            && new HashSet<>(question.sectors()).equals(question.counts().keySet()),
+                    "Every species has one sector");
             check(question.counts().size() == (round < 4 ? 4 : 5), "A fifth species joins later rounds");
         }
         check(MobCountRound.countSeconds(1, 10) == 10 && MobCountRound.countSeconds(100, 10) == 6, "Counting time tightens to six seconds");
+        checkDisc(MobCountRound.generate(3, new Random(0)));
+        checkDisc(MobCountRound.generate(4, new Random(0)));
+    }
+
+    private static void checkDisc(MobCountRound question) {
         FakeWorld world = new FakeWorld();
         MobCountArena arena = new MobCountArena(world.world);
-        MobCountRound question = MobCountRound.generate(3, 36, new Random(0));
+        int sectors = question.sectors().size();
+        int radius = MobCountArena.RADIUS;
         arena.prepare(question);
-        check(world.displays == 36, "Each 2×2 platform is labelled with its species");
-        Map<Integer, Integer> tiles = new HashMap<>();
-        for (int x = -11; x <= 10; x++) for (int z = -11; z <= 10; z++) {
-            int platform = MobCountArena.platformAt(x, z);
-            if (platform < 0) check(world.at(x, 80, z) == Material.LIGHT_BLUE_STAINED_GLASS, "Counting fills all gaps with glass");
-            else tiles.merge(platform, 1, Integer::sum);
+        check(world.displays == sectors, "Each species labels one wedge of the disc");
+        check(world.at(radius, 80, radius) == Material.AIR && world.at(radius, 80, 0) != Material.AIR,
+                "The curved rim ends within the surrounding square");
+        for (int i = 0; i < sectors; i++) {
+            Location marker = arena.marker(i, sectors);
+            check(MobCountArena.sectorAt(marker.getBlockX(), marker.getBlockZ(), sectors) == i,
+                    "Each label is over its matching wedge");
+            check(world.at(marker.getBlockX(), 81, marker.getBlockZ()) == Material.valueOf(question.sectors().get(i).head),
+                    "Every wedge has the matching mob head");
         }
-        check(tiles.size() == 36 && tiles.values().stream().allMatch(n -> n == 4), "Thirty-six exact 2×2 platforms");
-        for (int i = 0; i < 5; i++) {
-            int edge = MobCountArena.MIN + i * 4 + 2;
-            check(MobCountArena.platformAt(edge, -11) == -1 && MobCountArena.platformAt(edge + 1, -11) == -1
-                    && MobCountArena.platformAt(edge + 2, -11) >= 0, "Gaps are exactly two blocks wide");
+        Set<Location> starts = new HashSet<>();
+        for (int i = 0; i < 16; i++) {
+            Location spawn = arena.spawn(i, 16);
+            check(starts.add(spawn) && MobCountArena.sectorAt(spawn.getBlockX(), spawn.getBlockZ(), sectors) == MobCountArena.SEPARATOR,
+                    "All players start in the neutral hub");
         }
-        arena.removeGlass();
-        for (int x = -11; x <= 10; x++) for (int z = -11; z <= 10; z++) {
-            if (MobCountArena.platformAt(x, z) < 0) check(world.at(x, 80, z) == Material.AIR, "Jump phase removes every glass bridge");
+        check(arena.countingSpots().size() >= 60 && new HashSet<>(arena.countingSpots()).size() == arena.countingSpots().size(),
+                "Even the largest mob group fits in unique counting spots");
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                int sector = MobCountArena.sectorAt(x, z, sectors);
+                if (sector == MobCountArena.SEPARATOR)
+                    check(world.at(x, 80, z) == Material.BLACK_CONCRETE, "Seams and the hub are solid neutral tiles");
+                if (sector < 0) continue;
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        int neighbor = MobCountArena.sectorAt(x + dx, z + dz, sectors);
+                        check(neighbor < 0 || neighbor == sector, "Distinct wedges never share an edge or corner");
+                    }
+                }
+            }
         }
-        int correct = question.platforms().indexOf(question.answer());
-        Location safe = arena.spawn(correct);
-        check(arena.correct(safe, question), "A landed player on a correct platform passes");
-        check(!arena.correct(safe.clone().add(0, 1, 0), question), "Being airborne over the answer is not landing in time");
-        check(!arena.correct(safe.clone().add(0, .5, 0), question), "Head-height without an actual head beneath is airborne");
-        check(arena.correct(new Location(world.world, MobCountArena.x(correct) + .5, 81.5, MobCountArena.z(correct) + .5), question),
-                "Standing on the platform's head also counts");
-        Location nearest = arena.nearest(new Location(world.world, -8.5, 81, -8.5));
-        check(MobCountArena.platformAt(nearest.getBlockX(), nearest.getBlockZ()) >= 0, "Gap-to-platform transition always selects a safe spawn");
         arena.removeWrong(question);
-        for (int i = 0; i < 36; i++) {
-            check((world.at(MobCountArena.x(i), 80, MobCountArena.z(i)) != Material.AIR)
-                    == (question.platforms().get(i) == question.answer()), "Only correct platforms survive the reveal");
+        int correct = question.sectors().indexOf(question.answer());
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                check((world.at(x, 80, z) != Material.AIR) == (MobCountArena.sectorAt(x, z, sectors) == correct),
+                        "Only floor belonging to the correct wedge remains");
+            }
         }
         arena.cleanupLabels();
     }

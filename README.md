@@ -1136,20 +1136,18 @@ Settings: `tntRun.durationSeconds`, `tntRun.collapseTicks` in `games/party.yml`.
 ### Party Пересчёт / Mob Count
 
 Join with `/play party mob_count`, or train with `/party test mob_count`.
-The board has **36 platforms**, each **2×2 blocks**, with **two-block gaps**.
-Each platform has a mob head and a label. During counting, glass fills the gaps
-and harmless, stationary mobs appear across the board. Count each species:
-initially four species and ten mobs; later a fifth species joins and the total
-grows to at most sixty. Counting time starts at ten seconds and drops to six.
+The arena is a disc with one colored sector per species, each marked by a mob
+head and label. Solid dark lines separate the sectors, with a neutral hub at the
+center. Harmless, stationary mobs appear across the disc and are protected from
+burning in daylight. Count each species. The first round starts with four species
+and ten mobs. Later a fifth species joins and the total grows to at most sixty.
+Counting time starts at ten seconds and drops to six.
 
-The mobs and glass then disappear and a number appears. Each player starts the
-jump phase on their nearest safe platform and has **ten seconds** to land on any
-platform showing the species that appeared that many times. Counts are distinct,
-so exactly one species is correct. Standing on its head also counts; being in the
-air or above a gap at the deadline does not. Incorrect platforms disappear and
-the result settles for three seconds. Jumping to safety after the deadline cannot
-undo a wrong choice. Surviving platforms and glass return for the next round.
-After twelve rounds, remaining players share victory.
+The mobs disappear and a number appears. Players return to the hub for a
+three-second freeze, then have **ten seconds** to run to the sector of the species
+that appeared that many times. At the reveal, the hub, separators, and incorrect
+sectors drop away. Players who fall are eliminated, and the floor resets for the
+next round. After twelve rounds, remaining players share victory.
 
 Settings: `mobCount.countSeconds`, `mobCount.answerSeconds`, `mobCount.rounds`.
 

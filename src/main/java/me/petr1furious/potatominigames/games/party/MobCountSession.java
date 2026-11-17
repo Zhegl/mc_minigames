@@ -6,11 +6,15 @@ import me.petr1furious.potatominigames.i18n.I18n;
 import net.kyori.adventure.text.Component;
 
 import org.bukkit.Location;
+import org.bukkit.entity.AbstractSkeleton;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.PiglinAbstract;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Zombie;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.entity.EntityCombustEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,18 +48,18 @@ final class MobCountSession extends PartySurvivalSession {
     @Override
     void buildArena() {
         arena = new MobCountArena(world);
-        round = MobCountRound.generate(1, MobCountArena.PLATFORMS, random);
+        round = MobCountRound.generate(1, random);
         arena.prepare(round);
     }
 
     @Override
     Location spawn(int index, int count) {
-        return arena.spawn(index * MobCountArena.PLATFORMS / Math.max(1, count));
+        return arena.spawn(index, count);
     }
 
     @Override
     Location viewpoint() {
-        return new Location(world, .5, MobCountArena.FLOOR + 13, .5, 0, 75);
+        return new Location(world, .5, MobCountArena.FLOOR + 19, .5, 0, 90);
     }
 
     @Override
@@ -79,29 +83,20 @@ final class MobCountSession extends PartySurvivalSession {
     }
 
     private void startCount(boolean next) {
-        if (next)
-            round = MobCountRound.generate(round.number() + 1, MobCountArena.PLATFORMS, random);
-        arena.prepare(round);
-        for (Player player : alivePlayers()) teleport(player, arena.nearest(player.getLocation()));
+        if (next) {
+            round = MobCountRound.generate(round.number() + 1, random);
+            arena.prepare(round);
+            returnToHub(false);
+        }
         phase = Phase.COUNT;
         phaseEnd = elapsed() + MobCountRound.countSeconds(round.number(), countSeconds) * 20L;
-        List<Integer> cells = new ArrayList<>();
-        for (int i = 0; i < 121; i++) cells.add(i);
-        java.util.Collections.shuffle(cells, random);
+        List<Location> spots = arena.countingSpots();
+        java.util.Collections.shuffle(spots, random);
         for (var entry : round.counts().entrySet())
             for (int i = 0; i < entry.getValue(); i++) {
                 // Different species are mixed across unique cells, rather than lined up by answer.
-                int cell = cells.get(mobs.size());
-                int x = MobCountArena.MIN + cell % 11 * 2;
-                int z = MobCountArena.MIN + cell / 11 * 2;
-                Location location =
-                        new Location(
-                                world,
-                                x + .7,
-                                MobCountArena.FLOOR + 1.25,
-                                z + .7,
-                                random.nextFloat() * 360,
-                                0);
+                Location location = spots.get(mobs.size());
+                location.setYaw(random.nextFloat() * 360);
                 Entity entity =
                         world.spawnEntity(location, EntityType.valueOf(entry.getKey().name()));
                 if (entity instanceof LivingEntity living) {
@@ -111,6 +106,7 @@ final class MobCountSession extends PartySurvivalSession {
                     if (living.getEquipment() != null) living.getEquipment().clear();
                 }
                 if (entity instanceof PiglinAbstract piglin) piglin.setImmuneToZombification(true);
+                preventDaylightBurn(entity);
                 entity.setGravity(false);
                 entity.setInvulnerable(true);
                 entity.setSilent(true);
@@ -121,6 +117,28 @@ final class MobCountSession extends PartySurvivalSession {
                 I18n.tr("party.rounds.mob_count.round", round.number()),
                 I18n.tr("party.rounds.mob_count.count"),
                 2);
+    }
+
+    static void preventDaylightBurn(Entity mob) {
+        if (mob instanceof Zombie zombie) zombie.setShouldBurnInDay(false);
+        if (mob instanceof AbstractSkeleton skeleton) skeleton.setShouldBurnInDay(false);
+    }
+
+    @EventHandler
+    public void preventMobCombustion(EntityCombustEvent event) {
+        if (mobs.contains(event.getEntity())) event.setCancelled(true);
+    }
+
+    private void returnToHub(boolean freeze) {
+        List<Player> players = alivePlayers();
+        for (int i = 0; i < players.size(); i++) {
+            Player player = players.get(i);
+            Location start = arena.spawn(i, players.size());
+            start.setYaw(player.getLocation().getYaw());
+            start.setPitch(player.getLocation().getPitch());
+            teleport(player, start);
+            if (freeze) freezeMovement(player);
+        }
     }
 
     @Override
@@ -141,11 +159,7 @@ final class MobCountSession extends PartySurvivalSession {
             case COUNT -> {
                 mobs.forEach(Entity::remove);
                 mobs.clear();
-                // Starting over a gap must not kill someone before the choice phase begins.
-                for (Player player : alivePlayers()) {
-                    teleport(player, arena.nearest(player.getLocation()));
-                    freezeMovement(player);
-                }
+                returnToHub(true);
                 phase = Phase.READY;
                 phaseEnd = elapsed + 60;
                 announceTitle(
@@ -155,7 +169,6 @@ final class MobCountSession extends PartySurvivalSession {
             }
             case READY -> {
                 releaseMovement();
-                arena.removeGlass();
                 phase = Phase.ANSWER;
                 phaseEnd = elapsed + answerSeconds * 20L;
                 announceTitle(
@@ -170,7 +183,7 @@ final class MobCountSession extends PartySurvivalSession {
                     player.playSound(
                             player.getLocation(), "minecraft:block.note_block.bell", .8f, 1);
                 // Only support disappears. The common height check eliminates actual falls,
-                // so jumping or reaching another surviving platform can still save a player.
+                // so jumping or reaching the surviving sector can still save a player.
                 arena.removeWrong(round);
                 phase = Phase.DROP;
                 phaseEnd = elapsed + 60;
