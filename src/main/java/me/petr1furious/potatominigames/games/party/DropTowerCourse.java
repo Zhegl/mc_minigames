@@ -13,17 +13,21 @@ final class DropTowerCourse {
                     new Pad(5, 5, 174, 2),
                     new Pad(0, 7, 159, 1),
                     new Pad(-5, 7, 145, 1),
-                    new Pad(-7, 2, 131, 1),
+                    new Pad(-7, 2, 145, 1),
                     new Pad(-1, 0, 116, 1),
                     new Pad(5, 0, 101, 1),
                     new Pad(8, 4, 85, 0),
                     new Pad(4, 8, 68, 0),
-                    new Pad(-2, 8, 51, 0),
-                    new Pad(-7, 3, 34, 1));
+                    new Pad(1, 8, 68, 0),
+                    new Pad(-6, 3, 34, 1));
     static final Map<Integer, Baffle> BAFFLES =
             Map.of(3, new Baffle(-4, -2, 154, 7), 6, new Baffle(1, 4, 110, 0));
 
     private DropTowerCourse() {}
+
+    static boolean requiresJump(int stage) {
+        return stage + 1 < PADS.size() && PADS.get(stage).floor() == PADS.get(stage + 1).floor();
+    }
 
     record Lane(int x, int z) {
         static Lane at(int index) {

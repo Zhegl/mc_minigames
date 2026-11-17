@@ -1,12 +1,24 @@
 package me.petr1furious.potatominigames.games.party;
 
+import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.core.player.ParticipantRegistry;
+
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Server;
+import org.bukkit.entity.Player;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 public final class DropTowerChickenShooterCheck {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws ReflectiveOperationException {
         markedLandingsAndMisses();
+        playerKeepsView();
         isolatedLanes();
         finishTimesAndProgress();
         chickenWaves();
@@ -17,17 +29,24 @@ public final class DropTowerChickenShooterCheck {
 
     private static void markedLandingsAndMisses() {
         var pads = DropTowerCourse.PADS;
-        check(pads.size() == 12, "The tower has eleven drops");
+        check(pads.size() == 12, "The tower has eleven checkpoint transitions");
         check(
                 pads.get(1).radius() == 2 && pads.get(8).radius() == 0,
                 "The tower teaches using wide pads before the single-block landings");
         int detours = 0;
+        int jumps = 0;
         for (int i = 1; i < pads.size(); i++) {
             var current = pads.get(i - 1);
             var next = pads.get(i);
-            check(current.floor() - next.floor() >= 8, "Drops need time to steer");
             var baffle = DropTowerCourse.BAFFLES.get(i - 1);
-            if (baffle == null) {
+            if (current.floor() == next.floor()) {
+                jumps++;
+                int gap = Math.max(Math.abs(current.x() - next.x()), Math.abs(current.z() - next.z()))
+                        - current.radius() - next.radius() - 1;
+                check(gap >= 2 && baffle == null, "Jump separates same-height pads by at least two air blocks");
+                check(jumpWindows(current, next) >= 2, "A sprint-jump can reach landing " + i);
+            } else if (baffle == null) {
+                check(current.floor() - next.floor() >= 8, "Drops need time to steer");
                 check(
                         landingWindows(current, next, null, 0) >= 3,
                         "Several input timings reach landing " + i);
@@ -52,6 +71,95 @@ public final class DropTowerChickenShooterCheck {
             check(next.missed(next.floor() + .8), "Fall below the pad returns to the checkpoint");
         }
         check(detours >= 2, "The course has two different bar detours");
+        check(jumps >= 2, "At least two transitions physically require jumping");
+    }
+
+    private static int jumpWindows(DropTowerCourse.Pad start, DropTowerCourse.Pad goal) {
+        double distance = Math.hypot(goal.x() - start.x(), goal.z() - start.z());
+        double dx = (goal.x() - start.x()) / distance;
+        double dz = (goal.z() - start.z()) / distance;
+        double approach = 0;
+        double speed = 0;
+        int windows = 0;
+        while (Math.abs(approach * dx) < start.radius() + .8
+                && Math.abs(approach * dz) < start.radius() + .8) {
+            // Sprint acceleration, then the vanilla sprint-jump impulse.
+            speed += .1274;
+            double travel = approach + speed + .2;
+            double airSpeed = (speed + .2) * .546;
+            double velocity = .42;
+            double height = velocity;
+            while (height > 0) {
+                velocity = (velocity - .08) * .98;
+                height += velocity;
+                airSpeed += .02548;
+                travel += airSpeed;
+                airSpeed *= .91;
+            }
+            if (goal.landed(start.x() + .5 + travel * dx, goal.floor() + 1,
+                    start.z() + .5 + travel * dz)) windows++;
+            approach += speed;
+            speed *= .546;
+        }
+        return windows;
+    }
+
+    private static void playerKeepsView() throws ReflectiveOperationException {
+        var world = new PartyArenaCheck.WorldMap().world;
+        UUID id = id(1);
+        Location[] position = {new Location(world, 0, 199, 0, 123, -14)};
+        Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(),
+                new Class<?>[] {Player.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getUniqueId" -> id;
+                    case "getName" -> "Racer";
+                    case "getLocation" -> position[0].clone();
+                    case "getWorld" -> world;
+                    case "getGameMode" -> GameMode.SURVIVAL;
+                    case "isOnline" -> true;
+                    case "isDead" -> false;
+                    case "teleport" -> {
+                        position[0] = ((Location) args[0]).clone();
+                        yield true;
+                    }
+                    case "setFallDistance", "setVelocity", "playSound", "sendActionBar" -> null;
+                    default -> throw new AssertionError(method);
+                });
+        Field server = Bukkit.class.getDeclaredField("server");
+        server.setAccessible(true);
+        Object original = server.get(null);
+        try {
+            server.set(null, Proxy.newProxyInstance(Server.class.getClassLoader(),
+                    new Class<?>[] {Server.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("getPlayer") && id.equals(args[0])) return player;
+                        throw new AssertionError(method);
+                    }));
+            ParticipantRegistry participants = new ParticipantRegistry();
+            participants.add(player);
+            var services = new SessionServices(null, null, participants, null, null, null,
+                    null, null, null, null, null, null);
+            var round = new DropTowerSession(services, null, PartyRoundContext.standalone(services));
+            round.world = world;
+            round.names.put(id, "Racer");
+            round.connected.add(id);
+            round.standings = new SurvivalStandings(Set.of(id));
+            round.buildArena();
+            var spawn = round.spawn(0, 1);
+            check(spawn.getYaw() == 123 && spawn.getPitch() == -14, "Opening spawn keeps the player's view");
+            var first = DropTowerCourse.PADS.get(1);
+            var landing = new Location(world, first.x() + .8, first.floor() + 1,
+                    first.z() + .9, -66, 31);
+            position[0] = landing.clone();
+            round.playTick(1);
+            check(position[0].equals(landing), "A successful landing does not reposition or aim the player");
+            position[0] = landing.clone().add(0, -40, 0);
+            round.playTick(2);
+            check(position[0].getX() == first.x() + .5 && position[0].getY() == first.floor() + 1,
+                    "A miss returns to the latest checkpoint");
+            check(position[0].getYaw() == -66 && position[0].getPitch() == 31,
+                    "Checkpoint retries keep the player's view");
+        } finally {
+            server.set(null, original);
+        }
     }
 
     private static int landingWindows(

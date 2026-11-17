@@ -9,8 +9,6 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.Particle;
-import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -51,51 +49,33 @@ final class DropTowerSession extends PartySurvivalSession {
 
     private void buildPad(Lane lane, int stage) {
         var pad = DropTowerCourse.PADS.get(stage);
-        var next = DropTowerCourse.PADS.get(Math.min(stage + 1, LAST_PAD));
-        int dx = Integer.signum(next.x() - pad.x());
-        int dz = Integer.signum(next.z() - pad.z());
         int radius = pad.radius();
-        boolean detour = DropTowerCourse.BAFFLES.containsKey(stage);
-        Material floor = stage == LAST_PAD ? Material.LIME_CONCRETE : Material.CYAN_CONCRETE;
+        boolean jump = DropTowerCourse.requiresJump(stage);
+        Material floor = stage == LAST_PAD ? Material.LIME_CONCRETE
+                : jump ? Material.ORANGE_CONCRETE : Material.CYAN_CONCRETE;
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 Material material = floor;
                 if (Math.abs(x) == radius && Math.abs(z) == radius)
                     material = stage == LAST_PAD ? Material.GOLD_BLOCK : Material.PRISMARINE_BRICKS;
-                if (stage < LAST_PAD
-                        && x == dx * radius
-                        && (detour ? Math.abs(z) == radius : z == dz * radius))
-                    material = Material.WHITE_CONCRETE;
-                if (x == 0 && z == 0) material = Material.SEA_LANTERN;
+                if (x == 0 && z == 0) material = jump ? Material.SHROOMLIGHT : Material.SEA_LANTERN;
                 world.getBlockAt(lane.x() + pad.x() + x, pad.floor(), lane.z() + pad.z() + z)
                         .setType(material, false);
             }
         }
     }
 
-    private Location padCenter(Lane lane, int stage) {
+    private Location checkpoint(Lane lane, int stage, Location view) {
         var pad = DropTowerCourse.PADS.get(stage);
         return new Location(
-                world, lane.x() + pad.x() + .5, pad.floor() + 1, lane.z() + pad.z() + .5);
-    }
-
-    private Location checkpoint(Lane lane, int stage) {
-        Location at = padCenter(lane, stage);
-        if (stage < LAST_PAD) {
-            var next = DropTowerCourse.PADS.get(stage + 1);
-            at.setDirection(
-                    new Vector(
-                            next.x() + lane.x() + .5 - at.getX(),
-                            -8,
-                            next.z() + lane.z() + .5 - at.getZ()));
-        }
-        return at;
+                world, lane.x() + pad.x() + .5, pad.floor() + 1, lane.z() + pad.z() + .5,
+                view.getYaw(), view.getPitch());
     }
 
     @Override
     Location spawn(int index, int count) {
-        UUID id = services.participants().onlinePlayers().get(index).getUniqueId();
-        return checkpoint(lanes.get(id), 0);
+        Player player = services.participants().onlinePlayers().get(index);
+        return checkpoint(lanes.get(player.getUniqueId()), 0, player.getLocation());
     }
 
     @Override
@@ -147,27 +127,17 @@ final class DropTowerSession extends PartySurvivalSession {
             var bar = DropTowerCourse.BAFFLES.get(stage);
             boolean caught = bar != null && bar.caught(x, at.getY(), z);
             if (target.landed(x, at.getY(), z) && race.reach(id, stage + 1, elapsed)) {
-                player.playSound(at, Sound.BLOCK_NOTE_BLOCK_PLING, .8f, 1 + stage * .085f);
+                player.playSound(at, "minecraft:block.note_block.pling", .8f, 1 + stage * .085f);
                 if (race.finished(id)) {
                     player.sendMessage(text(I18n.tr(KEY + "finish", seconds(elapsed))));
                     spectate(player);
                 } else {
-                    teleport(player, checkpoint(lane, stage + 1));
                     player.sendActionBar(I18n.tr(KEY + "checkpoint", stage + 1, LAST_PAD));
                 }
             } else if (caught || target.missed(at.getY()) || !lane.contains(at.getX(), at.getZ())) {
-                teleport(player, checkpoint(lane, stage));
+                teleport(player, checkpoint(lane, stage, at));
                 player.sendActionBar(I18n.tr(KEY + (caught ? "bar_retry" : "retry")));
-                player.playSound(at, Sound.BLOCK_NOTE_BLOCK_BASS, .6f, 1);
-            } else if (elapsed % 6 == 0) {
-                player.spawnParticle(
-                        Particle.END_ROD,
-                        padCenter(lane, stage + 1).add(0, .2, 0),
-                        5,
-                        target.radius() * .45,
-                        .12,
-                        target.radius() * .45,
-                        .01);
+                player.playSound(at, "minecraft:block.note_block.bass", .6f, 1);
             }
         }
         if (context.eligible().stream().allMatch(race::finished)) {
@@ -227,7 +197,7 @@ final class DropTowerSession extends PartySurvivalSession {
 
     private static Component hint(int stage) {
         if (DropTowerCourse.BAFFLES.containsKey(stage)) return I18n.tr(KEY + "guide_bar");
-        if (stage == 9) return I18n.tr(KEY + "guide_sprint");
+        if (DropTowerCourse.requiresJump(stage)) return I18n.tr(KEY + "guide_jump");
         if (stage == 2 || stage == 7) return I18n.tr(KEY + "guide_brake");
         return I18n.tr(KEY + "guide_walk");
     }
