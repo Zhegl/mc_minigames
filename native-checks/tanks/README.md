@@ -51,9 +51,91 @@ receive throwaway offline UUID whitelist entries and operator access. Join the
 printed address and use `/tanks test` for solo practice. This runtime has separate
 worlds, plugin data and logs under `.tools/tanks-playtest`.
 
+The optional development helper is built with
+`python native-checks/tanks/compile_client_qa.py` and installed separately as
+`TanksClientQa.jar` only in the private test server. Operator `range` accepts
+`12`, `40`, `70` or `86`: it uses native footprint/corridor/ray checks and reports
+the exact hull-center distance used by production spotting, without substituting
+the passenger camera distance. `drive <red|blue> <direction> <1..100>` supports
+`forward`, `reverse`, `left`, `right`, `forward-left` and `forward-right`; it feeds
+the production controller's input handler and releases to neutral after the
+bounded run. This is a server-input fixture, not physical keyboard automation.
+`probe <1..100>` emits one lifecycle-checked delayed `state` snapshot. State/probe
+and range reports go to both the requesting operator and the private server log,
+so QA evidence does not depend on finding client chat logs. These commands do not
+override HP, class, reload, visibility decisions or capture progress.
+`spawn <red|blue>` restores that tank's valid team spawn without healing or
+reloading. `view <4..10>` changes only the active disposable match world's view
+and send distances for a controlled tracking experiment; it is not a production
+configuration command. All helper commands are development-only.
+
 ## Recorded native evidence
 
-The final C41 camera artifact has SHA-256
+On 2026-11-17, the immutable Round11 artifact
+`.tools/tanks-artifacts/round11-mc26.3.jar`, SHA-256
+`87b1d69ad8ce048bbf0f82fa9822029b2efddc2a0bf25f9b39561c34b3fe4ceb`,
+passed **3,275 native baseline assertions** and **71 load/lifecycle checks**.
+The added seat regression deletes each chassis' anchor three times, mounts an
+actual native ArmorStand on every recovered Interaction, and retains the
+passenger through motion. The replacement keeps its hidden, invulnerable,
+nonliving configuration and swaps one owned entity without rebuilding the hull.
+Actual networked Player logout/rejoin and camera appearance remain client checks.
+
+The load fixture checked all **1,776 native foliage blocks** for persistence,
+then retained exact entity counts under normal random ticks. The 12-model replay
+used 20 warmup and 200 measured ticks, 24 shots (peak 12 flights), 2,400 aim
+queries, 480 predictions and 2,880 spotting queries.
+
+| Round11 local measurement, ms | p50 | p95 | Maximum |
+| --- | ---: | ---: | ---: |
+| Synchronous 12-model replay CPU | 3.359 | 9.384 | 59.111 |
+| Scheduled tick interval | 49.927 | 51.485 | 71.407 |
+
+Entities stayed exactly **746** during replay and returned to the **two-label
+arena baseline** after cleanup. Production plugin chunk tickets returned from
+72 to zero. All 12 scope attributes returned to their measured pre-scope value
+of 0.12, the scope's own modifier was absent, and the unrelated fixture modifier
+remained. Combat, friendly interception, hidden-contact prediction/radar policy,
+tracks/capture reset and duplicate-wreck attribution passed. Both private servers
+self-stopped with exit status zero; their ports 56866 and 52963 had no listeners
+afterward. Timings include a shared-host outlier and exclude real viewer tracking,
+packet serialization and client rendering; they do not establish 12-client FPS.
+
+The preceding `4fdfa4df…026fd` and `ab5ce1fd…bcec` load attempts stopped before
+measurement because strict entity counts detected unexpected item drops near
+arena trees. Their failure evidence remains archived under
+`.tools/tanks-load/mc26.3/evidence/20261117-184253` and `20261117-190008`.
+This led to the production persistent-leaf fix; counts were not relaxed and
+random ticks were not disabled. Use immutable artifact paths for paired runs:
+the mutable release path changed between the earlier baseline and load attempts.
+
+On 2026-11-17, the Round7 balance artifact with SHA-256
+`ab60faecb1dfaa72f2b724960317906297a22085df5904250cb5c4b7768dde0a`
+passed **1,561 native baseline assertions** and **70 dedicated load/lifecycle
+checks**. The baseline reads actual native Avatar attachment/dimension fields:
+vehicle attachment Y is 0.6, standing eye height is 1.62, and the corrected seat
+places the calculated standing eye 0.28 blocks above each turret roof. Native
+Interaction seat Y values were 66.0376, 66.3056 and 66.5 for light/medium/heavy.
+This verifies native attachment math and test-rider transport; actual player
+camera appearance remains a separate client check.
+
+| Round7 local measurement, ms | p50 | p95 | Maximum |
+| --- | ---: | ---: | ---: |
+| Synchronous 12-model replay CPU | 2.743 | 7.352 | 87.845 |
+| Scheduled tick interval | 49.976 | 51.813 | 182.029 |
+
+The replay kept 749 entities stable and returned exactly to its measured baseline
+of five arena/ambient entities. All 72 production tickets were released. It
+executed 24 real shots (peak 12 flights), 2,400 aim queries, 480 predictions and
+2,880 spotting queries. Adversarial combat/policy checks and all 12 native scope
+restorations passed, including own-key removal and unrelated-key preservation.
+The coordinator's two-client playtest shared the host during this measurement;
+the maximum outliers above are retained and this is not a general TPS/FPS claim.
+Both isolated test servers self-stopped with exit status zero. Current logs,
+results and installed-artifact hashes are in `.tools/tanks-native/mc26.3` and
+`.tools/tanks-load/mc26.3`; the client playtest server was not accessed.
+
+The earlier C41 camera artifact has SHA-256
 `c41f48c7f520ecfbd2faa6bf00d77d6175d407d4eee059fe2a1de952082517e8`.
 It corrects the native Player vehicle attachment subtraction of 0.6 blocks:
 standing Player eye height above a zero-height Interaction seat is 1.02 blocks.
