@@ -18,7 +18,7 @@ public final class TanksLoadSmoke extends JavaPlugin {
     private JavaPlugin main;
     private World world;
     private Object arena, session, match, scope;
-    private Class<?> chassisType, actorType, vehicleType, shellType, flightType;
+    private Class<?> chassisType, actorType, vehicleType, flightType;
     private final List<Unit> units = new ArrayList<>();
     private final Set<UUID> expectedEntityIds = new HashSet<>();
     private final List<String> stages = new ArrayList<>();
@@ -47,7 +47,6 @@ public final class TanksLoadSmoke extends JavaPlugin {
             chassisType = type("TanksRules$Chassis");
             actorType = type("TanksMatch$Actor");
             vehicleType = type("TanksSession$Vehicle");
-            shellType = type("TanksRules$Shell");
             flightType = type("TanksSession$ShellFlight");
             world = Bukkit.createWorld(new WorldCreator("tanks-load-" + UUID.randomUUID().toString().substring(0, 8))
                     .keepSpawnLoaded(TriState.FALSE).generateStructures(false).generator(new ChunkGenerator() {
@@ -223,26 +222,43 @@ public final class TanksLoadSmoke extends JavaPlugin {
         require(field(hidden, "target") == null, "production prediction does not expose an unspotted enemy contact");
         List<?> hiddenBlips = (List<?>) call(session, "radarBlips", new Class<?>[]{Player.class}, shooter.transport);
         require(hiddenBlips.size() == 6, "production radar contacts contain only six allies before spotting");
-        ((Map<UUID, Long>) field(session, "spottedRed")).put(enemy.id, number(field(session, "tick")).longValue() + 60);
+        long now = number(field(session, "tick")).longValue();
+        List<Object> smoke = (List<Object>) field(session, "smoke");
+        smoke.add(make(type("TanksSession$Smoke"), new Class<?>[]{Location.class, long.class},
+                new Location(world, 0, 90, -11), now + 120));
+        move(ally, 8, 90, -5);
+        require((boolean) call(session, "canSpot", new Class<?>[]{actorType, actorType}, ally.actor, enemy.actor)
+                        && !(boolean) call(session, "canSpot", new Class<?>[]{actorType, actorType}, shooter.actor, enemy.actor),
+                "scout detects the target from the flank while smoke blocks the gunner");
+        call(enemy.actor, "spottedBy", new Class<?>[]{actorType, long.class}, ally.actor, now);
         Object spotted = call(session, "predict", new Class<?>[]{actorType, Location.class}, shooter.actor, call(shooter.visual, "muzzle"));
         require(enemy.id.equals(field(spotted, "target")), "same native enemy becomes a prediction contact only after spotting");
         List<?> visibleBlips = (List<?>) call(session, "radarBlips", new Class<?>[]{Player.class}, shooter.transport);
         require(visibleBlips.size() == 7, "production radar adds exactly the spotted enemy");
         fire(shooter);
+        smoke.clear();
         for (int i = 0; i < 12 && !shells().isEmpty(); i++) call(session, "flyShells");
         double expectedRearDamage = number(call(shooter.chassis, "damage")).doubleValue();
         require(hp(enemy) == enemyHp - expectedRearDamage, "actual production fire and native swept flight penetrate enemy rear armor");
+        require(number(call(ally.actor, "spottingDamage")).doubleValue() == expectedRearDamage,
+                "native hit credits the scout whose contact was needed when fired");
         call(enemy.actor, "base", new Class<?>[]{int.class}, 0);
         for (int i = 0; i < 3; i++) call(match, "tick");
         require(number(call(enemy.actor, "captureTicks")).intValue() > 0, "enemy has capture contribution before module damage");
-        Object ap = shellType.getEnumConstants()[0];
-        Object flight = make(flightType, new Class<?>[]{UUID.class, chassisType, shellType, Location.class, Vector.class},
-                shooter.id, shooter.chassis, ap, shooter.at.clone(), new Vector(0, 0, 2.6));
-        Location trackHit = enemy.at.clone().add(0, .4, -1.8);
+        Object flight = call(session, "launch", new Class<?>[]{actorType, Location.class, Vector.class},
+                shooter.actor, shooter.at.clone(), new Vector(0, 0, 2.6));
+        Location rearPlate = enemy.at.clone().add(0, .4, -1.8);
+        call(session, "hitTank", new Class<?>[]{flightType, UUID.class, Location.class}, flight, enemy.id, rearPlate);
+        require(number(call(enemy.actor, "trackTicks")).intValue() == 0, "low central plate leaves tracks intact");
+        call(match, "tick");
+        require(number(call(enemy.actor, "captureTicks")).intValue() > 0, "enemy resumed its capture before the tread shot");
+        Location trackHit = enemy.at.clone().add(1.12, .4, -1.8);
         call(session, "hitTank", new Class<?>[]{flightType, UUID.class, Location.class}, flight, enemy.id, trackHit);
         require(number(call(enemy.actor, "trackTicks")).intValue() == 70
                         && number(call(enemy.actor, "captureTicks")).intValue() == 0,
-                "production low hull hit damages tracks and resets only the damaged capture contribution");
+                "production hit to the rear belt damages tracks and resets the target's capture contribution");
+        require(feedback(shooter).contains("TRACK DISABLED") && feedback(enemy).contains("Your capture progress was reset"),
+                "the shooter sees the new break and the defender sees their lost capture contribution");
         int finishingHits = (int) Math.ceil(hp(enemy) / expectedRearDamage) + 1;
         for (int i = 0; i < finishingHits && (boolean) call(enemy.actor, "alive"); i++)
             call(session, "hitTank", new Class<?>[]{flightType, UUID.class, Location.class}, flight, enemy.id, trackHit);
@@ -260,6 +276,10 @@ public final class TanksLoadSmoke extends JavaPlugin {
         call(u.visual,"update",new Class<?>[]{Location.class,float.class,float.class,double.class,double.class},u.at,0f,0f,hp(u),max);
     }
     private double hp(Unit u) throws Exception { return number(call(u.actor,"hp")).doubleValue(); }
+    private String feedback(Unit unit) throws Exception {
+        var plain = outside("i18n.I18n").getMethod("plain", net.kyori.adventure.text.Component.class, Locale.class);
+        return (String) plain.invoke(null, field(unit.vehicle, "feedback"), Locale.ENGLISH);
+    }
     private void fire(Unit u) throws Exception { call(session,"fire",new Class<?>[]{Player.class},u.transport); }
     private void reload() throws Exception { for(int i=0;i<120;i++)call(match,"tick"); }
     @SuppressWarnings("unchecked") private List<Object> shells() throws Exception { return (List<Object>) field(session,"shells"); }

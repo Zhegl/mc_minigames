@@ -9,40 +9,27 @@ public final class TanksRules {
     private TanksRules() {}
 
     /** The rendered armor silhouette, shared with projectile collision; barrel is decorative. */
-    public record ModelGeometry(
-            double scale,
-            double hullHalfWidth,
-            double hullHeight,
-            double hullHalfLength,
-            double turretHalfWidth,
-            double turretBottom,
-            double turretTop,
-            double turretHalfLength,
-            double turretPivotY) {}
+    public record ModelGeometry(double scale, double turretPivotY, double turretWidthScale,
+                                double turretHeightScale) {
+        public double hullHalfWidth() { return HALF_WIDTH * scale; }
+        public double hullHeight() { return 1.32 * scale; }
+        public double hullHalfLength() { return HALF_LENGTH * scale; }
+        public double turretHalfWidth() { return scale * turretWidthScale; }
+        public double turretHalfLength() { return 1.05 * scale; }
+        public double turretBottom() { return 1.22 * scale; }
+        public double turretTop() { return turretPivotY + .68 * scale * turretHeightScale; }
+    }
+
+    private static final ModelGeometry LIGHT_MODEL = new ModelGeometry(.82, 1.22, .9, .62);
+    private static final ModelGeometry MEDIUM_MODEL = new ModelGeometry(.92, 1.42, 1, 1);
+    private static final ModelGeometry HEAVY_MODEL = new ModelGeometry(1, 1.56, 1.34, 1.08);
 
     public static ModelGeometry geometry(Chassis chassis) {
-        double scale =
-                switch (Objects.requireNonNull(chassis, "chassis")) {
-                    case LIGHT -> .82;
-                    case MEDIUM -> .92;
-                    case HEAVY -> 1;
-                };
-        double pivot =
-                switch (chassis) {
-                    case LIGHT -> 1.22;
-                    case MEDIUM -> 1.42;
-                    case HEAVY -> 1.56;
-                };
-        return new ModelGeometry(
-                scale,
-                1.65 * scale,
-                1.32 * scale,
-                2.2 * scale,
-                scale,
-                pivot - .21 * scale,
-                pivot + .68 * scale,
-                1.05 * scale,
-                pivot);
+        return switch (Objects.requireNonNull(chassis, "chassis")) {
+            case LIGHT -> LIGHT_MODEL;
+            case MEDIUM -> MEDIUM_MODEL;
+            case HEAVY -> HEAVY_MODEL;
+        };
     }
 
     public enum Chassis {

@@ -13,12 +13,11 @@ import org.bukkit.map.MapPalette;
 import org.bukkit.map.MapRenderer;
 import org.bukkit.map.MapView;
 
-import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -29,8 +28,10 @@ final class TanksRadar extends MapRenderer {
     private final MapView view;
     private final Function<Player, List<Blip>> contacts;
     private final byte[] terrain = new byte[128 * 128];
-    private final Set<UUID> initialized = new HashSet<>();
-    private final Map<UUID, List<Integer>> previous = new HashMap<>();
+    private final Map<UUID, BitSet> previous = new HashMap<>();
+    // Four pixels of heading, one pixel of outline, and padding for neighbor lookups.
+    private static final int CENTER = 6;
+    private final boolean[][] ink = new boolean[2 * CENTER + 1][2 * CENTER + 1];
     private boolean closed;
 
     TanksRadar(World world, Function<Player, List<Blip>> blips) {
@@ -69,6 +70,7 @@ final class TanksRadar extends MapRenderer {
         MapMeta meta = (MapMeta) item.getItemMeta();
         meta.setMapView(view);
         meta.displayName(I18n.render(I18n.tr("tanks.radar"), viewer));
+        meta.lore(List.of(I18n.render(I18n.tr("tanks.radar-legend"), viewer)));
         item.setItemMeta(meta);
         return item;
     }
@@ -77,23 +79,25 @@ final class TanksRadar extends MapRenderer {
     public void render(MapView map, MapCanvas canvas, Player player) {
         if (closed) return;
         UUID id = player.getUniqueId();
-        if (initialized.add(id)) {
+        BitSet painted = previous.get(id);
+        if (painted == null) {
             for (int y = 0; y < 128; y++)
                 for (int x = 0; x < 128; x++) canvas.setPixel(x, y, terrain[x + y * 128]);
+            painted = new BitSet(terrain.length);
+            previous.put(id, painted);
         } else {
-            for (int old : previous.getOrDefault(id, List.of()))
+            for (int old = painted.nextSetBit(0); old >= 0; old = painted.nextSetBit(old + 1))
                 canvas.setPixel(old % 128, old / 128, terrain[old]);
+            painted.clear();
         }
-        List<Integer> painted = new ArrayList<>();
         List<Blip> blips = contacts.apply(player);
         if (blips != null) {
-            for (Blip blip : blips) if (!blip.self) arrow(canvas, painted, blip);
-            for (Blip blip : blips) if (blip.self) arrow(canvas, painted, blip);
+            for (Blip blip : blips) if (!blip.self) marker(canvas, painted, blip);
+            for (Blip blip : blips) if (blip.self) marker(canvas, painted, blip);
         }
-        previous.put(id, painted);
     }
 
-    private static void arrow(MapCanvas canvas, List<Integer> painted, Blip blip) {
+    private void marker(MapCanvas canvas, BitSet painted, Blip blip) {
         if (!Double.isFinite(blip.x)
                 || !Double.isFinite(blip.z)
                 || !Float.isFinite(blip.yaw)
@@ -101,23 +105,41 @@ final class TanksRadar extends MapRenderer {
                 || Math.abs(blip.z) > TanksArena.HALF_Z) return;
         byte color =
                 blip.self ? MapPalette.WHITE : blip.ally ? MapPalette.PALE_BLUE : MapPalette.RED;
-        int x = pixel(blip.x), y = pixel(blip.z);
+        for (boolean[] row : ink) Arrays.fill(row, false);
         double a = Math.toRadians(blip.yaw), dx = -Math.sin(a), dy = Math.cos(a);
-        for (int i = 0; i <= 3; i++)
-            dot(canvas, painted, x + (int) Math.round(dx * i), y + (int) Math.round(dy * i), color);
-        for (int side : new int[] {-1, 1})
-            dot(
-                    canvas,
-                    painted,
-                    x + (int) Math.round(dx + side * dy),
-                    y + (int) Math.round(dy - side * dx),
-                    color);
+        for (int i = blip.self ? -2 : 0; i <= 4; i++)
+            mark(dx * i, dy * i);
+        if (blip.self) {
+            // Two swept wings give the pilot an arrowhead aligned with the heading tick.
+            for (int i = 1; i <= 2; i++) {
+                mark(dx * (3 - i) + dy * i, dy * (3 - i) - dx * i);
+                mark(dx * (3 - i) - dy * i, dy * (3 - i) + dx * i);
+            }
+        } else {
+            for (int y = -2; y <= 2; y++) {
+                int width = blip.ally ? 2 : 2 - Math.abs(y);
+                for (int x = -width; x <= width; x++) mark(x, y);
+            }
+        }
+        int cx = pixel(blip.x), cy = pixel(blip.z);
+        for (int y = 1; y < ink.length - 1; y++) {
+            for (int x = 1; x < ink[y].length - 1; x++) {
+                boolean fill = ink[y][x];
+                if (fill || ink[y - 1][x] || ink[y + 1][x] || ink[y][x - 1] || ink[y][x + 1])
+                    dot(canvas, painted, cx + x - CENTER, cy + y - CENTER,
+                            fill ? color : MapPalette.DARK_GRAY);
+            }
+        }
     }
 
-    private static void dot(MapCanvas canvas, List<Integer> painted, int x, int y, byte color) {
+    private void mark(double x, double y) {
+        ink[CENTER + (int) Math.round(y)][CENTER + (int) Math.round(x)] = true;
+    }
+
+    private static void dot(MapCanvas canvas, BitSet painted, int x, int y, byte color) {
         if (x < 0 || x >= 128 || y < 0 || y >= 128) return;
         canvas.setPixel(x, y, color);
-        painted.add(x + y * 128);
+        painted.set(x + y * 128);
     }
 
     static int pixel(double coordinate) {
@@ -142,7 +164,6 @@ final class TanksRadar extends MapRenderer {
         if (closed) return;
         closed = true;
         view.removeRenderer(this);
-        initialized.clear();
         previous.clear();
     }
 }

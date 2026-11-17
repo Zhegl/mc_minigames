@@ -30,16 +30,18 @@ Install [Potato Launcher](https://github.com/Petr1Furious/potato-launcher) and f
 
 Join with `/play tanks` or the lobby compass. Two balanced red/blue teams of up to
 six tanks battle in Iron Valley. One tank, one life: eliminate the enemy team or
-capture their base. Defenders contest capture; damage resets the damaged tank's
-contribution. The six-minute default limit ends in a draw. Tank state survives
+capture their base. A defender in the circle pauses capture, even at 0%. A hit
+that deals damage or breaks your track resets your contribution and gives you a warning.
+The six-minute default limit ends in a draw. Tank state survives
 disconnects, and the abandoned hull remains vulnerable. Permanent leaving forfeits
 participation. Winners receive three points; `/tanks test` is solo practice without
 points. No client mod or resource pack is required.
 
 **Controls:** W/S drive and reverse, A/D turn the hull, mouse aims the independently
-traversing turret. Right-click slots 1/2 for AP/HE. Slot 3 uses the single repair kit
-(tracks and 15% HP); slot 4 deploys one six-second smoke screen. Left-click with
-AP/HE to toggle zoom, then right-click to fire while zoomed. Slot 5 also toggles
+traversing turret. Select AP in slot 1 or HE in slot 2, right-click to fire and
+left-click to toggle zoom. Zoom clears the sidebar and shows your shell, HP,
+reload and warnings in the action bar. Slot 3 uses the single repair kit
+(tracks and 15% HP); slot 4 deploys one six-second smoke screen. Slot 5 also toggles
 zoom with right-click and fires with left-click. Zoom uses vanilla dynamic FOV
 (the client's FOV Effects setting controls its strength).
 F5 offers Minecraft's third-person camera. Before battle, right-click slots 7–9
@@ -48,15 +50,20 @@ or use `/tanks light`, `/tanks medium`, `/tanks heavy` to choose a chassis.
 Light tanks trade armor for speed, view range and concealment; mediums balance
 mobility and firepower; heavies have stronger armor and guns with slower traverse.
 AP checks plate angle and may ricochet. HE trades penetration for reduced damage
-on armor impacts; it is a direct-hit shell in this compact adaptation. Low hits
-can break tracks, including a blocked hull hit. The private gun marker previews
+on armor impacts; it is a direct-hit shell in this compact adaptation. A hit to
+a tread can disable it for 3.5 seconds, even on a ricochet. The shooter hears a
+snap on the break. After automatic or field repair the tracks have two seconds
+of protection, during which normal hull damage still applies. The private gun marker previews
 the ballistic impact and a 95% shot-area contour; Gaussian dispersion can still
 send shots outside that contour. Marker color describes the central predicted
 impact: green penetration, orange blocked armor and cyan an ally. Moving and
 turning widen dispersion. Muzzle walls, your own
 depressed barrel and allied tanks obstruct shells.
 
-The offhand tactical map displays allies and team-spotted enemies. Cover, light-tank
+On the offhand tactical map, the arrow is your tank, squares are allies and
+diamonds are spotted enemies. The results show spotting assist damage when a
+teammate hits a target they could see only through allied spotting at the moment
+of firing. Scouts who supplied the latest contact share the damage credit. Cover, light-tank
 concealment and smoke affect normal spotting. At less than 10 blocks, proximity
 detection reveals enemies even through walls or smoke; smoke does not stop shells. Destroyed team
 members retain team spotting rather than receiving omniscient enemy information.
