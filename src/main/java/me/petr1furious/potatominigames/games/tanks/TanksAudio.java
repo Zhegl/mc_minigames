@@ -18,6 +18,7 @@ final class TanksAudio {
         RICOCHET,
         BLOCKED,
         HE_DAMAGE,
+        TRACK_SNAP,
         METAL_IMPACT,
         GROUND_IMPACT,
         ENGINE,
@@ -34,6 +35,7 @@ final class TanksAudio {
                 case HE_BOOM, HE_DAMAGE -> Sound.ENTITY_DRAGON_FIREBALL_EXPLODE;
                 case PENETRATION -> Sound.ENTITY_ARROW_HIT_PLAYER;
                 case RICOCHET -> Sound.ITEM_TRIDENT_HIT;
+                case TRACK_SNAP -> Sound.ENTITY_ITEM_BREAK;
                 case BLOCKED -> Sound.ITEM_SHIELD_BLOCK;
                 case METAL_IMPACT -> Sound.BLOCK_ANVIL_HIT;
                 case GROUND_IMPACT -> Sound.BLOCK_STONE_BREAK;
@@ -83,6 +85,11 @@ final class TanksAudio {
             case "penetration" -> new Tone(Cue.PENETRATION, .5f, 1.15f);
             default -> new Tone(Cue.HE_DAMAGE, .35f, 1.1f);
         };
+    }
+
+    static List<Tone> hitTones(TanksRules.Hit hit, double damage, boolean trackBroken) {
+        Tone armor = hit(hit, damage);
+        return trackBroken ? List.of(armor, new Tone(Cue.TRACK_SNAP, .65f, .85f)) : List.of(armor);
     }
 
     static List<Tone> cannon(TanksRules.Chassis chassis, TanksRules.Shell shell) {

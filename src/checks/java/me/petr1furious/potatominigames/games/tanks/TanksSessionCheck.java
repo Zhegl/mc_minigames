@@ -45,6 +45,16 @@ public final class TanksSessionCheck {
         session.onItemHeld(new PlayerItemHeldEvent(p, 1, 0));
         check(model.actor(id).shell() == TanksRules.Shell.AP, "slot one selects AP");
         check(!session.allowLateJoin(), "roster locked");
+        var driver = model.actor(id);
+        check(TanksSession.sidebarLines(driver, false, true, 1, 1).isEmpty(),
+                "zoom clears the side of the target");
+        var battleLines = TanksSession.sidebarLines(driver, false, false, 1, 1);
+        check(!battleLines.contains(TanksSession.tr("hud.help"))
+                        && !battleLines.contains(TanksSession.tr("hud.kills", 0)),
+                "combat sidebar omits tutorial and scoreboard statistics");
+        check(TanksSession.sidebarLines(driver, true, false, 1, 1)
+                        .contains(TanksSession.tr("hud.help")),
+                "preparation retains the controls reference");
         check(session.returnToLobbyAfterGame(), "returns to lobby");
         barrelPrediction();
         remountKitPreservation();
@@ -369,9 +379,7 @@ public final class TanksSessionCheck {
                 targetId.equals(property(physical, "target"))
                         && (boolean) property(physical, "blocked"),
                 "physical shot still hits the unseen neighbor before the muzzle");
-        @SuppressWarnings("unchecked")
-        Map<UUID, Long> spotted = (Map<UUID, Long>) get(session, "spottedRed");
-        spotted.put(targetId, 101L);
+        match.actor(targetId).spottedBy(shooter, 100);
         prediction = predict.invoke(session, shooter, muzzle);
         check(
                 targetId.equals(property(prediction, "target"))

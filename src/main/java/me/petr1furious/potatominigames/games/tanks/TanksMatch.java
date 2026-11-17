@@ -2,14 +2,19 @@ package me.petr1furious.potatominigames.games.tanks;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /** One-life battle state. Disconnected actors retain their vulnerable physical tank. */
 public final class TanksMatch {
+    private static final int TRACK_RECOVERY_TICKS = 40;
     public static final int ACTIVE = -2, DRAW = -1;
+    enum CaptureState { IDLE, CAPTURING, CONTESTED }
     private final Map<UUID, Actor> actors = new LinkedHashMap<>();
     private final int battleTicks, captureRequired;
     private final boolean practice;
@@ -77,7 +82,9 @@ public final class TanksMatch {
         if (!started || finished()) return;
         for (Actor actor : actors.values()) {
             if (actor.reloadTicks > 0) actor.reloadTicks--;
-            if (actor.trackTicks > 0) actor.trackTicks--;
+            if (actor.trackTicks > 0) {
+                if (--actor.trackTicks == 0) actor.trackRecoveryTicks = TRACK_RECOVERY_TICKS;
+            } else if (actor.trackRecoveryTicks > 0) actor.trackRecoveryTicks--;
             if (actor.smokeTicks > 0) actor.smokeTicks--;
         }
         boolean red = actors.values().stream().anyMatch(a -> a.team == 0 && a.alive);
@@ -92,10 +99,7 @@ public final class TanksMatch {
         }
         for (int team = 0; team < 2; team++) {
             int base = 1 - team;
-            boolean contested =
-                    actors.values().stream()
-                            .anyMatch(a -> a.alive && a.team == base && a.base == base);
-            if (contested) continue;
+            if (captureState(team) != CaptureState.CAPTURING) continue;
             int contributors = 0;
             for (Actor actor : actors.values()) {
                 if (actor.team == team
@@ -112,6 +116,19 @@ public final class TanksMatch {
             winner = redCapture == blueCapture ? DRAW : redCapture ? 0 : 1;
         elapsed++;
         if (elapsed >= battleTicks && winner == ACTIVE) winner = DRAW;
+    }
+
+    CaptureState captureState(int attackingTeam) {
+        checkTeam(attackingTeam);
+        int base = 1 - attackingTeam;
+        boolean attackers = false, defenders = false;
+        for (Actor actor : actors.values()) {
+            if (!actor.alive || actor.base != base) continue;
+            if (actor.team == base) defenders = true;
+            else if (actor.online) attackers = true;
+        }
+        if (!attackers) return CaptureState.IDLE;
+        return defenders ? CaptureState.CONTESTED : CaptureState.CAPTURING;
     }
 
     /** Progress belongs to the capturing team, so team zero captures the blue (one) base. */
@@ -143,6 +160,31 @@ public final class TanksMatch {
         return actual;
     }
 
+    /** Contacts are frozen at launch so later spotting cannot change a shell's attribution. */
+    record Spotters(Map<UUID, List<Actor>> byTarget) {
+        void credit(UUID target, double damage) {
+            List<Actor> scouts = byTarget.get(target);
+            if (damage <= 0 || scouts == null) return;
+            double share = damage / scouts.size();
+            for (Actor scout : scouts) scout.spottingDamage += share;
+        }
+    }
+
+    Spotters spottersFor(Actor shooter, long now, Predicate<Actor> directlyVisible) {
+        Map<UUID, List<Actor>> byTarget = new HashMap<>();
+        for (Actor target : actors.values()) {
+            if (!target.alive || target.team == shooter.team || target.spottedUntil < now
+                    || target.contactUntil.getOrDefault(shooter, -1L) >= now
+                    || directlyVisible.test(target)) continue;
+            var scouts = target.contactUntil.entrySet().stream()
+                    .filter(entry -> entry.getValue() == target.spottedUntil)
+                    .map(Map.Entry::getKey)
+                    .toList();
+            byTarget.put(target.id, scouts);
+        }
+        return new Spotters(Map.copyOf(byTarget));
+    }
+
     /** Core scoring applies this value once when the session ends. */
     public int reward(UUID id, int winPoints, int killPoints, int participationPoints) {
         Actor actor = actor(id);
@@ -164,8 +206,12 @@ public final class TanksMatch {
         private TanksRules.Chassis chassis;
         private TanksRules.Shell shell = TanksRules.Shell.AP;
         private double hp;
+        private double spottingDamage;
+        private long spottedUntil = -1;
+        private final Map<Actor, Long> contactUntil = new HashMap<>();
         private boolean alive = true, online = true, left;
         private int reloadTicks, trackTicks, smokeTicks, kills, captureTicks, base = -1;
+        private int trackRecoveryTicks;
         private int repairKits = 1, smokeCharges = 1;
 
         private Actor(UUID id, int team, TanksRules.Chassis chassis) {
@@ -193,6 +239,20 @@ public final class TanksMatch {
 
         public double hp() {
             return hp;
+        }
+
+        void spottedBy(Actor observer, long now) {
+            if (!alive || !observer.alive || !observer.online || team == observer.team) return;
+            spottedUntil = now + 60;
+            contactUntil.put(observer, spottedUntil);
+        }
+
+        long spottedUntil() {
+            return spottedUntil;
+        }
+
+        double spottingDamage() {
+            return spottingDamage;
         }
 
         public boolean alive() {
@@ -272,17 +332,20 @@ public final class TanksMatch {
 
         public void damageTrack(int ticks) {
             if (ticks < 0) throw new IllegalArgumentException("Negative module duration");
-            if (started && !finished() && alive && ticks > 0) {
-                trackTicks = Math.max(trackTicks, ticks);
-                captureTicks = 0;
-            }
+            if (!started || finished() || !alive || ticks == 0 || trackTicks > 0 || trackRecoveryTicks > 0)
+                return;
+            trackTicks = ticks;
+            captureTicks = 0;
         }
 
         public boolean repair() {
             if (!controls() || repairKits <= 0 || (trackTicks == 0 && hp >= chassis.maxHp()))
                 return false;
             repairKits--;
-            trackTicks = 0;
+            if (trackTicks > 0) {
+                trackTicks = 0;
+                trackRecoveryTicks = TRACK_RECOVERY_TICKS;
+            }
             hp = Math.min(chassis.maxHp(), hp + chassis.maxHp() * .15);
             return true;
         }

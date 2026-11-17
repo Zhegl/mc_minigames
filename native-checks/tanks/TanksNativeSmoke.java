@@ -31,6 +31,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /** Real Paper worlds, display metadata and particle/sound registries; no player connections. */
 public final class TanksNativeSmoke extends JavaPlugin {
@@ -100,6 +101,8 @@ public final class TanksNativeSmoke extends JavaPlugin {
                             stage("production fire, typed FLASH/tracer particles, sounds and muzzle obstruction");
                             checkNativeScope();
                             stage("production scope native movement modifiers, debounce and cleanup");
+                            checkScopedSidebar();
+                            stage("scoped sidebar hides, retains its board, and restores after zoom");
                             for (Object cue : type("TanksAudio$Cue").getEnumConstants()) {
                                 org.bukkit.Sound sound = (org.bukkit.Sound) call(cue, "sound");
                                 world.playSound(new Location(world, 0, 70, 0), sound, org.bukkit.SoundCategory.PLAYERS, .1f, 1);
@@ -171,13 +174,12 @@ public final class TanksNativeSmoke extends JavaPlugin {
         Bukkit.getScheduler().runTaskLater(this, () -> {
             try {
                 for (int i = 0; i < chassis.length; i++) {
-                    double scale = switch (i) { case 0 -> .82; case 1 -> .92; default -> 1; };
                     Entity seat = seats.get(i);ArmorStand rider = riders.get(i);
-                    double pivot = switch (i) { case 0 -> 1.22; case 1 -> 1.42; default -> 1.56; };
-                    near(seat.getLocation().getY(), 65 + pivot + .68 * scale - .74,
+                    double roof = 65 + renderedRoof(visuals.get(i));
+                    near(seat.getLocation().getY(), roof - .74,
                             "native Interaction anchor accounts for Player's .6 riding attachment");
                     double nativePlayerEye = seat.getLocation().getY() - playerAttachmentY + playerEyeHeight;
-                    near(nativePlayerEye - (65 + pivot + .68 * scale), .28,
+                    near(nativePlayerEye - roof, .28,
                             "native Avatar attachment and eye dimensions place standing camera above the turret roof");
                     offsets[i] = rider.getLocation().getY() - seat.getLocation().getY();
                     require(rider.getVehicle() == seat && Double.isFinite(offsets[i]), "native Interaction passenger settles on its actual attachment");
@@ -376,6 +378,17 @@ public final class TanksNativeSmoke extends JavaPlugin {
         }
     }
 
+    private double renderedRoof(Object levelVisual) throws Exception {
+        float roof = Float.NEGATIVE_INFINITY;
+        for (Matrix4f matrix : matrices((List<?>) field(levelVisual, "parts"))) {
+            for (int x = 0; x <= 1; x++)
+                for (int y = 0; y <= 1; y++)
+                    for (int z = 0; z <= 1; z++)
+                        roof = Math.max(roof, matrix.transformPosition(new Vector3f(x, y, z)).y);
+        }
+        return roof;
+    }
+
     private List<Matrix4f> matrices(List<?> parts) throws Exception {
         List<Matrix4f> values = new ArrayList<>();
         for (Object part : parts) {
@@ -384,6 +397,25 @@ public final class TanksNativeSmoke extends JavaPlugin {
                     .scale(transform.getScale()).rotate(transform.getRightRotation()));
         }
         return values;
+    }
+
+    private void checkScopedSidebar() throws Exception {
+        var title = net.kyori.adventure.text.Component.text("Iron Valley");
+        var locale = java.util.Locale.ENGLISH;
+        Object view = construct(typeOutside("core.hud.SidebarService$View"),
+                new Class<?>[]{net.kyori.adventure.text.Component.class, java.util.Locale.class}, title, locale);
+        var board = (org.bukkit.scoreboard.Scoreboard) field(view, "scoreboard");
+        var slot = org.bukkit.scoreboard.DisplaySlot.SIDEBAR;
+        var objective = board.getObjective(slot);
+        var signature = new Class<?>[]{List.class, java.util.Locale.class};
+        call(view, "setLines", signature, List.of(title), locale);
+        call(view, "setLines", signature, List.of(), locale);
+        require(board.getObjective(slot) == null && board.getObjective("sidebar") != null,
+                "zoom frees the sidebar slot and preserves its objective");
+        call(view, "setLines", signature, List.of(title), locale);
+        var restored = board.getObjective(slot);
+        require(restored != null && objective.getName().equals(restored.getName()),
+                "leaving zoom restores the sidebar objective");
     }
 
     private void checkNativeScope() throws Exception {

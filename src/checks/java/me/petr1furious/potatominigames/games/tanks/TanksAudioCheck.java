@@ -25,6 +25,12 @@ public final class TanksAudioCheck {
                 "no applied damage does not advertise a penetration");
         check(TanksAudio.hitKey(ricochet, 0).equals("ricochet"), "ricochet remains distinct");
         check(TanksAudio.hitKey(blocked, 0).equals("blocked"), "blocked plate remains distinct");
+        var snapped = TanksAudio.hitTones(ricochet, 0, true);
+        check(snapped.size() == 2 && snapped.getFirst().cue() == TanksAudio.Cue.RICOCHET
+                        && snapped.getLast().cue() == TanksAudio.Cue.TRACK_SNAP,
+                "a zero-HP tread break layers a distinct snap over the shooter's ricochet");
+        check(TanksAudio.hitTones(pierced, 200, false).equals(List.of(TanksAudio.hit(pierced, 200))),
+                "a hit without a fresh break plays only its armor result");
         check(
                 TanksAudio.hit(chip, 35).cue() != TanksAudio.hit(pierced, 200).cue()
                         && TanksAudio.hit(ricochet, 0).cue() != TanksAudio.hit(blocked, 0).cue(),

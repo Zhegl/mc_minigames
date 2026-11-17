@@ -48,10 +48,16 @@ public final class TankVisualCheck {
                             .filter(entity -> entity instanceof BlockDisplay)
                             .toList();
             TanksRules.ModelGeometry bounds = TanksRules.geometry(chassis);
+            float widestFrontPlate = 0, roof = 0;
             for (Entity entity : visual.entities()) {
                 RenderEntity state = render.states.get(entity);
                 if (!(entity instanceof BlockDisplay)) continue;
                 check(state.matrix != null, "every part gets an initial transform");
+                Vector3f center = state.matrix.transformPosition(new Vector3f(.5f, .5f, .5f));
+                if (center.y > bounds.turretPivotY() && center.z > .4 * bounds.scale()) {
+                    float width = state.matrix.transformDirection(new Vector3f(1, 0, 0)).length();
+                    widestFrontPlate = Math.max(widestFrontPlate, width);
+                }
                 for (int x = 0; x <= 1; x++)
                     for (int y = 0; y <= 1; y++)
                         for (int z = 0; z <= 1; z++) {
@@ -66,6 +72,7 @@ public final class TankVisualCheck {
                             // The final four blocks form the decorative cannon, which is not an
                             // armor target.
                             if (blocks.indexOf(entity) < blocks.size() - 4) {
+                                roof = Math.max(roof, point.y);
                                 boolean inHull =
                                         Math.abs(point.x) <= bounds.hullHalfWidth() + .01
                                                 && Math.abs(point.z)
@@ -90,6 +97,19 @@ public final class TankVisualCheck {
                             }
                         }
             }
+            if (chassis == TanksRules.Chassis.HEAVY) {
+                check(widestFrontPlate > 2.2, "heavy has a broad visible turret face");
+                check(TanksBallistics.intersection(1.12, 1.75, 3, 1.12, 1.75, 0,
+                                0, 0, 0, 0, chassis, 0) < 1,
+                        "heavy turret cheeks accept frontal hits outside the old width");
+            }
+            if (chassis == TanksRules.Chassis.LIGHT) {
+                check((roof - bounds.turretPivotY()) / bounds.scale() < .5,
+                        "light turret roof is flatter even after accounting for chassis scale");
+                check(Double.isInfinite(TanksBallistics.intersection(0, roof + .03, 3, 0, roof + .03, 0,
+                                0, 0, 0, 0, chassis, 0)),
+                        "a shot just above the visible light roof clears the turret");
+            }
             visual.update(new Location(render.world, 5, 65, 8, 90, 0), 135, -15, 30, 100);
             RenderEntity mount = render.states.get(visual.seat());
             check(
@@ -98,6 +118,10 @@ public final class TankVisualCheck {
             check(mount.position.getYaw() == 0, "seat following does not overwrite mouse yaw");
             check(mount.retainedPassengers, "moving seat explicitly retains its passenger");
             Location muzzle = visual.muzzle();
+            Vector3f barrelTip = render.states.get(blocks.getLast()).matrix
+                    .transformPosition(new Vector3f(.5f, .5f, 1));
+            check(muzzle.distance(new Location(render.world, 5 + barrelTip.x, 65 + barrelTip.y, 8 + barrelTip.z)) < .02,
+                    "shot originates at the rendered barrel tip after traverse and elevation");
             check(
                     muzzle.getX() < 5 && muzzle.getZ() < 8 && muzzle.getY() > 66,
                     "independent turret aims northwest/up");

@@ -15,8 +15,10 @@ public final class TanksRulesCheck {
         armorAndShells();
         steeringAndClasses();
         reloadAndConsumables();
+        trackRecovery();
         capture();
         lifecycleAndRewards();
+        spottingAssists();
         invalidInputs();
         System.out.println("TanksRulesCheck: " + checks + " checks passed");
         if (java.util.Arrays.asList(args).contains("--balance")) balanceReport();
@@ -77,6 +79,49 @@ public final class TanksRulesCheck {
             check(bestTimeToKill(shooter, target, rear) <= bestTimeToKill(shooter, target, front),
                     "earning the rear never makes a matchup worse: " + shooter + " to " + target);
         }
+    }
+
+    private static void spottingAssists() {
+        var match = new TanksMatch(1000, 30, false);
+        var shooter = match.add(RED, 0, TanksRules.Chassis.HEAVY);
+        var first = match.add(ALLY, 0, TanksRules.Chassis.LIGHT);
+        var second = match.add(new UUID(0, 4), 0, TanksRules.Chassis.MEDIUM);
+        var enemy = match.add(BLUE, 1, TanksRules.Chassis.HEAVY);
+        var unseen = match.add(new UUID(0, 5), 1, TanksRules.Chassis.MEDIUM);
+        match.start();
+
+        var blind = match.spottersFor(shooter, 5, t -> false);
+        enemy.spottedBy(first, 10);
+        blind.credit(BLUE, 20);
+        check(first.spottingDamage() == 0, "spotting during shell flight cannot credit blind fire");
+        var direct = match.spottersFor(shooter, 12, t -> t == enemy);
+        direct.credit(BLUE, 20);
+        enemy.spottedBy(shooter, 15);
+        enemy.spottedBy(first, 25);
+        match.spottersFor(shooter, 75, t -> false).credit(BLUE, 20);
+        check(first.spottingDamage() == 0, "direct detection and final tick of own memory exclude scouts");
+
+        enemy.spottedBy(second, 25);
+        var shot = match.spottersFor(shooter, 85, t -> false);
+        match.spottersFor(shooter, 86, t -> false).credit(BLUE, 20);
+        shot.credit(unseen.id(), 20);
+        shot.credit(BLUE, 0);
+        check(first.spottingDamage() == 0 && second.spottingDamage() == 0,
+                "expired, different-target and zero-damage hits earn no assist");
+        enemy.spottedBy(second, 85);
+        match.spottersFor(shooter, 85, t -> false).credit(BLUE, 10);
+        check(first.spottingDamage() == 0 && second.spottingDamage() == 10,
+                "only observers providing the freshest contact share credit");
+        first.disconnect();
+        enemy.spottedBy(first, 100);
+        check(enemy.spottedUntil() == 145, "an offline observer cannot refresh shared contact");
+        enemy.damage(enemy.hp() - 9);
+        var lethal = new TanksRules.Hit(100, true, false, 10, TanksRules.ArmorSide.SIDE);
+        shot.credit(BLUE, match.recordHit(RED, BLUE, lethal, 0));
+        check(first.spottingDamage() == 4.5 && second.spottingDamage() == 14.5,
+                "launch contacts split remaining HP even when a scout disconnects during flight");
+        check(shooter.spottingDamage() == 0 && shooter.kills() == 1,
+                "spotter credit leaves kill attribution with the gunner");
     }
 
     private static void movingGunHandling() {
@@ -296,11 +341,64 @@ public final class TanksRulesCheck {
                 "class cannot change after battle starts");
     }
 
+    private static void trackRecovery() {
+        var heavy = TanksRules.Chassis.HEAVY;
+        var light = TanksRules.Chassis.LIGHT;
+        check(!TanksBallistics.treadHit(heavy, 0, 0, .4, 2.2)
+                        && !TanksBallistics.treadHit(heavy, 90, -2.2, .4, 0),
+                "a hit to the low central plate never breaks a track, even after a hull turn");
+        check(TanksBallistics.treadHit(heavy, 0, -1.65, .4, 0)
+                        && TanksBallistics.treadHit(heavy, 90, 2.2, .4, 1.25),
+                "both broadside wheels and an exposed rear belt end can be targeted");
+        check(!TanksBallistics.treadHit(light, 90, 0, .74, 1.35)
+                        && TanksBallistics.treadHit(light, 90, 0, .4, 1.35),
+                "light track hit height scales with its visible model");
+        var match = battle(1000, 900, false);
+        var target = match.actor(BLUE);
+        var ricochet = new TanksRules.Hit(0, false, true, 230, TanksRules.ArmorSide.SIDE);
+        target.base(0);
+        match.tick();
+        double hp = target.hp();
+        match.recordHit(RED, BLUE, ricochet, 70);
+        check(target.trackTicks() == 70 && target.captureTicks() == 0 && target.hp() == hp,
+                "a fresh tread break immobilizes and resets capture without claiming HP");
+        for (int i = 0; i < 69; i++) {
+            match.tick();
+            match.recordHit(RED, BLUE, ricochet, 70);
+        }
+        check(target.trackTicks() == 1 && target.captureTicks() == 69,
+                "repeated tread impacts do not extend repair or erase capture again");
+        match.tick();
+        for (int i = 0; i < 40; i++) {
+            match.recordHit(RED, BLUE, ricochet, 70);
+            check(target.trackTicks() == 0, "natural repair gives two seconds of movement");
+            match.tick();
+        }
+        match.recordHit(RED, BLUE, ricochet, 70);
+        check(target.trackTicks() == 70 && target.repair(), "a later break can be repaired by kit");
+        var pierced = new TanksRules.Hit(15, true, false, 30, TanksRules.ArmorSide.REAR);
+        match.recordHit(RED, BLUE, pierced, 70);
+        check(target.trackTicks() == 0 && target.hp() == hp - 15,
+                "kit recovery protects the track while penetrating rounds still damage the hull");
+    }
+
     private static void capture() {
         var match = battle(1000, 8, false);
         var red = match.actor(RED);
         var blue = match.actor(BLUE);
         red.base(1);
+        blue.base(1);
+        match.tick();
+        check(match.captureState(0) == TanksMatch.CaptureState.CONTESTED
+                        && match.captureProgress(0) == 0,
+                "defender already in the circle contests at zero percent");
+        red.disconnect();
+        check(match.captureState(0) == TanksMatch.CaptureState.IDLE,
+                "an offline attacker cannot create a contested warning");
+        red.reconnect();
+        blue.base(-1);
+        check(match.captureState(0) == TanksMatch.CaptureState.CAPTURING,
+                "removing the defender resumes capture");
         match.tick();
         close(match.captureProgress(0), .125, "attacker advances capture in enemy base");
         blue.base(1);

@@ -72,6 +72,9 @@ public final class SidebarService {
         void setLines(List<Component> newLines, Locale locale) {
             boolean relocalize = !I18n.language(locale).equals(language);
             int count = Math.min(newLines.size(), MAX_LINES);
+            // A scoped player keeps their private scoreboard and teams while the panel is hidden.
+            DisplaySlot slot = count == 0 ? null : DisplaySlot.SIDEBAR;
+            if (objective.getDisplaySlot() != slot) objective.setDisplaySlot(slot);
             for (int i = 0; i < count; i++) {
                 Component line = newLines.get(i);
                 if (relocalize || i >= lines.size() || !line.equals(lines.get(i))) {

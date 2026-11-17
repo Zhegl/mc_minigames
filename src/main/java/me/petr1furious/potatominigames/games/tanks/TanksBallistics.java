@@ -292,6 +292,20 @@ final class TanksBallistics {
         return Math.abs(a[0] * b[0] + a[1] * b[1]);
     }
 
+    /** Projects the two belts and their wheel faces onto the chassis collision silhouette. */
+    static boolean treadHit(TanksRules.Chassis chassis, double yaw, double x, double y, double z) {
+        double scale = TanksRules.geometry(chassis).scale();
+        double angle = Math.toRadians(yaw), c = Math.cos(angle), s = Math.sin(angle);
+        double side = Math.abs(x * c + z * s) / scale;
+        double length = Math.abs(-x * s + z * c) / scale;
+        double height = y / scale;
+        // TankVisual's .62-wide belts are centered at ±1.25. The beveled ends are narrower
+        // than the wheel faces, which reach the side of the conservative hull hitbox.
+        if (side < .94 || side > 1.65 + 1e-6 || length > 2.2 + 1e-6) return false;
+        if (length > 1.825) return side <= 1.56 && height >= .17 && height <= .67;
+        return height >= .05 && height <= .81;
+    }
+
     static TanksRules.Hit armorHit(
             TanksRules.Chassis shooter,
             TanksRules.Shell shell,

@@ -49,6 +49,7 @@ final class TankVisual {
 
     private final World world;
     private final TanksRules.Chassis chassis;
+    private final TanksRules.ModelGeometry geometry;
     private final List<Entity> entities = new ArrayList<>();
     private final List<Part> parts = new ArrayList<>();
     private Interaction seat;
@@ -67,7 +68,8 @@ final class TankVisual {
         this.chassis = chassis;
         this.hull = location.clone();
         this.turretYaw = location.getYaw();
-        this.scale = (float) TanksRules.geometry(chassis).scale();
+        this.geometry = TanksRules.geometry(chassis);
+        this.scale = (float) geometry.scale();
         this.teamColor = side == 0 ? NamedTextColor.RED : NamedTextColor.BLUE;
         Material armor = side == 0 ? Material.GREEN_TERRACOTTA : Material.CYAN_TERRACOTTA;
         Material darkArmor = side == 0 ? Material.GREEN_CONCRETE : Material.CYAN_CONCRETE;
@@ -149,10 +151,17 @@ final class TankVisual {
         box(Frame.HULL, team, 0, .87f, -1.95f, 1.1f, .22f, .06f);
         box(Frame.HULL, Material.DEEPSLATE_BRICKS, -.85f, 1.18f, -1.62f, .16f, .28f, .2f);
         box(Frame.HULL, Material.DEEPSLATE_BRICKS, .85f, 1.18f, -1.62f, .16f, .28f, .2f);
-        // Rounded impression from a broad lower turret and narrower sloped upper armor.
-        box(Frame.TURRET, darkArmor, 0, -.07f, -.15f, 1.95f, .28f, 1.8f);
+        // The turret ring meets the deck for every roof profile and gun pivot.
+        float ringBottom = (float) ((geometry.turretBottom() - geometry.turretPivotY())
+                / (scale * geometry.turretHeightScale()));
+        box(Frame.TURRET, darkArmor, 0, (ringBottom + .07f) / 2, -.15f, 1.95f, .07f - ringBottom, 1.8f);
         box(Frame.TURRET, armor, 0, .2f, -.2f, 1.75f, .55f, 1.5f);
-        box(Frame.TURRET, armor, 0, .23f, .57f, 1.7f, .42f, .4f, -20, 0);
+        box(Frame.TURRET, armor, 0, .23f, .57f, 1.7f, .42f, .4f,
+                chassis == TanksRules.Chassis.LIGHT ? -38 : -20, 0);
+        if (chassis == TanksRules.Chassis.HEAVY) {
+            for (int sideSign : new int[] {-1, 1})
+                box(Frame.TURRET, darkArmor, sideSign * .61f, .21f, .72f, .58f, .5f, .32f, -12, 0);
+        }
         box(Frame.TURRET, darkArmor, -.86f, .25f, -.15f, .16f, .4f, 1.35f, 0, -15);
         box(Frame.TURRET, darkArmor, .86f, .25f, -.15f, .16f, .4f, 1.35f, 0, 15);
         box(Frame.TURRET, Material.POLISHED_ANDESITE, -.25f, .53f, -.22f, .65f, .12f, .65f);
@@ -285,8 +294,10 @@ final class TankVisual {
                                             Math.atan2(
                                                     -.4 * Math.cos(phase), -1.9 * Math.sin(phase)));
                 }
-                matrix.scale(scale)
-                        .translate(part.x, py, pz)
+                matrix.scale(scale);
+                if (part.frame == Frame.TURRET)
+                    matrix.scale((float) geometry.turretWidthScale(), (float) geometry.turretHeightScale(), 1);
+                matrix.translate(part.x, py, pz)
                         .rotateX((float) Math.toRadians(localPitch))
                         .rotateZ((float) Math.toRadians(part.roll))
                         .scale(part.width, part.height, part.depth)

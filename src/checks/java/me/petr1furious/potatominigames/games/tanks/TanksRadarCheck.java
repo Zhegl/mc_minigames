@@ -11,6 +11,7 @@ import org.bukkit.map.MapView;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -58,26 +59,42 @@ public final class TanksRadarCheck {
                         world,
                         player ->
                                 player == red && spotted[0]
-                                        ? List.of(new TanksRadar.Blip(20, 0, false, false, 0))
+                                        ? List.of(
+                                                new TanksRadar.Blip(6, -37, false, false, 0),
+                                                new TanksRadar.Blip(6, 37, true, false, 90),
+                                                new TanksRadar.Blip(0, 0, true, true, 180),
+                                                new TanksRadar.Blip(0, 0, false, false, 0))
                                         : List.of());
         check(radar.isContextual(), "one canvas per viewer");
         byte[] visible = new byte[128 * 128], hidden = new byte[128 * 128];
         radar.render(view, canvas(visible), red);
         radar.render(view, canvas(hidden), blue);
-        int enemy = TanksRadar.pixel(20) + 128 * TanksRadar.pixel(0);
-        check(visible[enemy] == MapPalette.RED, "authorized enemy appears red");
-        check(hidden[enemy] != MapPalette.RED, "other viewer has no enemy data");
-        check(
-                visible[TanksRadar.pixel(20) + 128 * TanksRadar.pixel(3)] == MapPalette.RED,
-                "yaw zero points down the north-up map");
+        int enemy = index(6, -37), ally = index(6, 37);
+        check(hidden[enemy] == MapPalette.RED && hidden[ally] == MapPalette.BLUE,
+                "privacy reference samples both base rings");
+        check(visible[enemy] == MapPalette.RED && visible[ally] == MapPalette.PALE_BLUE,
+                "authorized contacts retain team colors");
+        check(visible[enemy + 2 + 2 * 128] != MapPalette.RED
+                        && visible[ally + 2 + 2 * 128] == MapPalette.PALE_BLUE,
+                "enemy diamond and ally square have distinct corners");
+        check(visible[enemy - 3] == MapPalette.DARK_GRAY && visible[ally + 3] == MapPalette.DARK_GRAY,
+                "contact outlines contrast with both base rings");
+        check(visible[enemy + 4 * 128] == MapPalette.RED && visible[ally - 4] == MapPalette.PALE_BLUE,
+                "heading ticks follow each contact on the north-up map");
+        check(visible[index(0, 0)] == MapPalette.WHITE && visible[index(0, -3)] == MapPalette.WHITE,
+                "the white player arrow faces north and paints over overlapping contacts");
         spotted[0] = false;
         radar.render(view, canvas(visible), red);
-        check(visible[enemy] == hidden[enemy], "lost contacts restore cached terrain");
+        check(Arrays.equals(visible, hidden), "lost contacts restore all outlines and terrain");
         check(TanksRadar.pixel(-64) == 0 && TanksRadar.pixel(63) == 127, "world/map edges align");
         check(TanksRadar.pixel(0) == 64, "world center aligns");
         radar.clear();
         check(renderers.isEmpty(), "battle cleanup removes the renderer");
         System.out.println("Tanks radar privacy checks passed");
+    }
+
+    private static int index(int x, int z) {
+        return TanksRadar.pixel(x) + 128 * TanksRadar.pixel(z);
     }
 
     private static Player player(long id) {
