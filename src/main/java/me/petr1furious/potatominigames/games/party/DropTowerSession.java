@@ -2,6 +2,7 @@ package me.petr1furious.potatominigames.games.party;
 
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.games.party.DropTowerCourse.Lane;
+import me.petr1furious.potatominigames.games.party.DropTowerCourse.Pad;
 import me.petr1furious.potatominigames.i18n.I18n;
 
 import net.kyori.adventure.text.Component;
@@ -9,6 +10,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -22,7 +24,10 @@ import java.util.UUID;
 
 final class DropTowerSession extends PartySurvivalSession {
     private static final String KEY = "party.drop_and_shoot.drop.";
-    private static final int LAST_PAD = DropTowerCourse.PADS.size() - 1;
+    private static final List<Material> BAND_FLOORS = List.of(
+            Material.PRISMARINE_BRICKS, Material.LAPIS_BLOCK, Material.PURPUR_BLOCK,
+            Material.POLISHED_BLACKSTONE_BRICKS);
+    final DropTowerCourse course = DropTowerCourse.generate(random);
     private final Map<UUID, Lane> lanes = new LinkedHashMap<>();
     private ParkourRace race;
     private long settledAt = -1;
@@ -33,40 +38,73 @@ final class DropTowerSession extends PartySurvivalSession {
 
     @Override
     void buildArena() {
-        race = new ParkourRace(names.keySet(), LAST_PAD);
+        race = new ParkourRace(names.keySet(), DropTowerCourse.JUMPS);
         int index = 0;
         for (UUID id : names.keySet()) {
             Lane lane = Lane.at(index++);
             lanes.put(id, lane);
-            for (int stage = 0; stage <= LAST_PAD; stage++) buildPad(lane, stage);
-            for (var bar : DropTowerCourse.BAFFLES.values()) {
-                for (int x = bar.minX(); x <= bar.maxX(); x++)
-                    world.getBlockAt(lane.x() + x, bar.floor(), lane.z() + bar.z())
-                            .setType(Material.MAGENTA_CONCRETE, false);
+            for (int stage = 0; stage < course.pads().size(); stage++) buildPad(lane, stage);
+            for (var jump : course.jumps()) {
+                for (var baffle : jump.baffles()) {
+                    for (int x = baffle.minX(); x <= baffle.maxX(); x++)
+                        for (int z = baffle.minZ(); z <= baffle.maxZ(); z++)
+                            world.getBlockAt(lane.x() + x, baffle.floor(), lane.z() + z)
+                                    .setType(Material.MAGENTA_CONCRETE, false);
+                }
             }
         }
     }
 
     private void buildPad(Lane lane, int stage) {
-        var pad = DropTowerCourse.PADS.get(stage);
+        Pad pad = course.pads().get(stage);
+        boolean finish = stage == DropTowerCourse.JUMPS;
+        Pad next = finish ? null : course.pads().get(stage + 1);
         int radius = pad.radius();
-        boolean jump = DropTowerCourse.requiresJump(stage);
-        Material floor = stage == LAST_PAD ? Material.LIME_CONCRETE
-                : jump ? Material.ORANGE_CONCRETE : Material.CYAN_CONCRETE;
+        boolean gap = !finish && course.jumps().get(stage).kind().isGap();
+        Material floor = finish ? Material.LIME_CONCRETE
+                : gap ? Material.ORANGE_CONCRETE : BAND_FLOORS.get(stage / 5);
+        Material light = finish ? Material.VERDANT_FROGLIGHT
+                : gap ? Material.SHROOMLIGHT : Material.SEA_LANTERN;
+        int tiles = 0;
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                Material material = floor;
-                if (Math.abs(x) == radius && Math.abs(z) == radius)
-                    material = stage == LAST_PAD ? Material.GOLD_BLOCK : Material.PRISMARINE_BRICKS;
-                if (x == 0 && z == 0) material = jump ? Material.SHROOMLIGHT : Material.SEA_LANTERN;
+                if (!pad.tile(x, z)) continue;
+                tiles++;
                 world.getBlockAt(lane.x() + pad.x() + x, pad.floor(), lane.z() + pad.z() + z)
-                        .setType(material, false);
+                        .setType(x == 0 && z == 0 ? light : floor, false);
             }
         }
+        if (next != null && tiles >= 3) markDirection(lane, pad, next);
+    }
+
+    private void markDirection(Lane lane, Pad pad, Pad next) {
+        int dx = next.x() - pad.x();
+        int dz = next.z() - pad.z();
+        int span = Math.max(Math.abs(dx), Math.abs(dz));
+        if (span == 0) return;
+        double edgeX = (double) dx * pad.radius() / span;
+        double edgeZ = (double) dz * pad.radius() / span;
+        // Clip the inlay to an existing tile, even on a narrow or asymmetric pad.
+        int markX = 0, markZ = 0;
+        double nearest = Double.POSITIVE_INFINITY;
+        for (int x = -pad.radius(); x <= pad.radius(); x++) {
+            for (int z = -pad.radius(); z <= pad.radius(); z++) {
+                if (!pad.tile(x, z) || x * dx + z * dz <= 0) continue;
+                double distance = Math.hypot(x - edgeX, z - edgeZ);
+                if (distance < nearest) {
+                    nearest = distance;
+                    markX = x;
+                    markZ = z;
+                }
+            }
+        }
+        if (markX != 0 || markZ != 0)
+            world.getBlockAt(lane.x() + pad.x() + markX, pad.floor(), lane.z() + pad.z() + markZ)
+                    .setType(Material.GOLD_BLOCK, false);
     }
 
     private Location checkpoint(Lane lane, int stage, Location view) {
-        var pad = DropTowerCourse.PADS.get(stage);
+        var pad = course.pads().get(stage);
         return new Location(
                 world, lane.x() + pad.x() + .5, pad.floor() + 1, lane.z() + pad.z() + .5,
                 view.getYaw(), view.getPitch());
@@ -80,7 +118,9 @@ final class DropTowerSession extends PartySurvivalSession {
 
     @Override
     Location viewpoint() {
-        return new Location(world, 10.5, 206, -8.5).setDirection(new Vector(-8, -15, 10));
+        var start = course.pads().getFirst();
+        return new Location(world, start.x() + 10.5, start.floor() + 8, start.z() - 8.5)
+                .setDirection(new Vector(-10, -8, 9));
     }
 
     @Override
@@ -90,7 +130,7 @@ final class DropTowerSession extends PartySurvivalSession {
 
     @Override
     int durationSeconds() {
-        return 105;
+        return 180;
     }
 
     @Override
@@ -110,7 +150,7 @@ final class DropTowerSession extends PartySurvivalSession {
 
     @Override
     Component instructions() {
-        return I18n.tr(KEY + "instructions", LAST_PAD);
+        return I18n.tr(KEY + "instructions", DropTowerCourse.JUMPS);
     }
 
     @Override
@@ -123,21 +163,28 @@ final class DropTowerSession extends PartySurvivalSession {
             Location at = player.getLocation();
             double x = at.getX() - lane.x();
             double z = at.getZ() - lane.z();
-            var target = DropTowerCourse.PADS.get(stage + 1);
-            var bar = DropTowerCourse.BAFFLES.get(stage);
-            boolean caught = bar != null && bar.caught(x, at.getY(), z);
-            if (target.landed(x, at.getY(), z) && race.reach(id, stage + 1, elapsed)) {
-                player.playSound(at, "minecraft:block.note_block.pling", .8f, 1 + stage * .085f);
+            double y = at.getY();
+            Pad target = course.pads().get(stage + 1);
+            boolean inLane = lane.contains(at.getX(), at.getZ());
+            boolean grounded = player.isOnGround();
+            boolean caught = grounded && course.jumps().get(stage).baffles().stream()
+                    .anyMatch(baffle -> baffle.caught(x, y, z));
+            if (inLane && grounded && target.landed(x, y, z) && race.reach(id, stage + 1, elapsed)) {
+                player.playSound(at, "minecraft:block.note_block.pling", .8f, 1 + stage * .05f);
                 if (race.finished(id)) {
                     player.sendMessage(text(I18n.tr(KEY + "finish", seconds(elapsed))));
                     spectate(player);
                 } else {
-                    player.sendActionBar(I18n.tr(KEY + "checkpoint", stage + 1, LAST_PAD));
+                    player.sendActionBar(I18n.tr(
+                            KEY + "landed", stage + 1, DropTowerCourse.JUMPS, hint(stage + 1)));
                 }
-            } else if (caught || target.missed(at.getY()) || !lane.contains(at.getX(), at.getZ())) {
+            } else if (!inLane || target.missed(y) || caught || grounded && onWrongPad(stage, x, y, z)) {
                 teleport(player, checkpoint(lane, stage, at));
-                player.sendActionBar(I18n.tr(KEY + (caught ? "bar_retry" : "retry")));
+                player.sendActionBar(I18n.tr(KEY + (caught ? "bar_retry" : "retry"), hint(stage)));
                 player.playSound(at, "minecraft:block.note_block.bass", .6f, 1);
+            } else if (elapsed % 10 == 0) {
+                player.spawnParticle(Particle.END_ROD, lane.x() + target.x() + .5,
+                        target.floor() + 1.45, lane.z() + target.z() + .5, 5, .2, .16, .2, .005);
             }
         }
         if (context.eligible().stream().allMatch(race::finished)) {
@@ -147,6 +194,14 @@ final class DropTowerSession extends PartySurvivalSession {
             }
             if (elapsed >= settledAt) finish(List.of());
         }
+    }
+
+    private boolean onWrongPad(int stage, double x, double y, double z) {
+        // Walking off a lip may report onGround for one more tick. Require a physical wrong pad.
+        for (int i = 0; i < course.pads().size(); i++) {
+            if (i != stage && i != stage + 1 && course.pads().get(i).landed(x, y, z)) return true;
+        }
+        return false;
     }
 
     private boolean racing(Player player) {
@@ -189,17 +244,15 @@ final class DropTowerSession extends PartySurvivalSession {
                         ? I18n.tr(KEY + "finish", seconds(race.time(id)))
                         : I18n.tr(KEY + "time", seconds(elapsed()));
         int stage = race.checkpoint(id);
-        Component landings = I18n.tr(KEY + "checkpoint", stage, LAST_PAD);
+        Component landings = I18n.tr(KEY + "checkpoint", stage, DropTowerCourse.JUMPS);
         return race.finished(id)
                 ? List.of(landings, clock, line)
                 : List.of(landings, clock, line, hint(stage));
     }
 
-    private static Component hint(int stage) {
-        if (DropTowerCourse.BAFFLES.containsKey(stage)) return I18n.tr(KEY + "guide_bar");
-        if (DropTowerCourse.requiresJump(stage)) return I18n.tr(KEY + "guide_jump");
-        if (stage == 2 || stage == 7) return I18n.tr(KEY + "guide_brake");
-        return I18n.tr(KEY + "guide_walk");
+    private Component hint(int stage) {
+        String kind = course.jumps().get(stage).kind().name().toLowerCase(Locale.ROOT);
+        return I18n.tr(KEY + "guide_" + kind);
     }
 
     private static String seconds(long ticks) {

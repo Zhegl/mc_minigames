@@ -482,7 +482,7 @@ same modes are available for solo practice with `/party test <mode>`.
 | --- | --- | --- |
 | Avoid Hot Potato | `hot_potato` | Left- or right-click a nearby player to pass the potato before the fuse runs out. In the Clockworks, a compact arena tuned for 3–8, race around the upper gallery, cut under its bridge, or peel off a stairway onto a loading dock. |
 | Jump Rope | `jump_rope` | Try the practice sweep in the jungle temple, then survive 50 scored sweeps. The rope reaches full speed early and mixes quick returns, long pauses, and mid-sweep speed changes. |
-| Drop Tower | `drop_tower` | Find each lit checkpoint, steer around two bars, and jump two gaps from orange pads. A miss sends you back to your last checkpoint with your camera unchanged. |
+| Drop Tower | `drop_tower` | Race through 20 jumps on a new course each round. Every lane has the same drops, gaps and obstacles. White sparks mark the next landing. Sprint-jump from orange pads and brake for the final precision landing. A miss returns you to your last checkpoint and preserves your view. |
 | Chicken Shooter | `chicken_shooter` | Hit targets in your own lane across ten waves. After a stationary opener, track smaller and faster targets as the waves get shorter. |
 | Less Is Better | `less_is_better` | Stand on the raised red or blue platform when time runs out. Players are hidden from one another until the reveal. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
 | Wait For It… | `wait_for_it` | Race through the same six tasks drawn from a pool of 24. The first task appears at Go. Each player advances immediately in their own room, and the first to finish wins. After three minutes, unfinished racers rank by tasks completed. |
