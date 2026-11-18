@@ -480,7 +480,7 @@ same modes are available for solo practice with `/party test <mode>`.
 
 | Game | Mode ID | How to play |
 | --- | --- | --- |
-| Avoid Hot Potato | `hot_potato` | Left- or right-click a nearby player to pass the potato before the fuse runs out. Chase across a 31-block-wide arena. |
+| Avoid Hot Potato | `hot_potato` | Left- or right-click a nearby player to pass the potato before the fuse runs out. In the Clockworks, a compact arena tuned for 3–8, race around the upper gallery, cut under its bridge, or peel off a stairway onto a loading dock. |
 | Jump Rope | `jump_rope` | Try the practice sweep in the jungle temple, then survive 50 scored sweeps. The rope reaches full speed early and mixes quick returns, long pauses, and mid-sweep speed changes. |
 | Drop Tower | `drop_tower` | Find each lit checkpoint, steer around two bars, and jump two gaps from orange pads. A miss sends you back to your last checkpoint with your camera unchanged. |
 | Chicken Shooter | `chicken_shooter` | Hit targets in your own lane across ten waves. After a stationary opener, track smaller and faster targets as the waves get shorter. |

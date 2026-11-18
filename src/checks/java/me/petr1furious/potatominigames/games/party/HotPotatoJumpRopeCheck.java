@@ -13,6 +13,7 @@ public final class HotPotatoJumpRopeCheck {
     private static final UUID C = new UUID(0, 3);
 
     public static void main(String[] args) {
+        HotPotatoArenaCheck.checkRoutes();
         potatoRandomizesAndRotatesSeeds();
         potatoRejectsImmediateTradebackAndKeepsItsFuse();
         potatoReplacesAnAbsentCarrier();
