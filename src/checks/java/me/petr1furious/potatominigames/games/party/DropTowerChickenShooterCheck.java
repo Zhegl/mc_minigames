@@ -1,12 +1,29 @@
 package me.petr1furious.potatominigames.games.party;
 
+import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.core.player.ParticipantRegistry;
+
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.Server;
+import org.bukkit.entity.Player;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 public final class DropTowerChickenShooterCheck {
-    public static void main(String[] args) {
-        markedLandingsAndMisses();
+    public static void main(String[] args) throws ReflectiveOperationException {
+        DropTowerRoutesCheck.generatedCourses();
+        playerKeepsView();
+        isolatedLanes();
         finishTimesAndProgress();
         chickenWaves();
         chickenScoring();
@@ -14,57 +31,155 @@ public final class DropTowerChickenShooterCheck {
                 "Drop Tower landings and rankings, Chicken Shooter waves and scoring passed");
     }
 
-    private static void markedLandingsAndMisses() {
-        var pads = DropTowerCourse.PADS;
-        check(pads.size() >= 4, "A tower needs several separate landings");
-        for (int i = 1; i < pads.size(); i++) {
-            var current = pads.get(i - 1);
-            var next = pads.get(i);
-            double distance = Math.abs(current.x() - next.x()) + Math.abs(current.z() - next.z());
-            check(
-                    current.x() == next.x() || current.z() == next.z(),
-                    "Each marked edge aims straight at its landing");
-            check(current.floor() - next.floor() >= 8, "Drops need time to steer");
-            check(
-                    distance > current.radius() + next.radius(),
-                    "Landing must be visible past the ledge");
-            checkWalkingLanding(current, next, distance);
-            check(next.landed(next.x() + .5, next.floor() + 1, next.z() + .5), "Pad center lands");
-            check(
-                    !next.landed(next.x() + next.radius() + 1.1, next.floor() + 1, next.z() + .5),
-                    "Edge miss");
-            check(
-                    !next.landed(next.x() + .5, next.floor() + 1.2, next.z() + .5),
-                    "Airborne approach");
-            check(!next.missed(next.floor() + 1.1), "Still time to land");
-            check(next.missed(next.floor() + .8), "Fall below the pad returns to the checkpoint");
+    private static void playerKeepsView() throws ReflectiveOperationException {
+        var map = new PartyArenaCheck.WorldMap();
+        var world = map.world;
+        UUID id = id(1);
+        Location[] position = {new Location(world, 0, 199, 0, 123, -14)};
+        boolean[] grounded = {false};
+        Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(),
+                new Class<?>[] {Player.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getUniqueId" -> id;
+                    case "getName" -> "Racer";
+                    case "getLocation" -> position[0].clone();
+                    case "getWorld" -> world;
+                    case "getGameMode" -> GameMode.SURVIVAL;
+                    case "isOnline" -> true;
+                    case "isDead" -> false;
+                    case "isOnGround" -> grounded[0];
+                    case "teleport" -> {
+                        position[0] = ((Location) args[0]).clone();
+                        yield true;
+                    }
+                    case "setFallDistance", "setVelocity", "playSound", "sendActionBar", "spawnParticle" -> null;
+                    default -> throw new AssertionError(method);
+                });
+        Field server = Bukkit.class.getDeclaredField("server");
+        server.setAccessible(true);
+        Object original = server.get(null);
+        try {
+            server.set(null, Proxy.newProxyInstance(Server.class.getClassLoader(),
+                    new Class<?>[] {Server.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("getPlayer") && id.equals(args[0])) return player;
+                        throw new AssertionError(method);
+                    }));
+            ParticipantRegistry participants = new ParticipantRegistry();
+            participants.add(player);
+            var services = new SessionServices(null, null, participants, null, null, null,
+                    null, null, null, null, null, null);
+            var round = new DropTowerSession(services, null, PartyRoundContext.standalone(services));
+            round.world = world;
+            round.names.put(id, "Racer");
+            round.names.put(id(2), "Second racer");
+            round.connected.add(id);
+            round.standings = new SurvivalStandings(Set.of(id));
+            round.buildArena();
+            identicalBuiltLanes(map, round.course);
+            var spawn = round.spawn(0, 1);
+            check(spawn.getYaw() == 123 && spawn.getPitch() == -14, "Opening spawn keeps the player's view");
+            var start = round.course.pads().getFirst();
+            Location takeoff = new Location(world, start.x() + start.radius() + 1.4,
+                    start.floor() + 1, start.z() + .5, 95, 21);
+            grounded[0] = true;
+            position[0] = takeoff.clone();
+            round.playTick(0);
+            check(position[0].equals(takeoff), "Leaving the lip with the last grounded flag still set permits walking off");
+            grounded[0] = false;
+            var first = round.course.pads().get(1);
+            var landing = new Location(world, first.x() + .8, first.floor() + 1,
+                    first.z() + .9, -66, 31);
+            position[0] = landing.clone();
+            round.playTick(1);
+            position[0] = landing.clone().add(0, -40, 0);
+            round.playTick(2);
+            check(samePosition(position[0], spawn), "An airborne fly-through cannot save a checkpoint");
+            grounded[0] = true;
+            position[0] = landing.clone();
+            round.playTick(3);
+            check(position[0].equals(landing), "A successful landing does not reposition or aim the player");
+            position[0] = landing.clone().add(0, -40, 0);
+            round.playTick(4);
+            check(samePosition(position[0], new Location(world, first.x() + .5, first.floor() + 1, first.z() + .5)),
+                    "A miss returns to the latest checkpoint");
+            check(position[0].getYaw() == -66 && position[0].getPitch() == 31,
+                    "Checkpoint retries keep the player's view");
+            Location retry = position[0].clone();
+            position[0] = spawn.clone();
+            round.playTick(5);
+            check(samePosition(position[0], retry), "Landing back on an earlier pad restores the current checkpoint");
+            for (int stage = 1; stage < round.course.jumps().size(); stage++) {
+                var bars = round.course.jumps().get(stage).baffles();
+                if (!bars.isEmpty()) {
+                    var bar = bars.getFirst();
+                    position[0] = new Location(world, bar.minX() + .5, bar.floor() + 1, bar.minZ() + .5, 72, 34);
+                    round.playTick(5 + stage);
+                    var current = round.course.pads().get(stage);
+                    check(samePosition(position[0], new Location(world, current.x() + .5, current.floor() + 1,
+                            current.z() + .5)), "A grounded baffle hit restores the current checkpoint");
+                    check(position[0].getYaw() == 72 && position[0].getPitch() == 34, "Baffle retries preserve the view");
+                    break;
+                }
+                var next = round.course.pads().get(stage + 1);
+                position[0] = new Location(world, next.x() + .5, next.floor() + 1, next.z() + .5);
+                round.playTick(5 + stage);
+            }
+        } finally {
+            server.set(null, original);
         }
     }
 
-    private static void checkWalkingLanding(
-            DropTowerCourse.Pad current, DropTowerCourse.Pad next, double distance) {
-        int airTicks = 0;
-        double fall = 0;
-        double velocity = 0;
-        while (fall < current.floor() - next.floor()) {
-            fall += velocity;
-            velocity = (velocity + .08) * .98;
-            airTicks++;
+    private static boolean samePosition(Location a, Location b) {
+        return a.getWorld() == b.getWorld() && a.getX() == b.getX()
+                && a.getY() == b.getY() && a.getZ() == b.getZ();
+    }
+
+    private static void identicalBuiltLanes(PartyArenaCheck.WorldMap map, DropTowerCourse course) {
+        var first = DropTowerCourse.Lane.at(0);
+        var second = DropTowerCourse.Lane.at(1);
+        Map<String, Material> firstBlocks = new HashMap<>(), secondBlocks = new HashMap<>();
+        for (var block : map.blocks.entrySet()) {
+            String[] coords = block.getKey().split(":");
+            int x = Integer.parseInt(coords[0]), z = Integer.parseInt(coords[2]);
+            if (first.contains(x + .5, z + .5))
+                firstBlocks.put((x - first.x()) + ":" + coords[1] + ":" + (z - first.z()), block.getValue());
+            else if (second.contains(x + .5, z + .5))
+                secondBlocks.put((x - second.x()) + ":" + coords[1] + ":" + (z - second.z()), block.getValue());
+            else throw new AssertionError("Block outside both lanes at " + block.getKey());
         }
-        // A standing player still has support while their 0.3-block half-width overlaps the ledge.
-        double ledge = current.radius() + .5 + .3;
-        double near = distance - next.radius() - .5;
-        double far = distance + next.radius() + .5;
-        check(
-                ledge + .13 * airTicks > near && ledge + .23 * (airTicks + 1) < far,
-                "Holding forward at normal walking speed reaches the next pad without"
-                    + " overshooting");
+        check(!firstBlocks.isEmpty() && firstBlocks.equals(secondBlocks),
+                "Both racers must see the same blocks and cues after translating their lane origin");
+        Set<String> solids = new HashSet<>();
+        for (var pad : course.pads())
+            for (int dx = -pad.radius(); dx <= pad.radius(); dx++)
+                for (int dz = -pad.radius(); dz <= pad.radius(); dz++)
+                    if (pad.tile(dx, dz)) solids.add((pad.x() + dx) + ":" + pad.floor() + ":" + (pad.z() + dz));
+        check(solids.stream().noneMatch(cell -> firstBlocks.get(cell) == Material.GOLD_BLOCK),
+                "Drop Tower platforms must not contain gold direction markers");
+        for (var jump : course.jumps())
+            for (var baffle : jump.baffles())
+                for (int x = baffle.minX(); x <= baffle.maxX(); x++)
+                    for (int z = baffle.minZ(); z <= baffle.maxZ(); z++)
+                        solids.add(x + ":" + baffle.floor() + ":" + z);
+        check(firstBlocks.keySet().equals(solids), "The built lane must match the geometry used for route checks");
+    }
+
+    private static void isolatedLanes() {
+        for (int i = 0; i < 12; i++) {
+            var lane = DropTowerCourse.Lane.at(i);
+            for (int j = 0; j < i; j++) {
+                var other = DropTowerCourse.Lane.at(j);
+                check(
+                        Math.max(Math.abs(lane.x() - other.x()), Math.abs(lane.z() - other.z()))
+                                >= 2 * DropTowerCourse.LANE_RADIUS + 2,
+                        "Two lanes have distinct playable bounds");
+            }
+        }
     }
 
     private static void finishTimesAndProgress() {
         UUID fast = id(1), slow = id(2), tie = id(3), progress = id(4), start = id(5);
         Set<UUID> roster = Set.of(fast, slow, tie, progress, start);
-        int last = DropTowerCourse.PADS.size() - 1;
+        int last = DropTowerCourse.JUMPS;
         ParkourRace race = new ParkourRace(roster, last);
         check(!race.reach(progress, 2, 1), "A later pad cannot skip a checkpoint");
         check(race.reach(progress, 1, 5) && race.reset(progress), "First pad saves a checkpoint");
@@ -89,17 +204,38 @@ public final class DropTowerChickenShooterCheck {
                 ChickenGallery.wave(0) == 0 && ChickenGallery.wave(99) == 0,
                 "Opening birds stay five seconds");
         check(ChickenGallery.wave(100) == 1, "Every lane restocks on the same tick");
-        var opener = ChickenGallery.birds(0).getFirst();
-        check(opener.x(0) == 0 && opener.x(50) == 0 && opener.z() <= 8, "Close centered opener");
-        var wave = ChickenGallery.birds(1);
-        check(wave.size() == ChickenGallery.birds(0).size(), "Equal target count each wave");
-        check(wave.stream().anyMatch(bird -> bird.x(0) != bird.x(25)), "Later chickens move");
-        for (int i = 0; i < ChickenGallery.WAVES; i++)
-            for (var bird : ChickenGallery.birds(i))
-                for (int tick = 0; tick < 100; tick++)
+        var opener = ChickenGallery.WAVES.getFirst();
+        var center = opener.birds().getFirst();
+        check(center.x(0) == 0 && center.x(50) == 0 && center.z(0) <= 8, "Close centered opener");
+        var late = ChickenGallery.WAVES.getLast();
+        check(late.scale() < 1 && opener.scale() >= 1.8, "Target hitboxes shrink after the opener");
+        check(
+                late.ticks() <= 65 && late.ticks() < opener.ticks(),
+                "Later waves demand faster shots");
+        check(
+                late.birds().getFirst().z(0) >= 11
+                        && late.birds().getFirst().z(0) != late.birds().getFirst().z(20),
+                "Later chickens change depth and start farther away");
+        int elapsed = 0;
+        for (int i = 0; i < ChickenGallery.WAVES.size(); i++) {
+            var wave = ChickenGallery.WAVES.get(i);
+            check(
+                    ChickenGallery.wave(elapsed) == i
+                            && ChickenGallery.wave(elapsed + wave.ticks() - 1) == i,
+                    "Every lane uses the same wave window");
+            check(
+                    wave.birds().size() == opener.birds().size(),
+                    "Equal target count in each lane and wave");
+            for (var bird : wave.birds())
+                for (int tick = 0; tick < wave.ticks(); tick++)
                     check(
-                            Math.abs(bird.x(tick)) < 7 && bird.z() > 4 && bird.z() < 20,
+                            Math.abs(bird.x(tick)) < 7 && bird.z(tick) > 4 && bird.z(tick) < 21,
                             "Birds stay inside their own range and beyond the shooting deck");
+            elapsed += wave.ticks();
+        }
+        check(
+                elapsed == ChickenGallery.DURATION_TICKS && elapsed % 20 == 0,
+                "The round clock includes the complete final wave");
     }
 
     private static void chickenScoring() {

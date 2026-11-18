@@ -1,5 +1,7 @@
 package me.petr1furious.potatominigames.games.party;
 
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
+
 import me.petr1furious.potatominigames.core.game.SessionServices;
 import me.petr1furious.potatominigames.i18n.I18n;
 
@@ -26,7 +28,7 @@ import java.util.UUID;
 
 final class HotPotatoSession extends PartySurvivalSession {
     private static final String KEY = "party.tag_and_timing.hot_potato.";
-    private static final int FLOOR = 80;
+    private static final int FLOOR = HotPotatoArena.FLOOR;
     private static final int PRACTICE_PHASES = 3;
     private static final double PASS_RANGE_SQUARED = 3.5 * 3.5;
 
@@ -44,29 +46,7 @@ final class HotPotatoSession extends PartySurvivalSession {
 
     @Override
     void buildArena() {
-        for (int x = -9; x <= 9; x++) {
-            for (int z = -9; z <= 9; z++) {
-                int edge = Math.max(Math.abs(x), Math.abs(z));
-                Material tile =
-                        edge == 9 || edge == 2
-                                ? Material.COPPER_BLOCK
-                                : Math.floorMod(x + z, 2) == 0
-                                        ? Material.POLISHED_DEEPSLATE
-                                        : Material.DEEPSLATE_TILES;
-                world.getBlockAt(x, FLOOR, z).setType(tile, false);
-                if (edge == 9) {
-                    world.getBlockAt(x, FLOOR + 1, z).setType(Material.WAXED_COPPER_GRATE, false);
-                    for (int y = FLOOR + 2; y <= FLOOR + 3; y++)
-                        world.getBlockAt(x, y, z).setType(Material.ORANGE_STAINED_GLASS, false);
-                }
-            }
-        }
-        for (int x : new int[] {-3, 3}) {
-            for (int z : new int[] {-3, 3}) {
-                world.getBlockAt(x, FLOOR + 1, z).setType(Material.WAXED_CUT_COPPER, false);
-                world.getBlockAt(x, FLOOR + 2, z).setType(Material.SHROOMLIGHT, false);
-            }
-        }
+        HotPotatoArena.build(world);
         if (names.size() == 1) {
             dummy =
                     world.spawn(
@@ -88,17 +68,12 @@ final class HotPotatoSession extends PartySurvivalSession {
 
     @Override
     Location spawn(int index, int count) {
-        if (count == 1) return new Location(world, .5, FLOOR + 1, 5.5, 180, 0);
-        double angle = 2 * Math.PI * index / count;
-        Location at =
-                new Location(
-                        world, .5 + 6.5 * Math.sin(angle), FLOOR + 1, .5 + 6.5 * Math.cos(angle));
-        return at.setDirection(new Location(world, .5, FLOOR + 1, .5).subtract(at).toVector());
+        return HotPotatoArena.spawn(world, index, count);
     }
 
     @Override
     Location viewpoint() {
-        return new Location(world, .5, 93, .5, 0, 80);
+        return new Location(world, 11.5, FLOOR + 21, 17.5, 147, 42);
     }
 
     @Override
@@ -211,11 +186,19 @@ final class HotPotatoSession extends PartySurvivalSession {
         Player player = event.getPlayer();
         if (!player.getWorld().equals(world) || !alive(player)) return;
         event.setCancelled(true);
-        if (!playing()
-                || nextPhaseAt != 0
-                || event.getHand() != EquipmentSlot.HAND
-                || !player.getUniqueId().equals(fuse.carrier())) return;
-        Entity target = event.getRightClicked();
+        if (event.getHand() == EquipmentSlot.HAND) tryPass(player, event.getRightClicked());
+    }
+
+    @Override
+    public void onPrePlayerAttackEntity(PrePlayerAttackEntityEvent event) {
+        Player player = event.getPlayer();
+        if (!player.getWorld().equals(world) || !alive(player)) return;
+        event.setCancelled(true);
+        tryPass(player, event.getAttacked());
+    }
+
+    private void tryPass(Player player, Entity target) {
+        if (!playing() || nextPhaseAt != 0 || !player.getUniqueId().equals(fuse.carrier())) return;
         if (target != dummy && (!(target instanceof Player runner) || !alive(runner))) return;
         if (!target.getWorld().equals(world)
                 || player.getLocation().distanceSquared(target.getLocation()) > PASS_RANGE_SQUARED

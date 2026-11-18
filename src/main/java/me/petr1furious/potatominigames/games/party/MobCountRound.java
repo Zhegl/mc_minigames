@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Random;
 
 /** Distinct counts ensure that the announced number has exactly one correct species. */
-record MobCountRound(int number, Map<Species, Integer> counts, List<Species> platforms, Species answer) {
+record MobCountRound(int number, Map<Species, Integer> counts, List<Species> sectors, Species answer) {
     enum Species {
         ZOMBIE("ZOMBIE_HEAD"), SKELETON("SKELETON_SKULL"),
         CREEPER("CREEPER_HEAD"), PIGLIN("PIGLIN_HEAD"),
@@ -24,9 +24,9 @@ record MobCountRound(int number, Map<Species, Integer> counts, List<Species> pla
     }
     MobCountRound {
         counts = Map.copyOf(counts);
-        platforms = List.copyOf(platforms);
+        sectors = List.copyOf(sectors);
     }
-    static MobCountRound generate(int round, int platformCount, Random random) {
+    static MobCountRound generate(int round, Random random) {
         int types = round < 4 ? 4 : 5;
         List<Species> species = new ArrayList<>(List.of(Species.values()));
         Collections.shuffle(species, random);
@@ -37,10 +37,7 @@ record MobCountRound(int number, Map<Species, Integer> counts, List<Species> pla
         Collections.shuffle(quantities, random);
         Map<Species, Integer> counts = new LinkedHashMap<>();
         for (int i = 0; i < types; i++) counts.put(species.get(i), quantities.get(i));
-        List<Species> platforms = new ArrayList<>();
-        for (int i = 0; i < platformCount; i++) platforms.add(species.get(i % types));
-        Collections.shuffle(platforms, random);
-        return new MobCountRound(round, counts, platforms, species.get(random.nextInt(types)));
+        return new MobCountRound(round, counts, species, species.get(random.nextInt(types)));
     }
     int target() { return counts.get(answer); }
     int total() { return counts.values().stream().mapToInt(Integer::intValue).sum(); }

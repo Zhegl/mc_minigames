@@ -35,7 +35,7 @@ final class ToolRaceSession extends PartySurvivalSession {
     }
 
     Location viewpoint() {
-        return new Location(world, .5, 88, .5, 0, 80);
+        return arena.viewpoint();
     }
 
     double outHeight() {

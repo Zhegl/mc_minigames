@@ -8,11 +8,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 /** Repeatable target paths and a score table shared by all the lanes. */
 final class ChickenGallery {
-    static final int TICKS_PER_WAVE = 100;
-    static final int WAVES = 8;
+    private static final int[] WAVE_TICKS = {100, 100, 90, 90, 80, 80, 80, 70, 70, 60};
+    static final List<Wave> WAVES =
+            IntStream.range(0, WAVE_TICKS.length).mapToObj(ChickenGallery::pattern).toList();
+    static final int DURATION_TICKS = WAVES.stream().mapToInt(Wave::ticks).sum();
 
     private final Map<UUID, Integer> scores = new LinkedHashMap<>();
     private final Map<UUID, UUID> owners = new HashMap<>();
@@ -22,22 +25,73 @@ final class ChickenGallery {
     }
 
     static int wave(long elapsed) {
-        return (int) (elapsed / TICKS_PER_WAVE);
+        int index = 0;
+        for (Wave wave : WAVES) {
+            if (elapsed < wave.ticks()) return index;
+            elapsed -= wave.ticks();
+            index++;
+        }
+        return index;
     }
 
-    static List<Bird> birds(int wave) {
+    private static Wave pattern(int wave) {
         if (wave == 0)
-            return List.of(new Bird(0, 7, 0, 0), new Bird(-3, 9, 0, 0), new Bird(3, 9, 0, 0));
+            return new Wave(
+                    WAVE_TICKS[0],
+                    1.9,
+                    List.of(
+                            new Bird(0, 7, 0, 0, 0, 100, 0),
+                            new Bird(-3, 9, 0, 0, 0, 100, 0),
+                            new Bird(3, 9, 0, 0, 0, 100, 0)));
         double phase = wave * Math.PI / 2;
-        return List.of(
-                new Bird(0, 8, 1.4, phase),
-                new Bird(-4, 12 + wave % 3, 1.25, phase + Math.PI),
-                new Bird(4, 15 - wave % 3, 1.5, phase));
+        int period = 92 - wave * 5;
+        return new Wave(
+                WAVE_TICKS[wave],
+                Math.max(.9, 1.63 - wave * .085),
+                List.of(
+                        new Bird(0, 8 + wave * .55, 1.1 + wave * .12, 1.15, .3, period, phase),
+                        new Bird(
+                                -4.2,
+                                11.5 + wave * .55,
+                                1.2 + wave * .07,
+                                1.1,
+                                .55,
+                                period + 9,
+                                phase + Math.PI),
+                        new Bird(
+                                4.2,
+                                15 + wave * .4,
+                                1.35 + wave * .08,
+                                1.45,
+                                .45,
+                                period + 4,
+                                phase)));
     }
 
-    record Bird(double center, double z, double drift, double phase) {
+    record Wave(int ticks, double scale, List<Bird> birds) {}
+
+    record Bird(
+            double center,
+            double depth,
+            double drift,
+            double depthDrift,
+            double lift,
+            int period,
+            double phase) {
         double x(long age) {
-            return center + drift * Math.sin(phase + age * (2 * Math.PI / TICKS_PER_WAVE));
+            return center + drift * Math.sin(angle(age));
+        }
+
+        double z(long age) {
+            return depth + depthDrift * Math.cos(angle(age));
+        }
+
+        double y(long age) {
+            return lift * Math.sin(angle(age) * 2);
+        }
+
+        private double angle(long age) {
+            return phase + age * (2 * Math.PI / period);
         }
     }
 

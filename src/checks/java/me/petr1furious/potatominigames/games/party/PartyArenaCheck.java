@@ -170,27 +170,37 @@ public final class PartyArenaCheck {
         ToolRaceTrack track = new ToolRaceTrack(ids, ToolRaceTrack.generate(new Random(7)));
         ToolRaceArena shafts = new ToolRaceArena(w.world, ids);
         shafts.build(track);
-        for (UUID id : ids) {
+        for (int i = 0; i < ids.size(); i++) {
+            UUID id = ids.get(i);
             var spawn = shafts.spawn(id);
+            check(spawn.getBlockX() == i % 4 * 8 && spawn.getBlockZ() == i / 4 * 8,
+                    "Twelve Tool Race columns form a 4 by 3 grid with eight-block spacing");
             for (int d = 0; d < 50; d++) {
-                Block b = w.world.getBlockAt(spawn.getBlockX(), 80 - d, 0);
+                Block b = w.world.getBlockAt(spawn.getBlockX(), 80 - d, spawn.getBlockZ());
                 check(b.getType() == track.block(d), "Actual identical fifty-block shafts");
                 check(shafts.depth(id, b) == d, "Only own depth");
             }
             check(
-                    w.world.getBlockAt(spawn.getBlockX(), 30, 0).getType() == Material.AIR,
+                    w.world.getBlockAt(spawn.getBlockX(), 30, spawn.getBlockZ()).getType() == Material.AIR,
                     "Finisher falls out of the shaft");
             check(
-                    w.world.getBlockAt(spawn.getBlockX(), 25, 0).getType()
+                    w.world.getBlockAt(spawn.getBlockX(), 25, spawn.getBlockZ()).getType()
                             == Material.SMOOTH_QUARTZ,
                     "Landing platform beneath the finish");
             check(
-                    w.world.getBlockAt(spawn.getBlockX() + 1, 60, 0).getType() == Material.GLASS,
+                    w.world.getBlockAt(spawn.getBlockX() + 1, 60, spawn.getBlockZ()).getType()
+                            == Material.GLASS,
                     "Can see neighboring racers through the shaft wall");
         }
-        check(
-                shafts.depth(ids.getFirst(), w.world.getBlockAt(4, 80, 0)) == -1,
-                "Cannot mine neighbor");
+        check(shafts.depth(ids.getFirst(), w.world.getBlockAt(8, 80, 0)) == -1
+                        && shafts.depth(ids.getFirst(), w.world.getBlockAt(0, 80, 8)) == -1,
+                "Cannot mine a neighboring shaft on either axis");
+        check(w.world.getBlockAt(12, 25, 4).getType() == Material.SMOOTH_QUARTZ
+                        && w.world.getBlockAt(12, 29, 19).getType() == Material.GLASS,
+                "The common landing and its perimeter cover the expanded grid");
+        var viewpoint = shafts.viewpoint();
+        check(viewpoint.getX() == 12.5 && viewpoint.getZ() == 8.5 && viewpoint.getY() > 83,
+                "Spectators start above the center of the grid");
         w = new WorldMap();
         var arena = new PvpArena(w.world);
         arena.build();

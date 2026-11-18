@@ -638,6 +638,10 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
 
     @Override
     public final void onInventoryDrag(InventoryDragEvent event) {
+        handleInventoryDrag(event);
+    }
+
+    protected void handleInventoryDrag(InventoryDragEvent event) {
         event.setCancelled(true);
     }
 

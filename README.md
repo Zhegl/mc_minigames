@@ -480,12 +480,12 @@ same modes are available for solo practice with `/party test <mode>`.
 
 | Game | Mode ID | How to play |
 | --- | --- | --- |
-| Avoid Hot Potato | `hot_potato` | Right-click another player to pass the potato before the fuse runs out. |
-| Jump Rope | `jump_rope` | Try the practice sweep, then jump over the beam as it speeds up. |
-| Drop Tower | `drop_tower` | Find each lit landing on the way down. A miss sends you back to your most recent checkpoint. |
-| Chicken Shooter | `chicken_shooter` | Use the bow to hit targets in your own lane. Early targets stand still. |
-| Less Is Better | `less_is_better` | Right-click your ballot to vote for red or blue. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
-| Wait For It… | `wait_for_it` | Read the preview, then find the flower, craft the item, harvest the crop, or find the button. Score one point per completed task. |
+| Avoid Hot Potato | `hot_potato` | Left- or right-click a nearby player to pass the potato before the fuse runs out. In the Clockworks, a compact arena tuned for 3–8, race around the upper gallery, cut under its bridge, or peel off a stairway onto a loading dock. |
+| Jump Rope | `jump_rope` | Try the practice sweep in the jungle temple, then survive 50 scored sweeps. The rope reaches full speed early and mixes quick returns, long pauses, and mid-sweep speed changes. |
+| Drop Tower | `drop_tower` | Race through 20 jumps on a new course each round. Every lane has the same drops, gaps and obstacles. White sparks mark the next landing. Sprint-jump from orange pads and brake for the final precision landing. A miss returns you to your last checkpoint and preserves your view. |
+| Chicken Shooter | `chicken_shooter` | Hit targets in your own lane across ten waves. After a stationary opener, track smaller and faster targets as the waves get shorter. |
+| Less Is Better | `less_is_better` | Stand on the raised red or blue platform when time runs out. Players are hidden from one another until the reveal. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
+| Wait For It… | `wait_for_it` | Race through the same six tasks drawn from a pool of 24. The first task appears at Go. Each player advances immediately in their own room, and the first to finish wins. After three minutes, unfinished racers rank by tasks completed. |
 
 These games are also independently available:
 
@@ -494,7 +494,7 @@ These games are also independently available:
 | Цветной пол | `/play party color_floor` | Each stage puts a concrete block of the target color in your hand instead of a large center-screen color title. Reach that color before the other tiles disappear; the cue block cannot be placed or dropped. Starts with six seconds, reaching two seconds by stage six; twelve stages. Wrong tiles disappear and players are eliminated only after falling below the platform, so jumping to safety remains possible. The palette grows from 6 colors to 8 at stage 3, 10 at stage 6, and 12 at stage 9. Colors form patches of different sizes with rare islands. A target remains within eight blocks of every floor cell. |
 | Наковальни | `/play party anvils` | Dodge staggered rain on a 42×42 platform or shelter under slabs. Waves last six seconds. Rain-free relocation starts at ten seconds and shortens by one second per wave to a six-second minimum: old anvils disappear and shelters move randomly. Start with four shelters; remove one every two waves, minimum one. Roofs shrink from 2×2 to 1×1 from wave six. From wave three, punches push without health damage. Anvil contact eliminates. Ten waves. Rain keeps full density within a horizontal radius of eight blocks around living players and falls four times less densely elsewhere; overlapping zones do not stack. Distant cells rotate evenly over four sweeps instead of guaranteeing every cell is hit each wave. At most 2560 airborne anvils, with rate-limited impact sounds; slabs intercept anvils above shelters. |
 | Повтори постройку | `/play party build_memory` | Private platforms form a circle around an elder guardian jury. The first two stages pick distinct small models of 6–8 blocks; later stages draw from fourteen larger recognizable models without repeats. Material palettes, rotations and small changes to existing structural pieces vary the builds; random filler is one third of the former budget. Memorization drops from 12 to 5 seconds; construction starts at 30 seconds and adds five seconds per stage, up to 65. After the deadline, the guardian beams at each platform for three seconds. Red outlines mark missing, wrong and extra cells; chat reports errors and similarity (correct expected blocks / total expected blocks). One player with the most errors is eliminated; ties eliminate the later finisher, measured by the last change to the final build. If everyone is perfect, nobody leaves in stages 1–5; from stage 6 the slowest builder leaves. Edits in the same server tick use roster order as a final tie-break. Facing and upper/lower placement matter; sign text and automatic connections do not. Screens prevent copying during construction. The invisible beam target is parked above the central jury between reviews, outside every build footprint. |
-| Гонка инструментов | `/play party tool_race` | Mine down exactly **50 blocks** in your own 1×1 shaft. Everyone gets the same shuffled wood/dirt/stone sequence and unbreakable iron axe, shovel and pickaxe in slots 1–3. Incorrect tools are slower, not an instant loss. Unbreakable glass walls reveal other racers. The personal scoreboard shows current place, blocks mined and blocks remaining. Finishers fall onto a shared landing and remain in survival mode; the last finisher gets three seconds to land. No fall damage or drops. Finish time determines places; after three minutes, unfinished players rank by progress. |
+| Гонка инструментов | `/play party tool_race` | Mine down exactly **50 blocks** in your own 1×1 shaft. Shaft centers are spaced eight blocks apart on a grid. Everyone gets the same shuffled wood/dirt/stone sequence and unbreakable iron axe, shovel and pickaxe in slots 1–3. Incorrect tools are slower, not an instant loss. Unbreakable glass walls reveal other racers. The personal scoreboard shows current place, blocks mined and blocks remaining. Finishers fall onto a shared landing and remain in survival mode; the last finisher gets three seconds to land. No fall damage or drops. Finish time determines places; after three minutes, unfinished players rank by progress. |
 | Паркур-спидран | `/play party parkour_race` | Seven or eight random vanilla tasks, sampled without repeats from a twenty-four-task pool, on identical parallel lanes with invisible barrier walls. Every checkpoint replaces the entire old inventory with a focused task kit; earlier supplies and construction cannot carry forward. Slot 9 returns to the last checkpoint and restores that section’s kit while rolling back its blocks, water and pending projectiles; the race timer keeps running. |
 | Дырка в стене | `/play party hole_in_the_wall` | Each round randomly selects Plus, Snake or Donut. Plus has four permanent 2×2 corner islands; its arms narrow from five to three blocks at the first shrink. Snake is a connected S-shaped track; Donut is a rounded ring with a permanent central pit. All layouts shrink by removing floor at one third and two thirds, with three-second red warnings; paths never teleport or grow. Plus uses twenty silhouettes, Snake and Donut twelve each, with map-specific side-lane routes and localized introductions. Every wall offers walk/jump/crouch alternatives; precision routes appear only after ten arrivals. First five walls teach walking and jumping. Types shuffle without repeats within their map catalog. Symmetric outlines and grounded frames replace scattered floating blocks; the hurdle uses a full-block sill instead of an automatically climbed slab. Concurrent perpendicular walls require compatible passages above the final floor, never just above the center pit. Real walls step one block at a time, can be ridden, and strongly push on side contact. All four directions stay in rotation. PvP is off; falling eliminates. Configure `holeInTheWall.durationSeconds` (45–300, default 120). Survival awards 3/2/1. |
 
@@ -1136,20 +1136,18 @@ Settings: `tntRun.durationSeconds`, `tntRun.collapseTicks` in `games/party.yml`.
 ### Party Пересчёт / Mob Count
 
 Join with `/play party mob_count`, or train with `/party test mob_count`.
-The board has **36 platforms**, each **2×2 blocks**, with **two-block gaps**.
-Each platform has a mob head and a label. During counting, glass fills the gaps
-and harmless, stationary mobs appear across the board. Count each species:
-initially four species and ten mobs; later a fifth species joins and the total
-grows to at most sixty. Counting time starts at ten seconds and drops to six.
+The arena is a disc with one colored sector per species, each marked by a mob
+head and label. Solid dark lines separate the sectors, with a neutral hub at the
+center. Harmless, stationary mobs appear across the disc and are protected from
+burning in daylight. Count each species. The first round starts with four species
+and ten mobs. Later a fifth species joins and the total grows to at most sixty.
+Counting time starts at ten seconds and drops to six.
 
-The mobs and glass then disappear and a number appears. Each player starts the
-jump phase on their nearest safe platform and has **ten seconds** to land on any
-platform showing the species that appeared that many times. Counts are distinct,
-so exactly one species is correct. Standing on its head also counts; being in the
-air or above a gap at the deadline does not. Incorrect platforms disappear and
-the result settles for three seconds. Jumping to safety after the deadline cannot
-undo a wrong choice. Surviving platforms and glass return for the next round.
-After twelve rounds, remaining players share victory.
+The mobs disappear and a number appears. Players return to the hub for a
+three-second freeze, then have **ten seconds** to run to the sector of the species
+that appeared that many times. At the reveal, the hub, separators, and incorrect
+sectors drop away. Players who fall are eliminated, and the floor resets for the
+next round. After twelve rounds, remaining players share victory.
 
 Settings: `mobCount.countSeconds`, `mobCount.answerSeconds`, `mobCount.rounds`.
 

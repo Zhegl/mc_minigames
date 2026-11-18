@@ -7,23 +7,20 @@ import me.petr1furious.potatominigames.i18n.I18n;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.type.Stairs;
 import org.bukkit.entity.Player;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.event.player.PlayerMoveEvent;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-/** Score a point by choosing the less popular of two hidden votes. */
+/** The smaller occupied platform scores when the vote timer expires. */
 final class LessIsBetterSession extends PartySurvivalSession {
     private static final String TEXT = "party.less_is_better.";
     private static final int VOTES = 6;
@@ -31,31 +28,17 @@ final class LessIsBetterSession extends PartySurvivalSession {
     private static final int REVEAL_TICKS = 60;
     private static final int BALLOT_TICKS = PICK_TICKS + REVEAL_TICKS;
     private static final int FLOOR = 80;
-    private static final int RED_SLOT = 3;
-    private static final int BLUE_SLOT = 5;
-
-    private final class BallotMenu implements InventoryHolder {
-        private final Inventory inventory;
-
-        BallotMenu(Player player) {
-            inventory = Bukkit.createInventory(this, 9, I18n.render(I18n.tr(TEXT + "menu"), player));
-            render(player);
-        }
-
-        void render(Player player) {
-            inventory.setItem(RED_SLOT, voteItem(player, Material.RED_DYE, Side.RED));
-            inventory.setItem(BLUE_SLOT, voteItem(player, Material.BLUE_DYE, Side.BLUE));
-        }
-
-        @Override
-        public Inventory getInventory() {
-            return inventory;
-        }
-    }
+    private static final int PAD_HEIGHT = FLOOR + 1;
+    private static final int BLUE_START = 4;
+    private static final int BLUE_END = 12;
+    private static final int RED_START = 1 - BLUE_END;
+    private static final int RED_END = 1 - BLUE_START;
+    private static final int PAD_Z_START = -7;
+    private static final int PAD_Z_END = 8;
 
     private final LessIsBetterVotes votes = new LessIsBetterVotes();
     private LessIsBetterVotes.Reveal reveal;
-    private int neutralVotes;
+    private LessIsBetterVisibility visibility;
 
     LessIsBetterSession(SessionServices services, PartyConfig config, PartyRoundContext context) {
         super(services, config, "less_is_better", context);
@@ -63,29 +46,62 @@ final class LessIsBetterSession extends PartySurvivalSession {
 
     @Override
     void buildArena() {
-        for (int x = -10; x <= 10; x++) {
+        for (int x = -14; x <= 14; x++) {
             for (int z = -10; z <= 10; z++) {
-                boolean edge = Math.abs(x) == 10 || Math.abs(z) == 10;
-                Material floor = edge ? Material.SMOOTH_QUARTZ : Material.POLISHED_DEEPSLATE;
+                boolean edge = Math.abs(x) == 14 || Math.abs(z) == 10;
+                Material floor = edge || x == 0 ? Material.SMOOTH_QUARTZ : Material.POLISHED_DEEPSLATE;
                 world.getBlockAt(x, FLOOR, z).setType(floor, false);
                 if (edge) {
-                    world.getBlockAt(x, FLOOR + 1, z).setType(Material.LIGHT_GRAY_STAINED_GLASS, false);
-                    world.getBlockAt(x, FLOOR + 2, z).setType(Material.LIGHT_GRAY_STAINED_GLASS, false);
+                    Side side = sideAtX(x + .5);
+                    Material wall = switch (side) {
+                        case RED -> Material.RED_STAINED_GLASS;
+                        case BLUE -> Material.BLUE_STAINED_GLASS;
+                        case null -> Material.LIGHT_GRAY_STAINED_GLASS;
+                    };
+                    for (int y = FLOOR + 1; y <= FLOOR + 3; y++)
+                        world.getBlockAt(x, y, z).setType(wall, false);
                 }
             }
         }
-        for (int x = -6; x <= 6; x++) {
-            for (int y = FLOOR + 1; y <= FLOOR + 3; y++) {
-                if (x == 0) continue;
-                Material panel = x < 0 ? Material.RED_CONCRETE : Material.BLUE_CONCRETE;
-                world.getBlockAt(x, y, 9).setType(panel, false);
+        buildPad(RED_START, RED_END, Material.RED_CONCRETE, Material.RED_TERRACOTTA);
+        buildPad(BLUE_START, BLUE_END, Material.BLUE_CONCRETE, Material.BLUE_TERRACOTTA);
+        var redStep = (Stairs) Material.SMOOTH_QUARTZ_STAIRS.createBlockData();
+        var blueStep = (Stairs) redStep.clone();
+        redStep.setFacing(BlockFace.WEST);
+        blueStep.setFacing(BlockFace.EAST);
+        for (int z = PAD_Z_START; z < PAD_Z_END; z++) {
+            world.getBlockAt(RED_END, PAD_HEIGHT, z).setBlockData(redStep, false);
+            world.getBlockAt(BLUE_START - 1, PAD_HEIGHT, z).setBlockData(blueStep, false);
+        }
+    }
+
+    private void buildPad(int start, int end, Material surface, Material border) {
+        for (int x = start; x < end; x++) {
+            for (int z = PAD_Z_START; z < PAD_Z_END; z++) {
+                boolean edge = x == start || x == end - 1 || z == PAD_Z_START || z == PAD_Z_END - 1;
+                world.getBlockAt(x, PAD_HEIGHT, z).setType(edge ? border : surface, false);
             }
         }
     }
 
+    static Side platformAt(double x, double y, double z) {
+        if (y < PAD_HEIGHT + 1 || y > PAD_HEIGHT + 2.5 || z < PAD_Z_START || z >= PAD_Z_END) return null;
+        return sideAtX(x);
+    }
+
+    private static Side sideAtX(double x) {
+        if (x >= RED_START && x < RED_END) return Side.RED;
+        if (x >= BLUE_START && x < BLUE_END) return Side.BLUE;
+        return null;
+    }
+
+    private Side platformAt(Location location) {
+        return world.equals(location.getWorld()) ? platformAt(location.getX(), location.getY(), location.getZ()) : null;
+    }
+
     @Override
     Location spawn(int index, int count) {
-        return new Location(world, (index % 6 - 2.5) * 2.4, FLOOR + 1, -4 + index / 6 * 3, 0, 0);
+        return new Location(world, .5, FLOOR + 1, .5 + (index - (count - 1) / 2.0) * 1.25, 0, 0);
     }
 
     @Override
@@ -125,20 +141,29 @@ final class LessIsBetterSession extends PartySurvivalSession {
 
     @Override
     void preparePlayer(Player player) {
-        ItemStack item = new ItemStack(Material.PAPER);
-        item.editMeta(meta -> meta.displayName(I18n.render(I18n.tr(TEXT + "paper"), player)));
-        player.getInventory().setItem(0, item);
-        player.getInventory().setHeldItemSlot(0);
+        if (visibility == null) hideVoters(services.participants().onlinePlayers());
     }
 
-    private ItemStack voteItem(Player player, Material material, Side side) {
-        ItemStack item = new ItemStack(material);
-        boolean selected = votes.choice(player.getUniqueId()) == side;
-        item.editMeta(meta -> {
-            meta.displayName(I18n.render(I18n.tr(TEXT + (selected ? "selected" : "choose"), sideName(side)), player));
-            meta.setEnchantmentGlintOverride(selected);
-        });
-        return item;
+    private void hideVoters(List<Player> players) {
+        if (visibility == null) visibility = new LessIsBetterVisibility(services.plugin());
+        services.sidebar().setHiddenNonCollidingPlayers(players.stream().map(Player::getName).toList());
+        players.forEach(visibility::hide);
+    }
+
+    private void showVoters() {
+        if (visibility == null) return;
+        visibility.clear();
+        services.sidebar().setHiddenNonCollidingPlayers(List.of());
+    }
+
+    @Override
+    void playerOut(Player player) {
+        if (visibility != null) visibility.remove(player);
+    }
+
+    @Override
+    void cleanup() {
+        showVoters();
     }
 
     private Component sideName(Side side) {
@@ -148,32 +173,10 @@ final class LessIsBetterSession extends PartySurvivalSession {
     }
 
     @Override
-    public void onPlayerInteract(PlayerInteractEvent event) {
-        event.setCancelled(true);
-        Player player = event.getPlayer();
-        Action action = event.getAction();
-        if (!playing() || reveal != null || !alive(player) || !player.getWorld().equals(world)
-                || event.getHand() != EquipmentSlot.HAND
-                || (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK)) return;
-        if (event.getMaterial() == Material.PAPER) player.openInventory(new BallotMenu(player).inventory);
-    }
-
-    @Override
-    protected void handleInventoryClick(InventoryClickEvent event) {
-        event.setCancelled(true);
-        if (!(event.getWhoClicked() instanceof Player player) || !alive(player) || !playing()
-                || reveal != null || !(event.getView().getTopInventory().getHolder() instanceof BallotMenu menu)) return;
-        Side side = switch (event.getRawSlot()) {
-            case RED_SLOT -> Side.RED;
-            case BLUE_SLOT -> Side.BLUE;
-            default -> null;
-        };
-        if (side != null && votes.choice(player.getUniqueId()) != side) {
-            votes.pick(player.getUniqueId(), side);
-            menu.render(player);
-            player.sendActionBar(choicePrompt(player.getUniqueId()));
-            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, .7f, 1.25f);
-        }
+    protected void handleMove(PlayerMoveEvent event) {
+        if (event.isCancelled() || !playing() || reveal != null) return;
+        Side side = platformAt(event.getTo());
+        if (side != platformAt(event.getFrom())) event.getPlayer().sendActionBar(choicePrompt(side));
     }
 
     @Override
@@ -187,29 +190,45 @@ final class LessIsBetterSession extends PartySurvivalSession {
         if (offset == 0) {
             reveal = null;
             List<Player> players = alivePlayers();
-            neutralVotes = Math.max(0, 3 - players.size());
-            if (neutralVotes > 0) say(I18n.tr(TEXT + "neutral", neutralVotes));
-            // The shared Go title already announces the first ballot.
-            if (ballot > 0) announceTitle(I18n.tr(TEXT + "ballot", ballot + 1, VOTES), I18n.tr(TEXT + "pick"), 2);
+            if (ballot == 0) {
+                int neutralVotes = Math.max(0, 3 - players.size());
+                if (neutralVotes > 0) say(I18n.tr(TEXT + "neutral", neutralVotes));
+            } else {
+                hideVoters(players);
+                for (int i = 0; i < players.size(); i++) teleport(players.get(i), spawn(i, players.size()));
+                announceTitle(I18n.tr(TEXT + "ballot", ballot + 1, VOTES), I18n.tr(TEXT + "pick"), 2);
+            }
         }
         if (offset == PICK_TICKS) reveal();
         if (offset < PICK_TICKS && offset % 20 == 0) {
-            for (Player player : alivePlayers()) player.sendActionBar(choicePrompt(player.getUniqueId()));
+            List<Player> players = alivePlayers();
+            PartySounds.countdown(players, PICK_TICKS - offset);
+            for (Player player : players) player.sendActionBar(choicePrompt(platformAt(player.getLocation())));
         }
     }
 
     private void reveal() {
+        var eligible = context.eligible();
+        List<Player> players = alivePlayers().stream()
+                .filter(player -> eligible.contains(player.getUniqueId()) && player.getWorld().equals(world))
+                .toList();
+        Map<UUID, Side> choices = new LinkedHashMap<>();
+        for (Player player : players) {
+            Side side = platformAt(player.getLocation());
+            if (side != null) choices.put(player.getUniqueId(), side);
+        }
+        int neutralVotes = Math.max(0, 3 - players.size());
         int neutralRed = 0;
         for (int i = 0; i < neutralVotes; i++) {
             if (random.nextBoolean()) neutralRed++;
         }
-        reveal = votes.reveal(context.eligible(), neutralRed, neutralVotes - neutralRed);
+        reveal = votes.reveal(choices, neutralRed, neutralVotes - neutralRed);
+        showVoters();
         Component result = reveal.winner() == null
                 ? I18n.tr(TEXT + (reveal.red() == reveal.blue() ? "tie" : "empty"))
                 : I18n.tr(TEXT + "wins", sideName(reveal.winner()));
         announceTitle(result, tally(), 2);
-        for (Player player : alivePlayers()) {
-            closeBallot(player);
+        for (Player player : players) {
             Side choice = reveal.choices().get(player.getUniqueId());
             boolean scored = choice != null && choice == reveal.winner();
             player.sendActionBar(I18n.tr(TEXT + (scored ? "point" : choice == null ? "no_pick" : "no_point"))
@@ -219,22 +238,11 @@ final class LessIsBetterSession extends PartySurvivalSession {
         }
     }
 
-    @Override
-    void cleanup() {
-        alivePlayers().forEach(this::closeBallot);
-    }
-
-    private void closeBallot(Player player) {
-        if (player.getOpenInventory().getTopInventory().getHolder() instanceof BallotMenu)
-            player.closeInventory();
-    }
-
     private Component tally() {
         return I18n.tr(TEXT + "tally", reveal.red(), reveal.blue());
     }
 
-    private Component choicePrompt(UUID player) {
-        Side side = votes.choice(player);
+    private Component choicePrompt(Side side) {
         return side == null ? I18n.tr(TEXT + "pick") : I18n.tr(TEXT + "picked", sideName(side));
     }
 
@@ -250,8 +258,7 @@ final class LessIsBetterSession extends PartySurvivalSession {
     List<Component> sidebarLines(Player player, Component line) {
         UUID id = player.getUniqueId();
         if (!alive(player)) return List.of(text(line));
-        Component hint = !playing() ? I18n.tr(TEXT + "pick")
-                : reveal == null ? choicePrompt(id) : tally();
+        Component hint = reveal == null ? choicePrompt(platformAt(player.getLocation())) : tally();
         return List.of(text(line), I18n.tr(TEXT + "score", votes.score(id)), hint);
     }
 

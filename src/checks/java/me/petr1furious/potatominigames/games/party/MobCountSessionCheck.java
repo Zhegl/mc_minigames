@@ -16,7 +16,11 @@ import net.kyori.adventure.audience.Audience;
 import org.bukkit.*;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Skeleton;
 import org.bukkit.entity.TextDisplay;
+import org.bukkit.entity.WitherSkeleton;
+import org.bukkit.entity.Zombie;
+import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.util.Vector;
 
@@ -31,6 +35,7 @@ final class MobCountSessionCheck {
         server.setAccessible(true);
         Object original = server.get(null);
         try {
+            checkDaylightProtection();
             scenario(false, false);
             scenario(true, false);
             scenario(true, true);
@@ -38,8 +43,22 @@ final class MobCountSessionCheck {
             server.set(null, original);
         }
         System.out.println(
-                "Mob Count: three-second movement/jump lock, full answer timer, physical floor"
-                        + " drop, rescue and freeze cleanup passed");
+                "Mob Count: daylight protection, three-second freeze, full answer timer,"
+                        + " sector drop, rescue and cleanup passed");
+    }
+
+    private static void checkDaylightProtection() {
+        for (Class<?> type : List.of(Zombie.class, Skeleton.class, WitherSkeleton.class)) {
+            boolean[] burns = {true};
+            Entity mob = (Entity) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type},
+                    (proxy, method, args) -> {
+                        if (!method.getName().equals("setShouldBurnInDay")) throw new AssertionError(method);
+                        burns[0] = (boolean) args[0];
+                        return null;
+                    });
+            MobCountSession.preventDaylightBurn(mob);
+            check(!burns[0], "Counting " + type.getSimpleName() + " cannot ignite in daylight");
+        }
     }
 
     private static void scenario(boolean embedded, boolean abort) throws Exception {
@@ -69,10 +88,10 @@ final class MobCountSessionCheck {
                                                             "World: " + method.getName());
                                         });
         MobCountArena arena = new MobCountArena(world);
-        MobCountRound round = MobCountRound.generate(1, 36, new Random(3));
+        MobCountRound round = MobCountRound.generate(1, new Random(3));
         arena.prepare(round);
         FakePlayer first = new FakePlayer(new UUID(0, 501), new Location(world, -8.5, 81, -8.5));
-        FakePlayer second = new FakePlayer(new UUID(0, 502), arena.spawn(1));
+        FakePlayer second = new FakePlayer(new UUID(0, 502), arena.spawn(1, 2));
         Map<UUID, Player> players = Map.of(first.id, first.player, second.id, second.player);
         Field server = Bukkit.class.getDeclaredField("server");
         server.setAccessible(true);
@@ -131,6 +150,7 @@ final class MobCountSessionCheck {
                                 Entity.class.getClassLoader(),
                                 new Class<?>[] {Entity.class},
                                 (proxy, method, args) -> {
+                                    if (method.getName().equals("equals")) return proxy == args[0];
                                     if (method.getName().equals("remove")) {
                                         removed[0]++;
                                         return null;
@@ -138,6 +158,12 @@ final class MobCountSessionCheck {
                                     throw new AssertionError(method.getName());
                                 });
         set(session, "mobs", new ArrayList<>(List.of(mob)));
+        var mobFire = new EntityCombustEvent(mob, 5f);
+        session.preventMobCombustion(mobFire);
+        check(mobFire.isCancelled(), "The counting mob is protected from ignition");
+        var playerFire = new EntityCombustEvent(first.player, 5f);
+        session.preventMobCombustion(playerFire);
+        check(!playerFire.isCancelled(), "Counting mob protection is scoped to the counted entities");
         advance(session, 100);
         check(removed[0] == 1, "Mobs disappear before the pause");
         check(
@@ -145,9 +171,11 @@ final class MobCountSessionCheck {
                 "Mob disappearance starts a separate three-second freeze");
         check(first.walk == 0 && first.fly == 0, "Freeze disables walking and flight");
         check(
-                blocks.block(-9, 80, -11).getType() == Material.LIGHT_BLUE_STAINED_GLASS,
+                blocks.block(0, 80, 0).getType() == Material.BLACK_CONCRETE,
                 "Floor stays intact during the freeze");
         Location anchor = first.location.clone();
+        check(MobCountArena.sectorAt(anchor.getBlockX(), anchor.getBlockZ(), round.sectors().size()) == MobCountArena.SEPARATOR,
+                "Players reset to neutral ground before choosing a sector");
         var move = new PlayerMoveEvent(first.player, anchor.clone(), anchor.clone().add(3, 1, 2));
         move.getTo().setYaw(90);
         session.onPlayerMove(move);
@@ -176,35 +204,35 @@ final class MobCountSessionCheck {
         check(first.walk == .2f && first.fly == .1f, "Answer phase restores original speeds");
         jump = new PlayerJumpEvent(first.player, anchor.clone(), anchor.clone().add(0, .42, 0));
         session.onPlayerJump(jump);
-        check(!jump.isCancelled(), "Jumping is enabled for platform choice");
+        check(!jump.isCancelled(), "Jumping is enabled for sector choice");
         check(
                 (long) field(session, "phaseEnd").get(session) == 360,
                 "Freeze does not consume any answer time");
         check(
-                blocks.block(-9, 80, -11).getType() == Material.AIR,
-                "Glass disappears only when choices open");
-        int correct = round.platforms().indexOf(round.answer());
-        int wrong = 0;
-        while (round.platforms().get(wrong) == round.answer()) wrong++;
-        first.location = arena.spawn(wrong);
-        second.location = arena.spawn(correct).add(0, 1, 0);
+                blocks.block(0, 80, 0).getType() == Material.BLACK_CONCRETE,
+                "Neutral floor stays solid during the answer window");
+        int sectors = round.sectors().size();
+        int correct = round.sectors().indexOf(round.answer());
+        Location safe = arena.marker(correct, sectors);
+        Location wrong = arena.marker((correct + 1) % sectors, sectors);
+        first.location = wrong.clone();
+        second.location = safe.clone().add(0, 1, 0);
         advance(session, 359);
         check(
-                blocks.block(MobCountArena.x(wrong), 80, MobCountArena.z(wrong)).getType()
-                        != Material.AIR,
-                "Wrong platforms remain for the entire answer window");
+                blocks.block(wrong.getBlockX(), 80, wrong.getBlockZ()).getType() != Material.AIR,
+                "Wrong sectors remain for the entire answer window");
         advance(session, 360);
         check(
                 session.standings.survivors().size() == 2,
                 "Reveal never instantly eliminates wrong or airborne players");
         check(
-                blocks.block(MobCountArena.x(wrong), 80, MobCountArena.z(wrong)).getType()
-                        == Material.AIR,
+                blocks.block(wrong.getBlockX(), 80, wrong.getBlockZ()).getType() == Material.AIR,
                 "Wrong answer removes the physical floor");
         check(
-                blocks.block(MobCountArena.x(correct), 80, MobCountArena.z(correct)).getType()
-                        == Material.SMOOTH_QUARTZ,
+                blocks.block(safe.getBlockX(), 80, safe.getBlockZ()).getType() != Material.AIR,
                 "Correct answer retains its floor");
+        check(blocks.block(0, 80, 0).getType() == Material.AIR,
+                "The neutral hub drops with the separators and wrong sectors");
         check(session.outHeight() < MobCountArena.FLOOR, "Elimination plane lies below the floor");
         if (embedded) {
             first.location.setY(77);
@@ -212,8 +240,8 @@ final class MobCountSessionCheck {
             check(
                     !context.ended() && first.location.getY() == 77,
                     "A falling player is not teleported out of danger when the drop timer ends");
-            first.location = arena.spawn(correct);
-            second.location = arena.spawn(correct);
+            first.location = safe.clone();
+            second.location = safe.clone();
             advance(session, 421);
             check(
                     context.ended() && session.standings.survivors().size() == 2,
@@ -273,6 +301,7 @@ final class MobCountSessionCheck {
                                     new Class<?>[] {Player.class},
                                     (proxy, method, args) ->
                                             switch (method.getName()) {
+                                                case "equals" -> proxy == args[0];
                                                 case "getUniqueId" -> id;
                                                 case "getName" -> "Player" + id;
                                                 case "getWorld" -> this.location.getWorld();
