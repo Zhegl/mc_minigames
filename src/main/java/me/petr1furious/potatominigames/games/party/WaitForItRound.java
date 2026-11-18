@@ -5,11 +5,9 @@ import static me.petr1furious.potatominigames.games.party.WaitForItRound.Goal.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -57,35 +55,40 @@ final class WaitForItRound {
     enum Task {
         FLOWER(
                 "flower",
-                24,
                 Family.GATHER,
                 Action.BREAK,
                 Map.of(POPPY, 1, CORNFLOWER, 1, ALLIUM, 1)),
-        CRAFT("craft", 40, Family.MAKE, Action.CRAFT, Map.of(PICKAXE, 1)),
-        CROP("crop", 30, Family.GATHER, Action.BREAK, Map.of(WHEAT, 3, CARROT, 3)),
-        BUTTON("button", 24, Family.SEARCH, Action.USE, Map.of(BUTTON_LEFT, 1, BUTTON_RIGHT, 1)),
-        LOGS("logs", 17, Family.GATHER, Action.BREAK, Map.of(SPRUCE, 2, BIRCH, 2)),
-        ORES("ores", 22, Family.GATHER, Action.BREAK, Map.of(COPPER, 2, IRON, 2)),
-        WEBS("webs", 21, Family.GATHER, Action.BREAK, Map.of(WEB, 6)),
-        LADDER("ladder", 28, Family.MAKE, Action.CRAFT, Map.of(ITEM, 1)),
-        BOOTS("boots", 27, Family.MAKE, Action.CRAFT, Map.of(ITEM, 1)),
-        STACK("stack", 24, Family.MAKE, Action.PLACE, threeGoals()),
-        LIGHT("light", 22, Family.MAKE, Action.PLACE, threeGoals()),
-        LEVERS("levers", 19, Family.SEARCH, Action.USE, threeGoals()),
-        TREASURE("treasure", 23, Family.SEARCH, Action.LOOT, Map.of(ITEM, 1)),
-        CHECKPOINTS("checkpoints", 18, Family.SKILL, Action.WALK, threeGoals()),
-        PARKOUR("parkour", 22, Family.SKILL, Action.WALK, threeGoals()),
-        TARGETS("targets", 28, Family.SKILL, Action.SHOOT, threeGoals());
+        CRAFT("craft", Family.MAKE, Action.CRAFT, Map.of(PICKAXE, 1)),
+        CROP("crop", Family.GATHER, Action.BREAK, Map.of(WHEAT, 3, CARROT, 3)),
+        BUTTON("button", Family.SEARCH, Action.USE, Map.of(BUTTON_LEFT, 1, BUTTON_RIGHT, 1)),
+        LOGS("logs", Family.GATHER, Action.BREAK, Map.of(SPRUCE, 2, BIRCH, 2)),
+        ORES("ores", Family.GATHER, Action.BREAK, Map.of(COPPER, 2, IRON, 2)),
+        WEBS("webs", Family.GATHER, Action.BREAK, Map.of(WEB, 6)),
+        LADDER("ladder", Family.MAKE, Action.CRAFT, Map.of(ITEM, 1)),
+        BOOTS("boots", Family.MAKE, Action.CRAFT, Map.of(ITEM, 1)),
+        STACK("stack", Family.MAKE, Action.PLACE, threeGoals()),
+        LIGHT("light", Family.MAKE, Action.PLACE, threeGoals()),
+        LEVERS("levers", Family.SEARCH, Action.USE, threeGoals()),
+        TREASURE("treasure", Family.SEARCH, Action.LOOT, Map.of(ITEM, 1)),
+        CHECKPOINTS("checkpoints", Family.SKILL, Action.WALK, threeGoals()),
+        PARKOUR("parkour", Family.SKILL, Action.WALK, threeGoals()),
+        TARGETS("targets", Family.SKILL, Action.SHOOT, threeGoals()),
+        EXCAVATE("excavate", Family.GATHER, Action.BREAK, threeGoals()),
+        VINES("vines", Family.GATHER, Action.BREAK, threeGoals()),
+        GATES("gates", Family.SEARCH, Action.USE, threeGoals()),
+        BOOKS("books", Family.MAKE, Action.USE, threeGoals()),
+        CANDLES("candles", Family.MAKE, Action.USE, threeGoals()),
+        STAIRS("stairs", Family.MAKE, Action.CRAFT, Map.of(ITEM, 1)),
+        PLANT("plant", Family.MAKE, Action.PLACE, threeGoals()),
+        SLALOM("slalom", Family.SKILL, Action.WALK, threeGoals());
 
         final String key;
-        final int seconds;
         final Family family;
         final Action action;
         private final Map<Goal, Integer> goals;
 
-        Task(String key, int seconds, Family family, Action action, Map<Goal, Integer> goals) {
+        Task(String key, Family family, Action action, Map<Goal, Integer> goals) {
             this.key = key;
-            this.seconds = seconds;
             this.family = family;
             this.action = action;
             this.goals = goals;
@@ -100,7 +103,7 @@ final class WaitForItRound {
         }
 
         boolean ordered() {
-            return this == CHECKPOINTS || this == PARKOUR || this == STACK;
+            return this == CHECKPOINTS || this == PARKOUR || this == STACK || this == SLALOM;
         }
 
         private static Map<Goal, Integer> threeGoals() {
@@ -114,20 +117,18 @@ final class WaitForItRound {
         COMPLETE
     }
 
-    record Transition(Task task, Set<UUID> completed) {}
-
     private static final int TICKS_PER_SECOND = 20;
     private static final List<Task> POOL = List.of(Task.values());
     static final int TASK_COUNT = 6;
+    static final int DURATION_SECONDS = 180;
+    private static final int RACE_TICKS = DURATION_SECONDS * TICKS_PER_SECOND;
 
     private final List<Task> tasks;
-    private final Map<UUID, Integer> points = new LinkedHashMap<>();
+    private final ParkourRace race;
     private final Map<UUID, EnumMap<Goal, Integer>> progress = new HashMap<>();
-    private final Set<UUID> completed = new HashSet<>();
-    private int taskIndex;
-    private boolean finished;
-    private long startedAt;
-    private long deadline;
+    // Blocks and inventories change on the next game tick, after the native event commits.
+    private final Set<UUID> advancing = new HashSet<>();
+    private boolean started;
 
     WaitForItRound(Collection<UUID> players, List<Task> tasks) {
         this.tasks = List.copyOf(tasks);
@@ -135,8 +136,7 @@ final class WaitForItRound {
                 || tasks.size() > TASK_COUNT
                 || new HashSet<>(tasks).size() != tasks.size())
             throw new IllegalArgumentException("Invalid Wait For It task list");
-        players.forEach(id -> points.put(id, 0));
-        deadline = task().seconds * TICKS_PER_SECOND;
+        race = new ParkourRace(players, tasks.size());
     }
 
     static List<Task> selectTasks(Random random) {
@@ -154,34 +154,39 @@ final class WaitForItRound {
         return List.copyOf(selected);
     }
 
-    Task task() {
-        return tasks.get(taskIndex);
+    void start() {
+        started = true;
     }
 
-    int taskNumber() {
-        return taskIndex + 1;
+    boolean running(long tick) {
+        return started && tick >= 0 && tick < RACE_TICKS;
     }
 
-    boolean finished() {
-        return finished;
+    Task task(UUID player) {
+        int completed = race.checkpoint(player);
+        if (!started || completed < 0 || completed >= tasks.size() || advancing.contains(player))
+            return null;
+        return tasks.get(completed);
     }
 
-    long deadline() {
-        return deadline;
+    boolean advance(UUID player) {
+        return advancing.remove(player);
+    }
+
+    boolean finished(UUID player) {
+        return race.finished(player);
+    }
+
+    long finishTime(UUID player) {
+        return race.time(player);
+    }
+
+    int completed(UUID player) {
+        return Math.max(0, race.checkpoint(player));
     }
 
     long secondsLeft(long tick) {
-        return finished
-                ? 0
-                : Math.max(0, deadline - tick + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND;
-    }
-
-    boolean completed(UUID player) {
-        return completed.contains(player);
-    }
-
-    int points(UUID player) {
-        return points.getOrDefault(player, 0);
+        return Math.max(0, RACE_TICKS - tick + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND;
     }
 
     int count(UUID player, Goal goal) {
@@ -195,14 +200,10 @@ final class WaitForItRound {
     }
 
     boolean canRecord(UUID player, Goal goal, long tick) {
-        if (goal == null
-                || finished
-                || tick < startedAt
-                || tick >= deadline
-                || !points.containsKey(player)
-                || completed(player)
-                || count(player, goal) >= task().required(goal)) return false;
-        return !task().ordered()
+        Task task = task(player);
+        if (goal == null || task == null || !running(tick)
+                || count(player, goal) >= task.required(goal)) return false;
+        return !task.ordered()
                 || switch (goal) {
                     case SECOND -> count(player, FIRST) > 0;
                     case THIRD -> count(player, SECOND) > 0;
@@ -212,43 +213,17 @@ final class WaitForItRound {
 
     Progress record(UUID player, Goal goal, long tick) {
         if (!canRecord(player, goal, tick)) return Progress.IGNORED;
+        Task task = task(player);
         var counts = progress.computeIfAbsent(player, id -> new EnumMap<>(Goal.class));
         counts.merge(goal, 1, Integer::sum);
-        if (!task().goals.equals(counts)) return Progress.PARTIAL;
-        completed.add(player);
-        points.merge(player, 1, Integer::sum);
+        if (!task.goals.equals(counts)) return Progress.PARTIAL;
+        race.reach(player, race.checkpoint(player) + 1, tick);
+        progress.remove(player);
+        if (!finished(player)) advancing.add(player);
         return Progress.COMPLETE;
     }
 
-    Transition advance(long tick, Collection<UUID> playing) {
-        if (finished || tick < startedAt) return null;
-        if (tick < deadline && (playing.isEmpty() || !completed.containsAll(playing))) return null;
-
-        var transition = new Transition(task(), Set.copyOf(completed));
-        if (taskIndex + 1 == tasks.size()) {
-            finished = true;
-        } else {
-            taskIndex++;
-            startedAt = tick;
-            deadline = tick + task().seconds * TICKS_PER_SECOND;
-            completed.clear();
-            progress.clear();
-        }
-        return transition;
-    }
-
     PartyRoundResult result(Set<UUID> eligible) {
-        return PartyRoundResult.ordered(
-                points.keySet().stream().filter(eligible::contains).toList(),
-                Comparator.comparingInt(this::points).reversed());
-    }
-
-    static int maxSeconds() {
-        return POOL.stream()
-                .map(task -> task.seconds)
-                .sorted(Comparator.reverseOrder())
-                .limit(TASK_COUNT)
-                .mapToInt(Integer::intValue)
-                .sum();
+        return race.result(eligible);
     }
 }

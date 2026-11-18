@@ -485,7 +485,7 @@ same modes are available for solo practice with `/party test <mode>`.
 | Drop Tower | `drop_tower` | Find each lit checkpoint, steer around two bars, and jump two gaps from orange pads. A miss sends you back to your last checkpoint with your camera unchanged. |
 | Chicken Shooter | `chicken_shooter` | Hit targets in your own lane across ten waves. After a stationary opener, track smaller and faster targets as the waves get shorter. |
 | Less Is Better | `less_is_better` | Stand on the raised red or blue platform when time runs out. Players are hidden from one another until the reveal. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
-| Wait For It… | `wait_for_it` | Play six different tasks drawn from a pool of 16, including scavenger hunts, crafting, parkour, and archery. Tasks start back to back. Each completed task earns one point. |
+| Wait For It… | `wait_for_it` | Race through the same six tasks drawn from a pool of 24. The first task appears at Go. Each player advances immediately in their own room, and the first to finish wins. After three minutes, unfinished racers rank by tasks completed. |
 
 These games are also independently available:
 

@@ -15,7 +15,9 @@ import org.bukkit.block.data.type.Switch;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 final class WaitForItArena {
@@ -44,12 +46,14 @@ final class WaitForItArena {
 
     private final World world;
     private final int count;
-    private WaitForItRound.Task current;
-    private WaitForItLayout layout;
+    private final Setup[] current;
+    private final Map<WaitForItRound.Task, Setup> layouts =
+            new EnumMap<>(WaitForItRound.Task.class);
 
     WaitForItArena(World world, int count) {
         this.world = world;
         this.count = count;
+        current = new Setup[count];
     }
 
     private record Cell(int x, int z) {}
@@ -57,6 +61,10 @@ final class WaitForItArena {
     private record Plant(Material type, int age) {}
 
     private record Button(Cell post, BlockFace facing, Material type) {}
+
+    private record Setup(
+            WaitForItRound.Task task, List<Plant> plants, List<Button> buttons,
+            WaitForItLayout layout) {}
 
     void build() {
         world.setGameRule(GameRules.RANDOM_TICK_SPEED, 0);
@@ -77,50 +85,46 @@ final class WaitForItArena {
                 }
     }
 
-    void prepare(WaitForItRound.Task task, Random random) {
-        // Generate each layout once. Every player gets identical positions, species, and button
-        // faces.
+    void prepare(int bay, WaitForItRound.Task task, Random random) {
+        // Each player sees the same layout when they reach the task in their own bay.
+        Setup next = layouts.computeIfAbsent(task, key -> setup(key, random));
+        clear(bay);
+        if (task == FLOWER || task == CROP) plant(bay, next.plants(), task == CROP);
+        else if (task == BUTTON) buildButtonSearch(bay, next.buttons());
+        else if (task.action == WaitForItRound.Action.CRAFT)
+            block(bay, WORKBENCH.x, 1, WORKBENCH.z).setType(Material.CRAFTING_TABLE, false);
+        else
+            for (var fixture : next.layout().tiles.entrySet())
+                fixture.getValue().place(block(bay, fixture.getKey()));
+        current[bay] = next;
+    }
+
+    private static Setup setup(WaitForItRound.Task task, Random random) {
         List<Plant> plants =
                 switch (task) {
                     case FLOWER -> bouquet(random);
                     case CROP -> harvest(random);
                     default -> List.of();
                 };
-        List<Button> switches = task == BUTTON ? switches(random) : List.of();
-        WaitForItLayout next = WaitForItLayout.generate(task, random);
-        for (int bay = 0; bay < count; bay++) {
-            clear(bay);
-            switch (task) {
-                case FLOWER, CROP -> plant(bay, plants, task == CROP);
-                case CRAFT, LADDER, BOOTS ->
-                        block(bay, WORKBENCH.x, 1, WORKBENCH.z)
-                                .setType(Material.CRAFTING_TABLE, false);
-                case BUTTON -> buildButtonSearch(bay, switches);
-                default -> {
-                    for (var fixture : next.tiles.entrySet())
-                        fixture.getValue().place(block(bay, fixture.getKey()));
-                }
-            }
-        }
-        layout = next;
-        current = task;
+        var buttons = task == BUTTON ? switches(random) : List.<Button>of();
+        return new Setup(task, plants, buttons, WaitForItLayout.generate(task, random));
     }
 
     private void clear(int bay) {
-        if (layout != null) {
-            for (var tile : layout.tiles.keySet())
-                block(bay, tile).setType(tile.y() == 0 ? FLOOR_BLOCK : Material.AIR, false);
-            for (var position : layout.placements.keySet())
-                block(bay, position).setType(Material.AIR, false);
-        }
-        if (current == FLOWER || current == CROP)
+        Setup old = current[bay];
+        if (old == null) return;
+        for (var tile : old.layout().tiles.keySet())
+            block(bay, tile).setType(tile.y() == 0 ? FLOOR_BLOCK : Material.AIR, false);
+        for (var position : old.layout().placements.keySet())
+            block(bay, position).setType(Material.AIR, false);
+        if (old.task() == FLOWER || old.task() == CROP)
             for (Cell cell : BEDS) {
                 block(bay, cell.x, 1, cell.z).setType(Material.AIR, false);
                 block(bay, cell.x, 0, cell.z).setType(FLOOR_BLOCK, false);
             }
-        else if (current != null && current.action == WaitForItRound.Action.CRAFT)
+        else if (old.task().action == WaitForItRound.Action.CRAFT)
             block(bay, WORKBENCH.x, 1, WORKBENCH.z).setType(Material.AIR, false);
-        else if (current == BUTTON) {
+        else if (old.task() == BUTTON) {
             clearPosts(bay, LEFT_POSTS);
             clearPosts(bay, RIGHT_POSTS);
         }
@@ -256,16 +260,20 @@ final class WaitForItArena {
     }
 
     boolean isBarrel(int bay, Block block) {
-        return current == TREASURE && owns(bay, block) && block.getType() == Material.BARREL;
+        Setup setup = current[bay];
+        return setup != null && setup.task() == TREASURE && owns(bay, block)
+                && block.getType() == Material.BARREL;
     }
 
     WaitForItLayout.Placement placementAt(int bay, Block block) {
-        if (!owns(bay, block)) return null;
-        return layout.placements.get(relative(bay, block));
+        Setup setup = current[bay];
+        if (setup == null || !owns(bay, block)) return null;
+        return setup.layout().placements.get(relative(bay, block));
     }
 
     WaitForItRound.Goal targetAt(int bay, WaitForItRound.Task task, Block block) {
-        if (current != task || !owns(bay, block)) return null;
+        Setup setup = current[bay];
+        if (setup == null || setup.task() != task || !owns(bay, block)) return null;
         return switch (task) {
             case FLOWER ->
                     switch (block.getType()) {
@@ -290,7 +298,7 @@ final class WaitForItArena {
                                     ? WaitForItRound.Goal.BUTTON_LEFT
                                     : WaitForItRound.Goal.BUTTON_RIGHT;
             default -> {
-                var target = layout.tiles.get(relative(bay, block));
+                var target = setup.layout().tiles.get(relative(bay, block));
                 yield target != null && target.material() == block.getType() ? target.goal() : null;
             }
         };

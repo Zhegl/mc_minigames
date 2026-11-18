@@ -4,8 +4,11 @@ import static me.petr1furious.potatominigames.games.party.WaitForItRound.Goal.*;
 
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.Container;
+import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.FaceAttachable;
+import org.bukkit.block.data.MultipleFacing;
 import org.bukkit.block.data.type.Switch;
 import org.bukkit.inventory.ItemStack;
 
@@ -26,6 +29,8 @@ final class WaitForItLayout {
                     new Point(3, 1, 9),
                     new Point(7, 1, 8),
                     new Point(11, 1, 9));
+    private static final List<Point> THREE_STATIONS =
+            List.of(new Point(3, 1, 9), new Point(11, 1, 8), new Point(7, 1, 4));
     private static final List<WaitForItRound.Goal> STEPS = List.of(FIRST, SECOND, THIRD);
     private static final List<Material> ROUTE_COLORS =
             List.of(Material.LIME_CONCRETE, Material.YELLOW_CONCRETE, Material.RED_CONCRETE);
@@ -39,10 +44,23 @@ final class WaitForItLayout {
     record Tile(Material material, WaitForItRound.Goal goal, Material loot) {
         void place(Block block) {
             block.setType(material, false);
-            if (material == Material.LEVER) {
-                var lever = (Switch) block.getBlockData();
-                lever.setAttachedFace(FaceAttachable.AttachedFace.FLOOR);
-                block.setBlockData(lever, false);
+            switch (material) {
+                case LEVER -> {
+                    var lever = (Switch) block.getBlockData();
+                    lever.setAttachedFace(FaceAttachable.AttachedFace.FLOOR);
+                    block.setBlockData(lever, false);
+                }
+                case VINE -> {
+                    var vine = (MultipleFacing) block.getBlockData();
+                    vine.setFace(BlockFace.NORTH, true);
+                    block.setBlockData(vine, false);
+                }
+                case OAK_FENCE_GATE, CHISELED_BOOKSHELF -> {
+                    var fixture = (Directional) block.getBlockData();
+                    fixture.setFacing(BlockFace.SOUTH);
+                    block.setBlockData(fixture, false);
+                }
+                default -> {}
             }
             if (loot != null)
                 ((Container) block.getState()).getInventory().setItem(13, new ItemStack(loot));
@@ -81,6 +99,13 @@ final class WaitForItLayout {
             case CHECKPOINTS -> layout.route(false);
             case PARKOUR -> layout.route(true);
             case TARGETS -> layout.targets();
+            case EXCAVATE -> layout.excavate(random);
+            case VINES -> layout.vines();
+            case GATES -> layout.gates();
+            case BOOKS -> layout.shelves();
+            case CANDLES -> layout.candles();
+            case PLANT -> layout.plant();
+            case SLALOM -> layout.slalom();
             default -> {}
         }
         return layout;
@@ -156,6 +181,78 @@ final class WaitForItLayout {
             set(new Point(x, 2, 3), Material.TARGET, STEPS.get(i));
         }
         for (int x = 2; x <= 12; x++) set(new Point(x, 0, 9), Material.SMOOTH_QUARTZ, null);
+    }
+
+    private void excavate(Random random) {
+        var sites = new ArrayList<>(STATIONS);
+        Collections.shuffle(sites, random);
+        for (int i = 0; i < sites.size(); i++) {
+            var site = sites.get(i);
+            set(new Point(site.x(), 0, site.z()), Material.POLISHED_GRANITE, null);
+            if (i < STEPS.size()) set(site, Material.CLAY, STEPS.get(i));
+            else set(site, Material.GRAY_TERRACOTTA, null);
+        }
+    }
+
+    private void vines() {
+        for (int i = 0; i < STEPS.size(); i++) {
+            var station = THREE_STATIONS.get(i);
+            set(station, Material.STRIPPED_SPRUCE_LOG, null);
+            set(station.above(), Material.SPRUCE_PLANKS, null);
+            set(new Point(station.x(), 2, station.z() + 1), Material.VINE, STEPS.get(i));
+        }
+    }
+
+    private void gates() {
+        for (int i = 0; i < STEPS.size(); i++) {
+            var gate = THREE_STATIONS.get(i);
+            for (int dx : new int[] {-1, 1}) {
+                set(new Point(gate.x() + dx, 1, gate.z()), Material.STONE_BRICKS, null);
+                set(new Point(gate.x() + dx, 2, gate.z()), Material.CHISELED_STONE_BRICKS, null);
+            }
+            set(gate, Material.OAK_FENCE_GATE, STEPS.get(i));
+        }
+    }
+
+    private void shelves() {
+        for (int i = 0; i < STEPS.size(); i++) {
+            var shelf = THREE_STATIONS.get(i);
+            set(new Point(shelf.x(), 0, shelf.z()), Material.OAK_PLANKS, null);
+            set(shelf, Material.CHISELED_BOOKSHELF, STEPS.get(i));
+        }
+    }
+
+    private void candles() {
+        for (int i = 0; i < STEPS.size(); i++) {
+            var stand = THREE_STATIONS.get(i);
+            set(stand, Material.POLISHED_DEEPSLATE, null);
+            set(stand.above(), Material.YELLOW_CANDLE, STEPS.get(i));
+        }
+    }
+
+    private void plant() {
+        for (int i = 0; i < STEPS.size(); i++) {
+            var mound = THREE_STATIONS.get(i);
+            set(mound, Material.DIRT, null);
+            placements.put(mound.above(), new Placement(Material.BIRCH_SAPLING, STEPS.get(i)));
+        }
+    }
+
+    private void slalom() {
+        for (int i = 0; i < STEPS.size(); i++) {
+            boolean gapOnRight = i % 2 == 0;
+            int z = 10 - 3 * i;
+            int wallStart = gapOnRight ? 1 : 4;
+            int wallEnd = gapOnRight ? 10 : 13;
+            for (int x = wallStart; x <= wallEnd; x++) {
+                set(new Point(x, 1, z), Material.DEEPSLATE_BRICKS, null);
+                set(new Point(x, 2, z), Material.LIGHT_GRAY_CONCRETE, null);
+            }
+            int padX = gapOnRight ? 11 : 2;
+            for (int dx = 0; dx < 2; dx++)
+                for (int dz = 0; dz < 2; dz++)
+                    set(new Point(padX + dx, 0, z - dz), ROUTE_COLORS.get(i), STEPS.get(i));
+        }
     }
 
     private void set(Point point, Material material, WaitForItRound.Goal goal) {
