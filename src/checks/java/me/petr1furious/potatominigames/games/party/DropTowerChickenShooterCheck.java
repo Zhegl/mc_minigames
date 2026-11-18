@@ -153,6 +153,8 @@ public final class DropTowerChickenShooterCheck {
             for (int dx = -pad.radius(); dx <= pad.radius(); dx++)
                 for (int dz = -pad.radius(); dz <= pad.radius(); dz++)
                     if (pad.tile(dx, dz)) solids.add((pad.x() + dx) + ":" + pad.floor() + ":" + (pad.z() + dz));
+        check(solids.stream().noneMatch(cell -> firstBlocks.get(cell) == Material.GOLD_BLOCK),
+                "Drop Tower platforms must not contain gold direction markers");
         for (var jump : course.jumps())
             for (var baffle : jump.baffles())
                 for (int x = baffle.minX(); x <= baffle.maxX(); x++)

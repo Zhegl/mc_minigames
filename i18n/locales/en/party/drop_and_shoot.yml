@@ -1,4 +1,4 @@
-drop.instructions: "Land on <arg:0> pads in order. White sparks mark your next landing. Where you see a gold tile, it points the way. Sprint-jump from orange pads. A miss returns you to your last landing."
+drop.instructions: "Land on <arg:0> pads in order. White sparks mark your next landing. Sprint-jump from orange pads. A miss returns you to your last landing."
 drop.checkpoint: "Landings <arg:0>/<arg:1>"
 drop.landed: "Landing <arg:0>/<arg:1> • <arg:2>"
 drop.retry: "Back at your last pad. <arg:0>"

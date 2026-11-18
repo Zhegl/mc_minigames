@@ -58,49 +58,19 @@ final class DropTowerSession extends PartySurvivalSession {
     private void buildPad(Lane lane, int stage) {
         Pad pad = course.pads().get(stage);
         boolean finish = stage == DropTowerCourse.JUMPS;
-        Pad next = finish ? null : course.pads().get(stage + 1);
         int radius = pad.radius();
         boolean gap = !finish && course.jumps().get(stage).kind().isGap();
         Material floor = finish ? Material.LIME_CONCRETE
                 : gap ? Material.ORANGE_CONCRETE : BAND_FLOORS.get(stage / 5);
         Material light = finish ? Material.VERDANT_FROGLIGHT
                 : gap ? Material.SHROOMLIGHT : Material.SEA_LANTERN;
-        int tiles = 0;
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 if (!pad.tile(x, z)) continue;
-                tiles++;
                 world.getBlockAt(lane.x() + pad.x() + x, pad.floor(), lane.z() + pad.z() + z)
                         .setType(x == 0 && z == 0 ? light : floor, false);
             }
         }
-        if (next != null && tiles >= 3) markDirection(lane, pad, next);
-    }
-
-    private void markDirection(Lane lane, Pad pad, Pad next) {
-        int dx = next.x() - pad.x();
-        int dz = next.z() - pad.z();
-        int span = Math.max(Math.abs(dx), Math.abs(dz));
-        if (span == 0) return;
-        double edgeX = (double) dx * pad.radius() / span;
-        double edgeZ = (double) dz * pad.radius() / span;
-        // Clip the inlay to an existing tile, even on a narrow or asymmetric pad.
-        int markX = 0, markZ = 0;
-        double nearest = Double.POSITIVE_INFINITY;
-        for (int x = -pad.radius(); x <= pad.radius(); x++) {
-            for (int z = -pad.radius(); z <= pad.radius(); z++) {
-                if (!pad.tile(x, z) || x * dx + z * dz <= 0) continue;
-                double distance = Math.hypot(x - edgeX, z - edgeZ);
-                if (distance < nearest) {
-                    nearest = distance;
-                    markX = x;
-                    markZ = z;
-                }
-            }
-        }
-        if (markX != 0 || markZ != 0)
-            world.getBlockAt(lane.x() + pad.x() + markX, pad.floor(), lane.z() + pad.z() + markZ)
-                    .setType(Material.GOLD_BLOCK, false);
     }
 
     private Location checkpoint(Lane lane, int stage, Location view) {
