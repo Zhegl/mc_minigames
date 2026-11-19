@@ -26,8 +26,9 @@ public final class PartyGamesCheck {
         UUID a = new UUID(0, 1), b = new UUID(0, 2), c = new UUID(0, 3);
         var s = new PartyGamesState(List.of(a, b, c), PartyGamesState.MODES, new Random(1));
         check(
-                s.schedule().size() == 20 && new HashSet<>(s.schedule()).size() == 20,
-                "Twenty unique games");
+                s.schedule().size() == PartyGamesState.MODES.size()
+                        && new HashSet<>(s.schedule()).equals(new HashSet<>(PartyGamesState.MODES)),
+                "Every eligible game is scheduled exactly once");
         var newModes = List.of(
                 "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it");
         for (String mode : newModes) {
@@ -54,7 +55,9 @@ public final class PartyGamesCheck {
         var oldPool = new ArrayList<>(previousDefault);
         oldPool.add(oldPool.indexOf("parkour_race"), "magic_battle");
         var migrated = new PartyGamesState(List.of(a, b), oldPool, new Random(2));
-        check(migrated.schedule().size() == 20 && migrated.schedule().containsAll(newModes)
+        check(migrated.schedule().size() == PartyGamesState.MODES.size()
+                        && new HashSet<>(migrated.schedule()).equals(new HashSet<>(PartyGamesState.MODES))
+                        && migrated.schedule().containsAll(newModes)
                         && !migrated.schedule().contains("magic_battle"),
                 "The previous bundled pool picks up the new rounds and still skips Magic Battle");
         var curated = new PartyGamesState(List.of(a, b), List.of("sumo", "jump_rope"), new Random(2));
