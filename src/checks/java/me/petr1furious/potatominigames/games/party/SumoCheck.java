@@ -15,6 +15,7 @@ public final class SumoCheck {
     public static void main(String[] args) {
         platformChecks();
         combatChecks();
+        hitFeedbackChecks();
         System.out.println("Party Sumo: original 19-block platform, safe spawns, ring-outs, complete overtime/reset, stronger Knockback I impulses and bounded hit windows passed");
     }
 
@@ -101,6 +102,34 @@ public final class SumoCheck {
         check(combat.acceptHit(a, 111), "Next round clears old hit immunity");
         combat.reset();
         check(combat.acceptHit(a, Integer.MAX_VALUE - 5) && combat.acceptHit(a, Integer.MIN_VALUE + 5), "Hit cooldown survives server tick counter wrap");
+    }
+
+    private static void hitFeedbackChecks() {
+        int[] observed = new int[3];
+        World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[]{World.class}, (o,m,a) -> {
+            if (m.getName().equals("playSound")) {
+                check(a[1].equals("entity.player.hurt"), "Nearby players hear the native hurt sound");
+                observed[1]++; return null;
+            }
+            throw new AssertionError("Unexpected world call: " + m.getName());
+        });
+        var victim = (org.bukkit.entity.Player) Proxy.newProxyInstance(org.bukkit.entity.Player.class.getClassLoader(),
+            new Class<?>[]{org.bukkit.entity.Player.class}, (o,m,a) -> switch(m.getName()) {
+                case "getUniqueId" -> new UUID(0,1);
+                case "getLocation" -> new Location(world,0,81,0);
+                case "getWorld" -> world;
+                case "getVelocity" -> new Vector();
+                case "setVelocity" -> { observed[2]++; yield null; }
+                case "playHurtAnimation" -> { observed[0]++; yield null; }
+                default -> throw new AssertionError("Hit must not change health or damage immunity: " + m.getName());
+            });
+        SumoCombat combat = new SumoCombat();
+        check(combat.hit(victim,new Vector(1,0,0),false,1,100), "Accepted hit has feedback");
+        check(observed[0]==1 && observed[1]==1 && observed[2]==1, "One red flash, hurt sound and knockback per hit");
+        check(!combat.hit(victim,new Vector(1,0,0),false,1,109), "Hit immunity suppresses repeated feedback");
+        check(observed[0]==1 && observed[1]==1 && observed[2]==1, "No duplicate sounds, flashes or velocity during immunity");
+        check(combat.hit(victim,new Vector(1,0,0),false,0,110), "Unarmed Anvils hits share the feedback");
+        check(observed[0]==2 && observed[1]==2 && observed[2]==2, "Feedback returns after cooldown");
     }
 
     private static Block block(World world, int x, int y, int z, Map<PvpArena.Position, Material> blocks) {

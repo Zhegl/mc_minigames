@@ -1,15 +1,18 @@
 package me.petr1furious.potatominigames.games.party;
 
 import java.util.*;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.structure.Mirror;
+import org.bukkit.block.structure.StructureRotation;
+import org.bukkit.structure.Structure;
+import org.bukkit.util.BlockVector;
 
 /** Opaque, sealed rooms with an 11 x 8 x 11 editable volume and a viewing apron. */
 final class GarticPhoneArena {
-  record Cell(int x, int y, int z) {}
-
   private final World world;
   private final Map<UUID, Location> origins = new LinkedHashMap<>();
 
@@ -60,26 +63,26 @@ final class GarticPhoneArena {
     return x >= 0 && x <= 10 && z >= 0 && z <= 10 && block.getY() >= 81 && block.getY() <= 88;
   }
 
-  Map<Cell, Material> capture(UUID id) {
-    Map<Cell, Material> result = new HashMap<>();
-    Location c = origins.get(id);
-    for (int x = 0; x <= 10; x++)
-      for (int y = 0; y < 8; y++)
-        for (int z = 0; z <= 10; z++) {
-          Material type = world.getBlockAt(c.getBlockX() + x, 81 + y, c.getBlockZ() + z).getType();
-          if (type != Material.AIR && type != Material.CAVE_AIR && type != Material.VOID_AIR)
-            result.put(new Cell(x, y, z), type);
-        }
-    return Map.copyOf(result);
+  UUID owner(Block block) {
+    for (UUID id : origins.keySet()) if (editable(id, block)) return id;
+    return null;
   }
 
-  void show(UUID id, Map<Cell, Material> snapshot) {
+  Structure capture(UUID id) {
+    Structure snapshot = Bukkit.getStructureManager().createStructure();
+    snapshot.fill(origins.get(id), new BlockVector(11, 8, 11), false);
+    return snapshot;
+  }
+
+  void show(UUID id, Structure snapshot) {
     Location c = origins.get(id);
     for (int x = 0; x <= 10; x++)
       for (int y = 0; y < 8; y++)
         for (int z = 0; z <= 10; z++)
           world
               .getBlockAt(c.getBlockX() + x, 81 + y, c.getBlockZ() + z)
-              .setType(snapshot.getOrDefault(new Cell(x, y, z), Material.AIR), false);
+              .setType(Material.AIR, false);
+    if (snapshot != null)
+      snapshot.place(c, false, StructureRotation.NONE, Mirror.NONE, 0, 1f, new Random(0));
   }
 }

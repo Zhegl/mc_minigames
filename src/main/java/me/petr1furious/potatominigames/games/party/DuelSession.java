@@ -1077,20 +1077,16 @@ final class DuelSession implements PartyRoundSession {
                     && fighting(attacker)
                     && (attacker.getInventory().getItemInMainHand().getType() == Material.AIR
                             || attacker.getInventory().getItemInMainHand().getType()
-                                    == Material.STICK)
-                    && sumoCombat.acceptHit(p.getUniqueId(), Bukkit.getCurrentTick())) {
+                                    == Material.STICK)) {
                 var away = p.getLocation().toVector().subtract(attacker.getLocation().toVector());
                 if (away.clone().setY(0).lengthSquared() < 1.0e-6)
                     away = attacker.getLocation().getDirection();
-                lastHit.put(
-                        p.getUniqueId(), new Hit(attacker.getUniqueId(), Bukkit.getCurrentTick()));
                 int level =
                         attacker.getInventory()
                                 .getItemInMainHand()
                                 .getEnchantmentLevel(Enchantment.KNOCKBACK);
-                p.setVelocity(
-                        SumoCombat.knockback(away, p.getVelocity(), attacker.isSprinting(), level));
-                p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, .5f, 1);
+                if (sumoCombat.hit(p, away, attacker.isSprinting(), level, Bukkit.getCurrentTick()))
+                    lastHit.put(p.getUniqueId(), new Hit(attacker.getUniqueId(), Bukkit.getCurrentTick()));
             }
             return;
         }

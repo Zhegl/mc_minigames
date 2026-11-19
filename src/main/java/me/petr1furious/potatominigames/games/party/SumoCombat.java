@@ -37,6 +37,14 @@ final class SumoCombat {
     }
     void reset() { lastHit.clear(); }
 
+    boolean hit(Player victim, Vector away, boolean sprinting, int knockbackLevel, int tick) {
+        if (!acceptHit(victim.getUniqueId(), tick)) return false;
+        victim.setVelocity(knockback(away, victim.getVelocity(), sprinting, knockbackLevel));
+        victim.playHurtAnimation(0f);
+        victim.getWorld().playSound(victim.getLocation(), "entity.player.hurt", org.bukkit.SoundCategory.PLAYERS, .8f, 1f);
+        return true;
+    }
+
     static Vector knockback(Vector away, Vector current, boolean sprinting, int knockbackLevel) {
         Vector direction = away.clone().setY(0);
         if (direction.lengthSquared() < 1.0e-6) direction = new Vector(1, 0, 0);
