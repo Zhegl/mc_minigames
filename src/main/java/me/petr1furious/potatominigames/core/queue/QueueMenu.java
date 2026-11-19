@@ -59,7 +59,8 @@ public final class QueueMenu implements Listener {
 
     private static final PartyGroup QUICK_GAMES = new PartyGroup(
             "quick", Material.LIGHT_BLUE_STAINED_GLASS_PANE, NamedTextColor.AQUA,
-            List.of("hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it"));
+            List.of("hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it",
+                    "furry_quest"));
 
     private interface Action {
         void click(Player player) throws CommandFailure;

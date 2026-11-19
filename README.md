@@ -457,7 +457,7 @@ editing and ready locks, departed-player chat, queue registration and pool exclu
 ### Party Games and new party games
 
 Join **Вечеринка → Party Games**, or run `/play party party_games`.
-The default match picks six distinct games at random from the twenty-game pool, with
+The default match picks six distinct games at random from the twenty-one-game pool, with
 2–12 players. PvP and Sumo become simultaneous, one-life free-for-alls inside
 this match; their standalone modes retain the existing round-robin BO3 rules.
 Eliminated players spectate until the next game. Each completed game awards
@@ -486,6 +486,7 @@ same modes are available for solo practice with `/party test <mode>`.
 | Chicken Shooter | `chicken_shooter` | Hit targets in your own lane across ten waves. After a stationary opener, track smaller and faster targets as the waves get shorter. |
 | Less Is Better | `less_is_better` | Stand on the raised red or blue platform when time runs out. Players are hidden from one another until the reveal. The smaller occupied side scores. With fewer than three players, neutral votes fill out the ballot. |
 | Wait For It… | `wait_for_it` | Race through the same six tasks drawn from a pool of 24. The first task appears at Go. Each player advances immediately in their own room, and the first to finish wins. After three minutes, unfinished racers rank by tasks completed. |
+| Фурри-квест | `furry_quest` | Blend into a farm of 40 animals as one of five species. Play a secret role as a carpenter, baker, mechanic, detective, smuggler, musician, angler or surveyor. Each role has a four-job storyline (+4 per job). Completing a story deals a fresh role, with no repeats until all eight have been played. Compete for 105 seconds. Strike once to catch a rival (+3) or lose 3 for hitting livestock. A caught player loses 2, keeps quest progress and respawns in a fresh disguise with four seconds of protection. A shared chest appears every 15 seconds. Opening it or finishing all four jobs of a role awards one random perk: a feather that copies an animal or rolls a new disguise, Speed II for 5 seconds, private outlines for 2 seconds, a 20-second nearest-rival compass, or a smoke screen that blinds and slows rivals within 5 blocks for 3 seconds. Highest score wins, ties share a place. |
 
 These games are also independently available:
 
@@ -655,8 +656,8 @@ reconnect grace period before an unscored early finish.
 Configure the game pool and number of rounds using `partyGames.modes` (a
 comma-separated string of unique mode IDs) and `partyGames.rounds` in
 `games/party.yml`. The round count is capped by the selected pool size. Saved
-copies of the previous bundled pool pick up all six Quick Games. To add them to
-a custom pool, append the mode IDs from the table above.
+copies of the previous bundled pools pick up Quick Games and Furry Quest. To add
+these games to a custom pool, append the corresponding mode IDs.
 The same file contains wave, stage and match timing settings. Changes apply
 to new games. Solo practice: `/party test <mode>`; admin launch:
 `/party start <mode> @a`; stop: `/party stop`.

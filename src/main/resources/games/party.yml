@@ -43,7 +43,7 @@ toolRace:
 parkourRace:
   durationSeconds: 240
 partyGames:
-  modes: "pvp,sumo,arms_race,one_shot,tnt_run,mob_count,rhino,miners,color_floor,anvils,build_memory,tool_race,hole_in_the_wall,parkour_race,hot_potato,jump_rope,drop_tower,chicken_shooter,less_is_better,wait_for_it"
+  modes: "pvp,sumo,arms_race,one_shot,tnt_run,mob_count,rhino,miners,color_floor,anvils,build_memory,tool_race,hole_in_the_wall,parkour_race,hot_potato,jump_rope,drop_tower,chicken_shooter,less_is_better,wait_for_it,furry_quest"
   rounds: 6
   intermissionSeconds: 4
   armsRaceSeconds: 180

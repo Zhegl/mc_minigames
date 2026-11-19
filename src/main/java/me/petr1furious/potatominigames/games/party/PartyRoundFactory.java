@@ -20,6 +20,7 @@ final class PartyRoundFactory {
             case "color_floor" -> new ColorFloorSession(services, config, context);
             case "anvils" -> new AnvilSession(services, config, context);
             case "build_memory" -> new BuildMemorySession(services, config, context);
+            case FurryQuestSession.ID -> new FurryQuestSession(services, config, context);
             case "tool_race" -> new ToolRaceSession(services, config, context);
             case "hot_potato" -> new HotPotatoSession(services, config, context);
             case "jump_rope" -> new JumpRopeSession(services, config, context);
@@ -33,7 +34,7 @@ final class PartyRoundFactory {
 
     static Component title(String mode) {
         return switch (mode) {
-            case "gartic_phone", "hole_in_the_wall", "pvp", "sumo", "arms_race", "one_shot", "tnt_run", "mob_count",
+            case FurryQuestSession.ID, "gartic_phone", "hole_in_the_wall", "pvp", "sumo", "arms_race", "one_shot", "tnt_run", "mob_count",
                     "rhino", "miners", "magic_battle", "color_floor", "anvils", "build_memory", "tool_race", "parkour_race",
                     "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it" ->
                     I18n.tr("party.rounds.mode." + mode);
