@@ -54,6 +54,7 @@ public final class PartyGame implements Minigame {
                 "anvils",
                 "build_memory",
                 "gartic_phone",
+                FurryQuestSession.ID,
                 "tool_race",
                 "parkour_race",
                 "hole_in_the_wall",
@@ -138,6 +139,7 @@ public final class PartyGame implements Minigame {
             case "chicken_shooter" -> Material.CHICKEN_SPAWN_EGG;
             case "less_is_better" -> Material.RED_DYE;
             case "wait_for_it" -> Material.CRAFTING_TABLE;
+            case FurryQuestSession.ID -> Material.SWEET_BERRIES;
             default -> icon();
         };
     }
@@ -154,6 +156,7 @@ public final class PartyGame implements Minigame {
                                         "anvils",
                                         "build_memory",
                                         "gartic_phone",
+                                        FurryQuestSession.ID,
                                         "tool_race",
                                         "parkour_race",
                                         "hole_in_the_wall",
@@ -187,6 +190,8 @@ public final class PartyGame implements Minigame {
             return new AnvilSession(services, config, PartyRoundContext.standalone(services));
         if (mode.equals("build_memory"))
             return new BuildMemorySession(services, config, PartyRoundContext.standalone(services));
+        if (mode.equals(FurryQuestSession.ID))
+            return new FurryQuestSession(services, config, PartyRoundContext.standalone(services));
         if (mode.equals("tool_race"))
             return new ToolRaceSession(services, config, PartyRoundContext.standalone(services));
         if (mode.equals("magic_battle")) return new MagicBattleSession(services, config);

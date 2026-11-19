@@ -24,7 +24,10 @@ final class PartyGamesState {
                     "parkour_race");
     static final List<String> QUICK_MODES = List.of(
             "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it");
-    static final List<String> MODES = Stream.concat(PREVIOUS_DEFAULT.stream(), QUICK_MODES.stream()).toList();
+    private static final List<String> QUICK_GAMES_DEFAULT =
+            Stream.concat(PREVIOUS_DEFAULT.stream(), QUICK_MODES.stream()).toList();
+    static final List<String> MODES =
+            Stream.concat(QUICK_GAMES_DEFAULT.stream(), Stream.of(FurryQuestSession.ID)).toList();
     private final List<String> schedule;
     private final Set<UUID> roster,
             connected,
@@ -44,8 +47,10 @@ final class PartyGamesState {
                 || !MODES.containsAll(shuffled)
                 || new HashSet<>(shuffled).size() != shuffled.size())
             throw I18n.exception("party.rounds.party_games.error.modes");
-        if (shuffled.equals(PREVIOUS_DEFAULT))
-            shuffled.addAll(QUICK_MODES);
+        if (shuffled.equals(PREVIOUS_DEFAULT) || shuffled.equals(QUICK_GAMES_DEFAULT)) {
+            shuffled.clear();
+            shuffled.addAll(MODES);
+        }
         Collections.shuffle(shuffled, random);
         schedule = List.copyOf(shuffled);
         this.roster = new LinkedHashSet<>(roster);
