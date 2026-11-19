@@ -115,14 +115,10 @@ final class AnvilSession extends PartySurvivalSession {
                 || !(e.getDamager() instanceof Player attacker)
                 || !alive(victim)
                 || !alive(attacker)
-                || victim.equals(attacker)
-                || !combat.acceptHit(victim.getUniqueId(), Bukkit.getCurrentTick())) return;
-        victim.setVelocity(
-                SumoCombat.knockback(
-                        victim.getLocation().toVector().subtract(attacker.getLocation().toVector()),
-                        victim.getVelocity(),
-                        attacker.isSprinting(),
-                        0));
+                || victim.equals(attacker)) return;
+        combat.hit(victim,
+                victim.getLocation().toVector().subtract(attacker.getLocation().toVector()),
+                attacker.isSprinting(), 0, Bukkit.getCurrentTick());
     }
 
     void cleanup() {
