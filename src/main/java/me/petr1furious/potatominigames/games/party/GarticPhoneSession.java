@@ -7,81 +7,27 @@ import me.petr1furious.potatominigames.i18n.I18n;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.*;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.*;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.structure.Structure;
 
 /** A standalone, cooperative telephone game; deliberately absent from PartyRoundFactory.create. */
 final class GarticPhoneSession extends PartySurvivalSession {
-  // Inert full blocks only: no containers, fluids, gravity, explosives or entities.
-  static final List<Material> PALETTE =
-      List.of(
-          Material.WHITE_CONCRETE,
-          Material.LIGHT_GRAY_CONCRETE,
-          Material.GRAY_CONCRETE,
-          Material.BLACK_CONCRETE,
-          Material.BROWN_CONCRETE,
-          Material.RED_CONCRETE,
-          Material.ORANGE_CONCRETE,
-          Material.YELLOW_CONCRETE,
-          Material.LIME_CONCRETE,
-          Material.GREEN_CONCRETE,
-          Material.CYAN_CONCRETE,
-          Material.LIGHT_BLUE_CONCRETE,
-          Material.BLUE_CONCRETE,
-          Material.PURPLE_CONCRETE,
-          Material.MAGENTA_CONCRETE,
-          Material.PINK_CONCRETE,
-          Material.WHITE_WOOL,
-          Material.LIGHT_GRAY_WOOL,
-          Material.GRAY_WOOL,
-          Material.BLACK_WOOL,
-          Material.BROWN_WOOL,
-          Material.RED_WOOL,
-          Material.ORANGE_WOOL,
-          Material.YELLOW_WOOL,
-          Material.LIME_WOOL,
-          Material.GREEN_WOOL,
-          Material.CYAN_WOOL,
-          Material.LIGHT_BLUE_WOOL,
-          Material.BLUE_WOOL,
-          Material.PURPLE_WOOL,
-          Material.MAGENTA_WOOL,
-          Material.PINK_WOOL,
-          Material.GLASS,
-          Material.WHITE_STAINED_GLASS,
-          Material.LIGHT_BLUE_STAINED_GLASS,
-          Material.OAK_PLANKS,
-          Material.SPRUCE_PLANKS,
-          Material.BIRCH_PLANKS,
-          Material.STONE,
-          Material.COBBLESTONE,
-          Material.STONE_BRICKS,
-          Material.BRICKS,
-          Material.SMOOTH_QUARTZ,
-          Material.SANDSTONE,
-          Material.TERRACOTTA,
-          Material.GOLD_BLOCK,
-          Material.IRON_BLOCK,
-          Material.DIAMOND_BLOCK,
-          Material.EMERALD_BLOCK,
-          Material.SEA_LANTERN);
-
   private record ChatTurn(int turn, GarticPhoneState.Phase phase) {}
 
   private final int promptSeconds, buildSeconds, guessSeconds, revealSeconds;
   private GarticPhoneArena arena;
-  private GarticPhoneState<Map<GarticPhoneArena.Cell, Material>> state;
+  private GarticPhoneState<Structure> state;
   private List<UUID> roster;
-  private final Map<UUID, Inventory> palettes = new HashMap<>();
+  private final Map<UUID, Structure> submittedBuilds = new HashMap<>();
   // Only immutable snapshots cross the asynchronous chat boundary.
   private volatile Set<UUID> chatPlayers = Set.of();
   private volatile ChatTurn chatTurn;
@@ -178,10 +124,10 @@ final class GarticPhoneSession extends PartySurvivalSession {
           case REVEAL -> throw new IllegalStateException("Reveal has its own timer");
         };
     deadline = elapsed() + seconds * 20L;
-    palettes.clear();
+    submittedBuilds.clear();
     for (UUID id : roster) {
-      Map<GarticPhoneArena.Cell, Material> snapshot =
-          state.phase() == GarticPhoneState.Phase.GUESS ? state.previous(id).build() : Map.of();
+      Structure snapshot =
+          state.phase() == GarticPhoneState.Phase.GUESS ? state.previous(id).build() : null;
       arena.show(id, snapshot);
     }
     for (Player player : alivePlayers()) {
@@ -211,12 +157,6 @@ final class GarticPhoneSession extends PartySurvivalSession {
     player.setAllowFlight(true);
     player.setFlying(true);
     teleport(player, arena.spawn(player.getUniqueId()));
-    if (building) {
-      for (int i = 0; i < 7; i++)
-        player.getInventory().setItem(i, new ItemStack(PALETTE.get(i * 2), 64));
-      player.getInventory().setItem(7, item(player, Material.CHEST, "palette"));
-      player.getInventory().setItem(8, item(player, Material.EMERALD, "done"));
-    }
   }
 
   @Override
@@ -227,10 +167,11 @@ final class GarticPhoneSession extends PartySurvivalSession {
     }
     List<UUID> active = alivePlayers().stream().map(Player::getUniqueId).toList();
     if (elapsed >= deadline || state.allReady(active)) {
-      state.endTurn(arena::capture);
+      state.endTurn(
+          id -> submittedBuilds.containsKey(id) ? submittedBuilds.get(id) : arena.capture(id));
       if (state.phase() == GarticPhoneState.Phase.REVEAL) {
         chatTurn = new ChatTurn(state.turn(), state.phase());
-        palettes.clear();
+        submittedBuilds.clear();
         for (Player player : alivePlayers()) resetPlayer(player, false);
         revealNext();
       } else beginTurn();
@@ -238,10 +179,6 @@ final class GarticPhoneSession extends PartySurvivalSession {
     }
     if (elapsed % 20 == 0 && state.phase() == GarticPhoneState.Phase.BUILD)
       for (Player player : alivePlayers()) {
-        for (int slot = 0; slot < 7; slot++) {
-          ItemStack stack = player.getInventory().getItem(slot);
-          if (stack != null && PALETTE.contains(stack.getType())) stack.setAmount(64);
-        }
         player.sendActionBar(
             tr(
                 "build_prompt",
@@ -260,7 +197,7 @@ final class GarticPhoneSession extends PartySurvivalSession {
     }
     if (revealStep == 0) {
       say(tr("chain", revealChain + 1, roster.size(), names.get(roster.get(revealChain))));
-      for (UUID id : roster) arena.show(id, Map.of());
+      for (UUID id : roster) arena.show(id, null);
     }
     var step = state.chain(revealChain).get(revealStep);
     if (step.build() != null) {
@@ -325,19 +262,20 @@ final class GarticPhoneSession extends PartySurvivalSession {
   protected void handleBlockPlace(BlockPlaceEvent event) {
     event.setCancelled(
         !building(event.getPlayer())
-            || !arena.editable(event.getPlayer().getUniqueId(), event.getBlockPlaced())
-            || !PALETTE.contains(event.getBlockPlaced().getType()));
+            || !arena.editable(event.getPlayer().getUniqueId(), event.getBlockPlaced()));
+    if (!event.isCancelled() && event instanceof BlockMultiPlaceEvent multi)
+      for (var replaced : multi.getReplacedBlockStates())
+        if (!arena.editable(event.getPlayer().getUniqueId(), replaced.getBlock()))
+          event.setCancelled(true);
   }
 
   @Override
   protected void handleBlockBreak(BlockBreakEvent event) {
-    event.setCancelled(true);
-    if (building(event.getPlayer())
-        && arena.editable(event.getPlayer().getUniqueId(), event.getBlock())) {
-      event.setDropItems(false);
-      event.setExpToDrop(0);
-      event.getBlock().setType(Material.AIR, false);
-    }
+    event.setCancelled(
+        !building(event.getPlayer())
+            || !arena.editable(event.getPlayer().getUniqueId(), event.getBlock()));
+    event.setDropItems(false);
+    event.setExpToDrop(0);
   }
 
   @Override
@@ -348,45 +286,152 @@ final class GarticPhoneSession extends PartySurvivalSession {
 
   @Override
   public void onPlayerInteract(PlayerInteractEvent event) {
-    event.setCancelled(true);
-    Player player = event.getPlayer();
-    if (!building(player) || event.getHand() != EquipmentSlot.HAND) return;
-    int slot = player.getInventory().getHeldItemSlot();
-    if (event.getAction() == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK) {
-      if (event.getClickedBlock() != null
-          && arena.editable(player.getUniqueId(), event.getClickedBlock()))
-        event.getClickedBlock().setType(Material.AIR, false);
-    } else if (event.getAction().isRightClick() && slot == 8) {
-      state.readyBuild(player.getUniqueId(), state.turn());
-      player.closeInventory();
-      player.sendMessage(text(tr("submitted")));
-    } else if (event.getAction().isRightClick() && slot == 7) openPalette(player);
-    else if (slot < 7 && event.getAction().isRightClick()) event.setCancelled(false);
-  }
-
-  private void openPalette(Player player) {
-    Inventory menu = Bukkit.createInventory(null, 54, I18n.render(tr("palette"), player));
-    for (int i = 0; i < PALETTE.size(); i++) menu.setItem(i, new ItemStack(PALETTE.get(i)));
-    palettes.put(player.getUniqueId(), menu);
-    player.openInventory(menu);
+    boolean canBuild = building(event.getPlayer());
+    event.setCancelled(!canBuild);
+    if (canBuild && event.getClickedBlock() != null) {
+      UUID id = event.getPlayer().getUniqueId();
+      if (!arena.editable(id, event.getClickedBlock())
+          && !(event.getAction().isRightClick()
+              && arena.editable(id, event.getClickedBlock().getRelative(event.getBlockFace()))))
+        event.setCancelled(true);
+    }
   }
 
   @Override
   protected void handleInventoryClick(InventoryClickEvent event) {
-    event.setCancelled(true);
-    if (!(event.getWhoClicked() instanceof Player player) || !building(player)) return;
-    Inventory menu = palettes.get(player.getUniqueId());
-    if (menu != null && event.getView().getTopInventory() == menu) {
-      int slot = event.getRawSlot();
-      if (slot >= 0 && slot < PALETTE.size()) {
-        // Keep the six most recently used colors beside the newly selected block.
-        for (int i = 6; i > 0; i--)
-          player.getInventory().setItem(i, player.getInventory().getItem(i - 1));
-        player.getInventory().setItem(0, new ItemStack(PALETTE.get(slot), 64));
-        player.getInventory().setHeldItemSlot(0);
-        player.closeInventory();
-      }
+    event.setCancelled(!(event.getWhoClicked() instanceof Player player) || !building(player));
+  }
+
+  @Override
+  protected void handleInventoryDrag(InventoryDragEvent event) {
+    event.setCancelled(!(event.getWhoClicked() instanceof Player player) || !building(player));
+  }
+
+  @Override
+  protected void handleSwapHandItems(PlayerSwapHandItemsEvent event) {
+    Player player = event.getPlayer();
+    event.setCancelled(!building(player) || player.isSneaking());
+    if (building(player) && player.isSneaking()) {
+      submittedBuilds.put(player.getUniqueId(), arena.capture(player.getUniqueId()));
+      state.readyBuild(player.getUniqueId(), state.turn());
+      player.closeInventory();
+      player.sendMessage(text(tr("submitted")));
     }
+  }
+
+  private boolean editableNow(Block block) {
+    UUID owner = arena.owner(block);
+    return playing()
+        && state.phase() == GarticPhoneState.Phase.BUILD
+        && owner != null
+        && connected.contains(owner)
+        && !state.ready(owner)
+        && elapsed() < deadline;
+  }
+
+  @EventHandler
+  public void onBucketEmpty(org.bukkit.event.player.PlayerBucketEmptyEvent event) {
+    if (event.getPlayer().getWorld().equals(world))
+      event.setCancelled(
+          !building(event.getPlayer())
+              || !arena.editable(event.getPlayer().getUniqueId(), event.getBlock()));
+  }
+
+  @EventHandler
+  public void onBucketFill(org.bukkit.event.player.PlayerBucketFillEvent event) {
+    if (event.getPlayer().getWorld().equals(world))
+      event.setCancelled(
+          !building(event.getPlayer())
+              || !arena.editable(event.getPlayer().getUniqueId(), event.getBlock()));
+  }
+
+  @EventHandler
+  public void onTreeGrow(org.bukkit.event.world.StructureGrowEvent event) {
+    if (!event.getWorld().equals(world)) return;
+    Block origin = world.getBlockAt(event.getLocation());
+    UUID owner = arena.owner(origin);
+    if (owner == null || !editableNow(origin)) {
+      event.setCancelled(true);
+      return;
+    }
+    for (var block : event.getBlocks())
+      if (!arena.editable(owner, block.getBlock())) event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onFluidFlow(BlockFromToEvent event) {
+    if (!event.getBlock().getWorld().equals(world)) return;
+    UUID owner = arena.owner(event.getBlock());
+    if (owner == null
+        || !editableNow(event.getBlock())
+        || !arena.editable(owner, event.getToBlock())) event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onPistonExtend(BlockPistonExtendEvent event) {
+    if (!event.getBlock().getWorld().equals(world)) return;
+    UUID owner = arena.owner(event.getBlock());
+    if (owner == null
+        || !editableNow(event.getBlock())
+        || !arena.editable(owner, event.getBlock().getRelative(event.getDirection()))) {
+      event.setCancelled(true);
+      return;
+    }
+    for (Block block : event.getBlocks())
+      if (!arena.editable(owner, block)
+          || !arena.editable(owner, block.getRelative(event.getDirection())))
+        event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onDispense(BlockDispenseEvent event) {
+    Block source = event.getBlock();
+    if (!source.getWorld().equals(world)) return;
+    UUID owner = arena.owner(source);
+    if (owner == null
+        || !editableNow(source)
+        || !(source.getBlockData() instanceof org.bukkit.block.data.Directional directional)
+        || !arena.editable(owner, source.getRelative(directional.getFacing())))
+      event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onBlockForm(BlockFormEvent event) {
+    if (event.getBlock().getWorld().equals(world) && !editableNow(event.getBlock()))
+      event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onBlockGrow(BlockGrowEvent event) {
+    if (event.getBlock().getWorld().equals(world) && !editableNow(event.getBlock()))
+      event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onBlockSpread(BlockSpreadEvent event) {
+    if (!event.getBlock().getWorld().equals(world)) return;
+    UUID owner = arena.owner(event.getSource());
+    if (owner == null
+        || !editableNow(event.getSource())
+        || !arena.editable(owner, event.getBlock())) event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onBlockIgnite(BlockIgniteEvent event) {
+    if (event.getBlock().getWorld().equals(world) && !editableNow(event.getBlock()))
+      event.setCancelled(true);
+  }
+
+  @EventHandler
+  public void onPistonRetract(BlockPistonRetractEvent event) {
+    if (!event.getBlock().getWorld().equals(world)) return;
+    UUID owner = arena.owner(event.getBlock());
+    if (owner == null || !editableNow(event.getBlock())) {
+      event.setCancelled(true);
+      return;
+    }
+    for (Block block : event.getBlocks())
+      if (!arena.editable(owner, block)) event.setCancelled(true);
   }
 
   @Override
@@ -408,7 +453,6 @@ final class GarticPhoneSession extends PartySurvivalSession {
   @Override
   void playerOut(Player player) {
     UUID id = player.getUniqueId();
-    palettes.remove(id);
     Set<UUID> remaining = new HashSet<>(chatPlayers);
     remaining.remove(id);
     chatPlayers = Set.copyOf(remaining);
@@ -418,16 +462,10 @@ final class GarticPhoneSession extends PartySurvivalSession {
   void cleanup() {
     chatPlayers = Set.of();
     chatTurn = null;
-    palettes.clear();
+    submittedBuilds.clear();
   }
 
   private static Component tr(String key, Object... args) {
     return I18n.tr("party.rounds.gartic_phone." + key, args);
-  }
-
-  private static ItemStack item(Player player, Material material, String key) {
-    ItemStack item = new ItemStack(material);
-    item.editMeta(meta -> meta.displayName(text(tr(key))));
-    return I18n.item(item, player);
   }
 }

@@ -265,6 +265,10 @@ public final class PartyArenaCheck {
                                                                                                 .AIR))
                                                                         .dataString()));
                                         case "getType" -> blocks.getOrDefault(key, Material.AIR);
+                                        case "getRelative" -> {
+                                            var face = (org.bukkit.block.BlockFace) a[0];
+                                            yield block(x + face.getModX(), y + face.getModY(), z + face.getModZ());
+                                        }
                                         case "getWorld" -> world;
                                         case "getX" -> x;
                                         case "getY" -> y;

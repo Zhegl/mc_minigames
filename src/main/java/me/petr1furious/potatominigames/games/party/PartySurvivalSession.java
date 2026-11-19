@@ -647,6 +647,10 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
 
     @Override
     public final void onSwapHandItems(PlayerSwapHandItemsEvent event) {
+        handleSwapHandItems(event);
+    }
+
+    protected void handleSwapHandItems(PlayerSwapHandItemsEvent event) {
         event.setCancelled(true);
     }
 

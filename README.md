@@ -439,11 +439,12 @@ only the previous contribution is visible. The match has one turn per player,
 with at least three turns for two-player games and solo practice. Each completed
 chain is revealed in order with its authors. There is no winner or point award.
 
-Build in Creative mode in a private, enclosed **11×8×11** plot. Right-click to place;
-left-click to instantly erase. Right-click the **chest in slot 8** to choose from
-50 blocks; selecting one puts it in slot 1 and keeps the six recent blocks beside
-it. Blocks refill automatically. Right-click the **emerald in slot 9** to lock
-your build. A chat answer locks immediately and is limited to 120 characters.
+Build in Creative mode in a private, enclosed **11×8×11** plot. Open the normal
+**Creative inventory (E)** to choose any block, use pick-block, and arrange your
+hotbar freely. There is no block palette or reserved hotbar slot. Press **sneak +
+swap hands (Shift+F by default)** to finish and lock your build. Build snapshots
+preserve block states, orientation, signs and container contents. A chat answer
+locks immediately and is limited to 120 characters.
 Turns finish when everyone is ready or time runs out. Missing prompts receive a
 starter idea, unfinished builds are preserved, and missing guesses are marked.
 Leaving withdraws a player for the match; reconnecting players can spectate.
