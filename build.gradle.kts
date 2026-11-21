@@ -183,7 +183,7 @@ tasks.check { dependsOn(checkPartyLifecycle) }
 for ((taskName, checkClass) in mapOf(
     "checkColorFloor" to "ColorFloorCheck", "checkAnvils" to "AnvilsCheck",
     "checkBuildMemory" to "BuildMemoryCheck", "checkToolRace" to "ToolRaceCheck",
-    "checkOneShot" to "OneShotCheck", "checkParkourRace" to "ParkourRaceCheck",
+    "checkFurryQuest" to "FurryQuestCheck", "checkOneShot" to "OneShotCheck", "checkParkourRace" to "ParkourRaceCheck",
     "checkHotPotatoJumpRope" to "HotPotatoJumpRopeCheck",
     "checkDropTowerChickenShooter" to "DropTowerChickenShooterCheck",
     "checkLessIsBetter" to "LessIsBetterCheck", "checkWaitForIt" to "WaitForItCheck")) {
