@@ -31,6 +31,7 @@ public final class PartyPolishCheck {
         check(
                 pool.size() == PartyGamesState.MODES.size()
                         && new HashSet<>(pool).equals(new HashSet<>(PartyGamesState.MODES))
+                        && pool.contains("furry_quest")
                         && pool.contains("hole_in_the_wall")
                         && pool.contains("one_shot")
                         && pool.contains("parkour_race")

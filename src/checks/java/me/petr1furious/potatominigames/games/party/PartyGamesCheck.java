@@ -30,7 +30,7 @@ public final class PartyGamesCheck {
                         && new HashSet<>(s.schedule()).equals(new HashSet<>(PartyGamesState.MODES)),
                 "Every eligible game is scheduled exactly once");
         var newModes = List.of(
-                "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it");
+                "hot_potato", "jump_rope", "drop_tower", "chicken_shooter", "less_is_better", "wait_for_it", "furry_quest");
         for (String mode : newModes) {
             check(game.modes().contains(mode) && game.maxPlayers(mode) == 12,
                     "Quick round is available as a public queue: " + mode);

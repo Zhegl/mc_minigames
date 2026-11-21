@@ -1,288 +1,198 @@
 package me.petr1furious.potatominigames.games.party;
 
-import java.util.*;
-import org.bukkit.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.block.data.Ageable;
-import org.bukkit.entity.*;
-import org.bukkit.util.Vector;
+import org.bukkit.entity.Animals;
+import org.bukkit.entity.EntityType;
 
 final class FurryQuestArena {
     static final int FLOOR = 70;
-    private static final int EDGE = 23;
-    static final List<EntityType> SPECIES =
+    private static final int EDGE = 19;
+    private static final List<EntityType> SPECIES =
             List.of(EntityType.SHEEP, EntityType.COW, EntityType.PIG, EntityType.CHICKEN, EntityType.GOAT);
-    enum Site {
-        SURVEY_FLAG(4, 19, Material.RED_WOOL),
-        FILE_RED(4, 9, Material.RED_CONCRETE),
-        FILE_BLUE(6, 9, Material.BLUE_CONCRETE),
-        FILE_YELLOW(5, 10, Material.YELLOW_CONCRETE),
-        SAW(-10, -6, Material.STONECUTTER),
-        SHELF(-13, 6, Material.BOOKSHELF),
-        SIGNPOST(6, 6, Material.CUT_SANDSTONE),
-        GRIND(13, 10, Material.GRINDSTONE),
-        WELL(5, -9, Material.WATER_CAULDRON),
-        KNEAD(6, -16, Material.CRAFTING_TABLE),
-        OVEN(10, -16, Material.FURNACE),
-        MARKET(1, -6, Material.YELLOW_WOOL),
-        WIREBOX(8, -12, Material.COPPER_BLOCK),
-        SWITCH(14, -8, Material.LEVER),
-        ENGINE(17, -4, Material.PISTON),
-        BEACON(17, 4, Material.SEA_LANTERN),
-        CRATE(-18, 5, Material.BARREL),
-        ARCHIVE(-6, 8, Material.CHISELED_BOOKSHELF),
-        TRACK(-10, -9, Material.MUD),
-        FLAG(-14, -14, Material.RED_WOOL),
-        DIRT_A(-13, -14, Material.COARSE_DIRT),
-        DESK(0, 9, Material.CARTOGRAPHY_TABLE),
-        MAIL(5, 9, Material.BARREL),
-        DYE(9, -10, Material.CAULDRON),
-        DIRT_B(-18, -13, Material.ROOTED_DIRT),
-        DROP(-20, -10, Material.BARREL),
-        BOARD(2, -7, Material.BIRCH_PLANKS),
-        DIRT_C(4, -12, Material.COARSE_DIRT),
-        TACKLE(-6, -14, Material.BARREL),
-        SMOKER(5, -17, Material.SMOKER),
-        TABLE(3, -4, Material.BIRCH_PLANKS),
-        FORD(-4, -12, Material.SMOOTH_STONE),
-        STUMP_W(-14, -5, Material.OAK_LOG),
-        STUMP_E(-12, -5, Material.OAK_LOG),
-        COAL(-14, 2, Material.COAL_BLOCK),
-        BENCH(-9, 2, Material.CRAFTING_TABLE),
-        LAMP(2, 12, Material.CHISELED_STONE_BRICKS),
-        POST_A(8, 6, Material.CUT_SANDSTONE),
-        POST_B(12, 6, Material.CUT_SANDSTONE),
-        PARCEL(-16, 12, Material.BARREL),
-        LOOM(12, -10, Material.LOOM),
-        WHEAT(9, -3, Material.WHEAT),
-        SOIL(12, -3, Material.FARMLAND),
-        POND(0, -13, Material.WATER),
-        GEAR(12, -13, Material.SMITHING_TABLE),
-        AXLE(16, 14, Material.LODESTONE),
-        LOW(-5, 4, Material.NOTE_BLOCK),
-        MID(-3, 4, Material.NOTE_BLOCK),
-        HIGH(-1, 4, Material.NOTE_BLOCK);
-        final int x, z;
-        final Material material;
-        Site(int x, int z, Material material) {
-            this.x = x;
-            this.z = z;
-            this.material = material;
+
+    private static final class Walker {
+        final Animals body;
+        Location destination;
+        long nextWander;
+
+        Walker(Animals body, int delay) {
+            this.body = body;
+            nextWander = delay;
         }
     }
 
     private final World world;
-    private final Set<UUID> wild = new HashSet<>();
     private final Random random;
-    private record Repair(Material original, long at) {}
-    private final Map<Block, Repair> repairs = new HashMap<>();
-    private final List<Block> caches = new ArrayList<>();
-    private Block liveCache;
+    private final Map<UUID, Walker> herd = new LinkedHashMap<>();
 
     FurryQuestArena(World world, Random random) {
         this.world = world;
         this.random = random;
     }
-    Block base(int x, int z) {
-        return world.getBlockAt(x, FLOOR, z);
-    }
-    Block block(Site site) {
-        int y = switch (site) {
-            case AXLE -> FLOOR + 5;
-            case SIGNPOST, POST_A, POST_B, LAMP, POND, SOIL -> FLOOR;
-            default -> FLOOR + 1;
-        };
-        return world.getBlockAt(site.x, y, site.z);
-    }
 
     void build() {
-        for (int x = -EDGE; x <= EDGE; x++)
+        for (int x = -EDGE; x <= EDGE; x++) {
             for (int z = -EDGE; z <= EDGE; z++) {
-                boolean edge = Math.abs(x) == EDGE || Math.abs(z) == EDGE;
-                base(x, z).setType(
-                        Math.abs(x) <= 1 || Math.abs(z) <= 1 ? Material.DIRT_PATH : Material.GRASS_BLOCK, false);
-                if (edge) {
-                    base(x, z).getRelative(0, 1, 0).setType(Material.OAK_FENCE, false);
-                    for (int h = 2; h <= 6; h++) base(x, z).getRelative(0, h, 0).setType(Material.BARRIER, false);
+                block(x, 0, z, Material.GRASS_BLOCK);
+                if (Math.abs(x) == EDGE || Math.abs(z) == EDGE) {
+                    block(x, 1, z, Material.OAK_FENCE);
+                    // Keep jumping goats inside without hiding the herd from the lookout.
+                    for (int y = 2; y <= 12; y++) block(x, y, z, Material.BARRIER);
                 }
             }
-        // Open-front barn around the delivery barrel.
-        for (int x = -20; x <= -12; x++)
-            for (int z = 9; z <= 16; z++) {
-                base(x, z).setType(Material.SPRUCE_PLANKS, false);
-                for (int h = 1; h <= 4; h++) {
-                    if (x == -20 || z == 16 || (x == -12 && z > 12))
-                        base(x, z).getRelative(0, h, 0).setType(Material.RED_TERRACOTTA, false);
+        }
+        for (FurryQuest.Site site : FurryQuest.Site.values()) buildLandmark(site);
+        for (int x = -9; x <= 9; x++) {
+            block(x, 14, -EDGE, Material.SPRUCE_PLANKS);
+            block(x, 14, EDGE, Material.SPRUCE_PLANKS);
+        }
+        for (int i = 0; i < 40; i++) {
+            Animals body = (Animals) world.spawnEntity(meadow(), SPECIES.get(i % SPECIES.size()));
+            body.setAdult();
+            body.setAgeLock(true);
+            body.setInvulnerable(true);
+            body.setRemoveWhenFarAway(false);
+            herd.put(body.getUniqueId(), new Walker(body, random.nextInt(100)));
+        }
+    }
+
+    private void buildLandmark(FurryQuest.Site site) {
+        int x = site.x, z = site.z;
+        switch (site) {
+            case POND -> {
+                for (int dx = -2; dx <= 2; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        block(x + dx, -1, z + dz, Material.CLAY);
+                        block(x + dx, 0, z + dz, Material.WATER);
+                    }
                 }
-                base(x, z)
-                        .getRelative(0, 5 + (4 - Math.abs(x + 16)) / 2, 0)
-                        .setType(Material.DARK_OAK_PLANKS, false);
             }
-        for (int x = -3; x <= 3; x++)
-            for (int z = -16; z <= -12; z++) {
-                base(x, z).getRelative(0, -1, 0).setType(Material.CLAY, false);
-                base(x, z).setType(Material.WATER, false);
+            case HAY -> {
+                block(x, 1, z, Material.HAY_BLOCK);
+                block(x + 1, 1, z, Material.HAY_BLOCK);
+                block(x, 2, z, Material.HAY_BLOCK);
             }
-        for (int x = 8; x <= 13; x++)
-            for (int z = -5; z <= -3; z++) {
-                base(x, z).setType(Material.FARMLAND, false);
-                if (x != 12)
-                    mature(base(x, z).getRelative(0, 1, 0));
+            case TREE -> {
+                for (int y = 1; y <= 3; y++) block(x, y, z, Material.OAK_LOG);
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) block(x + dx, 4, z + dz, Material.OAK_LEAVES);
+                }
+                block(x, 5, z, Material.OAK_LEAVES);
             }
-        base(10, -4).setType(Material.WATER, false);
-        base(10, -4).getRelative(0, 1, 0).setType(Material.AIR, false);
-        // Climb the hay bales to reach the axle on the mill platform.
-        for (int h = 1; h <= 4; h++) {
-            for (int y = 1; y <= h; y++) base(10 + h, 14).getRelative(0, y, 0).setType(Material.HAY_BLOCK, false);
-        }
-        for (int x = 15; x <= 17; x++)
-            for (int z = 13; z <= 15; z++) {
-                for (int h = 1; h <= 4; h++)
-                    base(x, z).getRelative(0, h, 0).setType(Material.SPRUCE_PLANKS, false);
+            case TROUGH -> {
+                for (int dx = -1; dx <= 1; dx++) block(x + dx, 1, z, Material.WATER_CAULDRON);
             }
-        for (int h = 6; h <= 9; h++) base(16, 15).getRelative(0, h, 0).setType(Material.STRIPPED_OAK_LOG, false);
-        for (int offset = -2; offset <= 2; offset++) {
-            base(16 + offset, 15).getRelative(0, 9, 0).setType(Material.WHITE_WOOL, false);
-            base(16, 15).getRelative(0, 9 + offset, 0).setType(Material.WHITE_WOOL, false);
         }
-        for (Site s : Site.values()) block(s).setType(s.material, false);
-        var lever = (org.bukkit.block.data.type.Switch) block(Site.SWITCH).getBlockData();
-        lever.setAttachedFace(org.bukkit.block.data.FaceAttachable.AttachedFace.FLOOR);
-        block(Site.SWITCH).setBlockData(lever, false);
-        mature(block(Site.WHEAT));
-        for (int x : new int[] {7, 9, 10, 11, 13}) base(x, 6).getRelative(0, 1, 0).setType(Material.OAK_FENCE);
-        base(Site.LOW.x, Site.LOW.z).setType(Material.RED_CONCRETE, false);
-        base(Site.MID.x, Site.MID.z).setType(Material.BLUE_CONCRETE, false);
-        base(Site.HIGH.x, Site.HIGH.z).setType(Material.YELLOW_CONCRETE, false);
-        for (int[] pad : new int[][] {{-9, -11}, {16, 1}, {0, 17}, {-17, -1}}) {
-            Block b = base(pad[0], pad[1]);
-            b.setType(Material.GOLD_BLOCK, false);
-            caches.add(b.getRelative(0, 1, 0));
+    }
+
+    private void block(int x, int dy, int z, Material type) {
+        world.getBlockAt(x, FLOOR + dy, z).setType(type, false);
+    }
+
+    Location lookout(int index, boolean sniper) {
+        return new Location(world, sniper ? .5 : index - 5.5, FLOOR + 15,
+                sniper ? EDGE + .02 : 1 - EDGE - .02, sniper ? 180 : 0, 36);
+    }
+
+    Location landmark(FurryQuest.Site site) {
+        return new Location(world, site.x + .5, FLOOR + 1, site.z + .5);
+    }
+
+    private boolean open(int x, int z) {
+        return Math.abs(x) < EDGE && Math.abs(z) < EDGE
+                && world.getBlockAt(x, FLOOR, z).getType() == Material.GRASS_BLOCK
+                && world.getBlockAt(x, FLOOR + 1, z).isEmpty()
+                && world.getBlockAt(x, FLOOR + 2, z).isEmpty();
+    }
+
+    /** Clicking a landmark selects a walkable square beside it, including the pond bank. */
+    Location destination(Block clicked) {
+        int x = clicked.getX(), z = clicked.getZ();
+        if (Math.abs(x) >= EDGE || Math.abs(z) >= EDGE) return null;
+        Location nearest = null;
+        int best = Integer.MAX_VALUE;
+        for (int dx = -3; dx <= 3; dx++) {
+            for (int dz = -3; dz <= 3; dz++) {
+                int distance = dx * dx + dz * dz;
+                if (distance < best && open(x + dx, z + dz)) {
+                    best = distance;
+                    nearest = new Location(world, x + dx + .5, FLOOR + 1, z + dz + .5);
+                }
+            }
         }
-        for (int[] stack : new int[][] {{-17, 15}, {-14, 15}, {17, -12}, {-17, -8}}) {
-            Block foot = base(stack[0], stack[1]);
-            foot.getRelative(0, 1, 0).setType(Material.HAY_BLOCK, false);
-            foot.getRelative(1, 1, 0).setType(Material.HAY_BLOCK, false);
-            foot.getRelative(0, 2, 0).setType(Material.HAY_BLOCK, false);
-        }
-        for (int i = 0; i < 40; i++) spawnWild(SPECIES.get(i % SPECIES.size()));
+        return nearest;
     }
 
-    private static void mature(Block b) {
-        b.setType(Material.WHEAT, false);
-        Ageable crop = (Ageable) b.getBlockData();
-        crop.setAge(crop.getMaximumAge());
-        b.setBlockData(crop, false);
+    private Location meadow() {
+        int x, z;
+        do {
+            x = random.nextInt(1 - EDGE, EDGE);
+            z = random.nextInt(1 - EDGE, EDGE);
+        } while (!open(x, z));
+        return new Location(world, x + .5, FLOOR + 1, z + .5);
     }
 
-    Location spawn(int index, int count) {
-        double angle = 2 * Math.PI * (index + .5) / count;
-        return new Location(world, .5 + 6 * Math.sin(angle), FLOOR + 1, .5 - 6 * Math.cos(angle));
+    List<Animals> shuffledHerd() {
+        var animals = new ArrayList<>(herd.values().stream().map(w -> w.body).toList());
+        Collections.shuffle(animals, random);
+        return animals;
     }
 
-    Location meadow() {
-        for (int i = 0; i < 100; i++) {
-            int x = random.nextInt(-21, 22), z = random.nextInt(-21, 22);
-            Block ground = base(x, z);
-            if (ground.getType() == Material.GRASS_BLOCK && ground.getRelative(0, 1, 0).isEmpty()
-                    && ground.getRelative(0, 2, 0).isEmpty())
-                return ground.getLocation().add(.5, 1, .5);
-        }
-        return spawn(0, 1);
+    boolean contains(UUID id) { return herd.containsKey(id); }
+
+    private void walk(Walker walker, Location target, long tick) {
+        walker.destination = target;
+        walker.nextWander = tick + 600;
+        walker.body.getPathfinder().moveTo(target, 1.0);
     }
 
-    EntityType roll(EntityType previous) {
-        var options = new ArrayList<>(SPECIES);
-        options.remove(previous);
-        return options.get(random.nextInt(options.size()));
-    }
-
-    Animals animal(Location at, EntityType type, boolean ai) {
-        Animals animal = (Animals) world.spawnEntity(at, type);
-        animal.setAdult();
-        animal.setAgeLock(true);
-        animal.setAI(ai);
-        animal.setGravity(ai);
-        animal.setSilent(true);
-        animal.setCollidable(false);
-        animal.setInvulnerable(true);
-        animal.setPersistent(false);
-        animal.setRemoveWhenFarAway(false);
-        if (animal instanceof Sheep sheep)
-            sheep.setColor(DyeColor.WHITE);
-        return animal;
-    }
-
-    private void spawnWild(EntityType type) {
-        wild.add(animal(meadow(), type, true).getUniqueId());
-    }
-    boolean wild(Animals animal) {
-        return wild.contains(animal.getUniqueId());
-    }
-    void replaceWild(Animals animal) {
-        wild.remove(animal.getUniqueId());
-        animal.remove();
-        spawnWild(animal.getType());
-    }
-
-    void temporary(Block block, Material material, long tick) {
-        Repair prior = repairs.get(block);
-        repairs.put(block, new Repair(prior == null ? block.getType() : prior.original(), tick + 45));
-        block.setType(material, false);
+    void direct(Animals animal, Location target, long tick) {
+        walk(herd.get(animal.getUniqueId()), target, tick);
     }
 
     void tick(long tick) {
-        repairs.entrySet().removeIf(entry -> {
-            if (tick < entry.getValue().at())
-                return false;
-            Block b = entry.getKey();
-            Material original = entry.getValue().original();
-            if (b.equals(block(Site.WHEAT)))
-                mature(b);
-            else {
-                b.setType(original, false);
+        if (tick % 10 != 0) return;
+        for (Walker walker : herd.values()) {
+            if (walker.destination != null && walker.body.getLocation().distanceSquared(walker.destination) < 2.25) {
+                walker.destination = null;
+                walker.nextWander = tick + 60 + random.nextInt(100);
             }
-            return true;
-        });
-        if (tick % 300 == 0) {
-            Block previous = liveCache;
-            if (previous != null)
-                previous.setType(Material.AIR, false);
-            var options = new ArrayList<>(caches);
-            options.remove(previous);
-            liveCache = options.get(random.nextInt(options.size()));
-            liveCache.setType(Material.CHEST, false);
+            if (tick >= walker.nextWander) {
+                // Livestock also visit the mission landmarks and pause between walks.
+                Location target = meadow();
+                if (random.nextInt(3) == 0) {
+                    var sites = FurryQuest.Site.values();
+                    var site = sites[random.nextInt(sites.length)];
+                    target = destination(landmark(site).getBlock());
+                }
+                if (target != null) walk(walker, target, tick);
+            } else if (walker.destination != null) {
+                // A vanilla behaviour (such as grazing) may have interrupted the route.
+                var path = walker.body.getPathfinder().getCurrentPath();
+                if (path == null || path.getFinalPoint() == null
+                        || path.getFinalPoint().distanceSquared(walker.destination) > 2.25)
+                    walker.body.getPathfinder().moveTo(walker.destination, 1.0);
+            }
         }
-        if (liveCache != null && tick % 10 == 0)
-            world.spawnParticle(Particle.END_ROD, liveCache.getLocation().add(.5, 1.2, .5), 4, .22, .2, .22, .015);
     }
 
-    boolean claim(Block b) {
-        if (!b.equals(liveCache))
-            return false;
-        b.setType(Material.AIR, false);
-        liveCache = null;
-        return true;
-    }
-
-    void guide(Player player, Block target) {
-        Location eye = player.getEyeLocation(), to = target.getLocation().add(.5, .8, .5);
-        Vector delta = to.toVector().subtract(eye.toVector());
-        if (delta.lengthSquared() > 9) {
-            delta.normalize();
-            for (double d : new double[] {1.4, 2.0, 2.6})
-                player.spawnParticle(Particle.END_ROD,
-                        eye.clone().add(delta.clone().multiply(d)).subtract(0, .4, 0), 1, 0, 0, 0, 0);
-        }
-        player.spawnParticle(Particle.HAPPY_VILLAGER, to, 4, .25, .15, .25, 0);
+    void remove(Animals animal) {
+        herd.remove(animal.getUniqueId());
+        animal.remove();
     }
 
     void cleanup() {
-        for (UUID id : wild) {
-            Entity mob = world.getEntity(id);
-            if (mob != null)
-                mob.remove();
-        }
-        wild.clear();
+        herd.values().forEach(walker -> walker.body.remove());
+        herd.clear();
     }
 }
