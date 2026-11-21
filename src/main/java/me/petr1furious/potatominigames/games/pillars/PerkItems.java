@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.bukkit.NamespacedKey;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import io.papermc.paper.datacomponent.DataComponentTypes;
@@ -51,6 +54,9 @@ final class PerkItems {
             meta.setEnchantmentGlintOverride(true); meta.setMaxStackSize(1); meta.setUnbreakable(true);
             if (type == PerkType.BOW) meta.addEnchant(Enchantment.PUNCH, 100, true);
             if (type == PerkType.DRONE) meta.addEnchant(Enchantment.INFINITY, 1, true);
+            if (type == PerkType.LONG_ARM) meta.addAttributeModifier(Attribute.BLOCK_INTERACTION_RANGE,
+                    new AttributeModifier(key("long_arm"), PerkRules.EXTRA_BLOCK_REACH,
+                            AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.OFFHAND));
         });
         if (type == PerkType.BREAK) item.setData(DataComponentTypes.CONSUMABLE, Consumable.consumable()
                 .consumeSeconds(3600).animation(ItemUseAnimation.BLOCK).hasConsumeParticles(false).build());
@@ -73,9 +79,11 @@ final class PerkItems {
             meta.displayName(title.color(color).decoration(TextDecoration.ITALIC, false));
             List<Component> lore = new ArrayList<>();
             for (Component line : type.instructions) lore.add(line.color(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-            lore.add(((type == PerkType.GRAVITY || type == PerkType.DRONE) ? I18n.tr("pillars.effects.item.reusable")
-                    : I18n.tr("pillars.effects.item.charges", charges(item))).color(NamedTextColor.YELLOW)
-                    .decoration(TextDecoration.ITALIC, false));
+            if (type != PerkType.AIR && type != PerkType.LONG_ARM) {
+                lore.add(((type == PerkType.GRAVITY || type == PerkType.DRONE) ? I18n.tr("pillars.effects.item.reusable")
+                        : I18n.tr("pillars.effects.item.charges", charges(item))).color(NamedTextColor.YELLOW)
+                        .decoration(TextDecoration.ITALIC, false));
+            }
             if (type == PerkType.PLANKS && number(item, STARTED, 0) != 0)
                 lore.add(I18n.tr("pillars.effects.item.planks_started").color(NamedTextColor.RED));
             meta.lore(lore);

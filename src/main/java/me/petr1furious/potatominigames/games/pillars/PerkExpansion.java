@@ -81,7 +81,7 @@ final class PerkExpansion implements Listener, AutoCloseable {
         return switch (type) {
             case TREE -> tree(p, event);
             case AQUARIUM -> aquarium(p);
-            case AURA -> { auras.put(p.getUniqueId(), tick + 200); yield true; }
+            case AURA -> { auras.put(p.getUniqueId(), tick + PerkRules.AURA_TICKS); yield true; }
             case INVULNERABILITY -> { shields.put(p.getUniqueId(), tick + 200); yield true; }
             case MORPH -> morph(p);
             case METRO -> metro(p);
@@ -388,13 +388,14 @@ final class PerkExpansion implements Listener, AutoCloseable {
             Location center = owner.getLocation();
             for (int i = 0; i < 32; i++) {
                 double angle = i * Math.PI / 16;
-                world.spawnParticle(Particle.END_ROD, center.clone().add(Math.cos(angle) * 4.5, .7, Math.sin(angle) * 4.5), 1, 0, 0, 0, 0);
+                world.spawnParticle(Particle.END_ROD, center.clone().add(Math.cos(angle) * PerkRules.AURA_RADIUS,
+                        .7, Math.sin(angle) * PerkRules.AURA_RADIUS), 1, 0, 0, 0, 0);
             }
             for (Player victim : players.get()) if (!victim.equals(owner) && perks.active(victim) && !invulnerable(victim)
-                    && victim.getLocation().distanceSquared(center) <= 4.5 * 4.5) {
+                    && victim.getLocation().distanceSquared(center) <= PerkRules.AURA_RADIUS * PerkRules.AURA_RADIUS) {
                 Vector delta = victim.getLocation().toVector().subtract(center.toVector()).setY(0);
                 if (delta.lengthSquared() < .001) delta = new Vector(1, 0, 0);
-                victim.setVelocity(delta.normalize().multiply(1.2).setY(.45));
+                victim.setVelocity(delta.normalize().multiply(.6).setY(.225));
             }
         }
         if (tick % 20 == 0) spread();

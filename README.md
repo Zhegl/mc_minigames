@@ -1757,13 +1757,13 @@ Enable it on another built-in mode with `/pillars config modes.<mode>.perks true
 Sniper Duel keeps its five logs and sixth crossbow; perks can replace later drops.
 
 Each item draw has a **20%** chance to become a special perk instead. Configure
-`perks.dropChance` in `games/pillars.yml` for the next session. The thirty-five ordinary
+`perks.dropChance` in `games/pillars.yml` for the next session. The forty-seven ordinary
 perks have weight 4 each; the two legendary weapons have weight 1 each. Each
-legendary therefore has a **0.141%** chance per item draw at the default setting,
+legendary therefore has a **0.105%** chance per item draw at the default setting,
 four times rarer than each ordinary perk. Tactical presets share perk kinds and
 ordinary item rolls, with separate item instances/charges per player.
 
-Every perk has enchantment glint, a Russian name, instructions and remaining charges.
+Every perk has enchantment glint, a localized name and instructions. Limited-use perks display their remaining charges.
 Active items use the main hand; normal items with the same material have no perk.
 
 | Item | Perk and controls |
@@ -1801,7 +1801,7 @@ New perks also use the ordinary weighted pool and `/pillars perk <id>`:
 | `tree` | Right-click a nearby block to grow an oak with a nine-block trunk and a broad persistent canopy. Existing builds remain intact. |
 | `aquarium` | Aim at an opponent within 32 blocks: a breakable 5×5×5 glass aquarium, water and two pufferfish appear for 20 seconds. Existing blocks remain intact. |
 | `drone` | Reusable bow, arrow supplied. Fire a slow, gravity-free arrow and steer with the mouse while the camera follows it. Five-second player cooldown, maximum eight-second flight; sneak, impact or damage to your body ends control. Arrows are not consumed. Your body remains vulnerable at the firing position. |
-| `aura` | Ten seconds of repelling opponents within 4.5 blocks. |
+| `aura` | Five seconds of repelling opponents within 2.25 blocks, with half the previous knockback. |
 | `invulnerability` | Ten seconds without damage or knockback, including the death-height check. |
 | `morph` | Become one of ten random mobs for 15 seconds. Other players see the mob with your name, and hits on it damage you. This changes appearance, not your abilities. |
 | `metro` | A 2×10 loop in your facing direction with powered straight rails, curved corners and three rideable minecarts. Requires free space ahead. Carts last 60 seconds; the railway stays. |
@@ -1810,6 +1810,18 @@ New perks also use the ordinary weighted pool and `/pillars perk <id>`:
 | `infection` | Place a slime seed. Every second each surviving infection block grows into one random adjacent air cell, up to 512 blocks per seed and eight active seeds per match. One active seed per player, 60-second lifetime. Blocks are breakable; existing terrain is preserved. |
 | `lightning` | One targeted lightning strike within 48 blocks removes half the opponent's maximum health before absorption, ignoring armour/resistance. Invulnerability still protects. |
 | `apocalypse` | Aim at a block within 192 blocks: 36 adult zombies rain over a 6×6 area, 24 blocks above it, with random 0.5–5-second delays. They gain slow falling within five blocks of terrain. Zombies last 60 seconds, drop no loot and may attack the caster too. Maximum 144 pending/live zombies per match. |
+| `bunker` | Build a 3×3 obsidian shelter with an iron door and a lever on each side. |
+| `bouncer` | Launch upward and gain ten seconds of fall protection. |
+| `air` | Right-click has no effect. The item stays in your hand. |
+| `protractor` | Aim within 32 blocks. Swap the local X and Y coordinates of blocks and entities in a 7×7×7 cube around the target. Z stays fixed. |
+| `pause` | Pause the match for five seconds and display a title to its players. |
+| `time` | Toggle the arena between noon and midnight. |
+| `weather` | Cycle the arena through clear weather, rain and thunderstorms. |
+| `garden` | Build a village garden ahead with irrigated farmland, wheat and carrots. |
+| `long_arm` | Hold in your offhand to add 24 blocks of block interaction reach. Melee reach stays the same. |
+| `hat` | Wear the hat. After falling at least five blocks, it places bedrock below you in free space and protects against fall damage for two seconds. One use. |
+| `pillar` | Build a pillar at your feet's height, randomly placed 5–8 blocks away. |
+| `maze` | Build a 7×7 maze around yourself with two exits. |
 
 Remote cameras use the Mojang-named Paper camera packet while keeping players in survival.
 Unsupported camera runtimes refuse a drone shot or control attempt instead of changing game modes.

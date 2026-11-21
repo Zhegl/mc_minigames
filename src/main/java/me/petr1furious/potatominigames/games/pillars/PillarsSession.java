@@ -474,7 +474,7 @@ final class PillarsSession implements GameSession {
             return;
         }
         tickDisconnects();
-        if (ending || alive.isEmpty()) {
+        if (ending || alive.isEmpty() || paused()) {
             return;
         }
         if (!started) {
@@ -508,7 +508,7 @@ final class PillarsSession implements GameSession {
     }
 
     private void tickFlood() {
-        if (ending || alive.isEmpty()) return;
+        if (ending || alive.isEmpty() || paused()) return;
         if (!started) {
             flood.prepare();
             return;
@@ -537,7 +537,7 @@ final class PillarsSession implements GameSession {
     }
 
     private void tickAdhd() {
-        if (ending || !started || alive.isEmpty()) {
+        if (ending || !started || alive.isEmpty() || paused()) {
             return;
         }
         switch (adhd.tick()) {
@@ -789,6 +789,8 @@ final class PillarsSession implements GameSession {
         return world;
     }
 
+    boolean paused() { return perks != null && perks.paused(); }
+
     Location center() {
         return center;
     }
@@ -861,21 +863,21 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onBlockPlace(org.bukkit.event.block.BlockPlaceEvent event) {
-        if (events != null && started && !ending) {
+        if (events != null && started && !ending && !paused()) {
             events.onBlockPlace(event);
         }
     }
 
     @Override
     public void onEntityDamageByEntity(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
-        if (events != null && started && !ending) {
+        if (events != null && started && !ending && !paused()) {
             events.onDamageByEntity(event);
         }
     }
 
     @Override
     public void onDropItem(org.bukkit.event.player.PlayerDropItemEvent event) {
-        if (events != null) {
+        if (events != null && !paused()) {
             events.onDropItem(event);
         }
     }
@@ -982,7 +984,7 @@ final class PillarsSession implements GameSession {
     }
 
     private void tickActionBar() {
-        if (ending || !started) {
+        if (ending || !started || paused()) {
             return;
         }
         actionBarPhase += 0.1;
@@ -1048,6 +1050,7 @@ final class PillarsSession implements GameSession {
 
     @Override
     public void onPlayerMove(PlayerMoveEvent event) {
+        if (paused()) return;
         PillarPlayer pillarPlayer = players.get(event.getPlayer().getUniqueId());
         if (pillarPlayer == null || !alive.contains(pillarPlayer) || ending) {
             return;

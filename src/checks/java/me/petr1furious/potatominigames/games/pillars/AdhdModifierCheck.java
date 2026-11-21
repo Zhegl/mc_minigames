@@ -1,10 +1,8 @@
 package me.petr1furious.potatominigames.games.pillars;
 
-import java.lang.reflect.Proxy;
+import java.util.List;
 import java.util.Random;
 import java.util.Set;
-
-import org.bukkit.scheduler.BukkitTask;
 
 /** Real burst timing, fractional shuffle cadence and ownership of delayed event tasks. */
 public final class AdhdModifierCheck {
@@ -72,40 +70,32 @@ public final class AdhdModifierCheck {
 
     private static void eventTasks() {
         var tasks = new PillarsEvents.EventTasks<PillarsEvents.Kind>();
-        Cancel original = new Cancel(), warning = new Cancel(), blockBan = new Cancel(), math = new Cancel();
+        var ran = new java.util.ArrayList<String>();
         tasks.selected(PillarsEvents.Kind.WIND);
-        tasks.add(PillarsEvents.Kind.WIND, original.task);
+        tasks.add(PillarsEvents.Kind.WIND, 40, () -> ran.add("wind"));
         tasks.startBurst();
         tasks.selected(PillarsEvents.Kind.BLOCK_BAN);
-        tasks.add(PillarsEvents.Kind.BLOCK_BAN, warning.task);
-        tasks.add(PillarsEvents.Kind.BLOCK_BAN, blockBan.task);
+        tasks.add(PillarsEvents.Kind.BLOCK_BAN, 20, () -> ran.add("warning"));
+        tasks.add(PillarsEvents.Kind.BLOCK_BAN, 80, () -> ran.add("block ban"));
         tasks.selected(PillarsEvents.Kind.MATH);
-        tasks.add(PillarsEvents.Kind.MATH, math.task);
+        tasks.add(PillarsEvents.Kind.MATH, 20, () -> ran.add("math"));
         check(!tasks.isBurst(PillarsEvents.Kind.WIND) && tasks.isBurst(PillarsEvents.Kind.MATH),
                 "Only newly selected events belong to the burst");
         tasks.finish(PillarsEvents.Kind.MATH);
-        check(math.cancelled, "Natural completion removes its delayed callbacks");
+        tasks.tick(19);
+        check(ran.isEmpty(), "Callbacks use elapsed match ticks");
         check(tasks.stopBurst().equals(Set.of(PillarsEvents.Kind.BLOCK_BAN)), "Do not stop pre-existing or already finished events");
         for (var kind : tasks.stopBurst()) tasks.finish(kind);
-        check(warning.cancelled && blockBan.cancelled && !original.cancelled,
+        tasks.tick(40);
+        check(ran.equals(List.of("wind")),
                 "Stop both the warning and delayed block destruction, preserving the pre-existing wind");
-        Cancel next = new Cancel();
         tasks.selected(PillarsEvents.Kind.BLOCK_BAN);
-        tasks.add(PillarsEvents.Kind.BLOCK_BAN, next.task);
+        tasks.add(PillarsEvents.Kind.BLOCK_BAN, 60, () -> ran.add("new block ban"));
         check(!tasks.isBurst(PillarsEvents.Kind.BLOCK_BAN) && tasks.stopBurst().isEmpty(),
                 "An event selected after the burst has a fresh ordinary lifetime");
         tasks.close();
-        check(original.cancelled && next.cancelled, "Session teardown cancels every remaining task");
-    }
-
-    private static final class Cancel {
-        boolean cancelled;
-        final BukkitTask task = (BukkitTask) Proxy.newProxyInstance(BukkitTask.class.getClassLoader(),
-                new Class<?>[] {BukkitTask.class}, (p, method, args) -> {
-                    check(method.getName().equals("cancel"), "Only task cancellation is expected");
-                    cancelled = true;
-                    return null;
-                });
+        tasks.tick(100);
+        check(ran.equals(List.of("wind")), "Session teardown cancels every remaining task");
     }
 
     private static Random fixed(double value) {

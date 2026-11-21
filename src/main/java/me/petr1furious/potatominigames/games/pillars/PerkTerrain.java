@@ -1,8 +1,11 @@
 package me.petr1furious.potatominigames.games.pillars;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.random.RandomGenerator;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -10,7 +13,11 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Bisected;
+import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.FaceAttachable;
 import org.bukkit.block.data.type.Door;
+import org.bukkit.block.data.type.Farmland;
+import org.bukkit.block.data.type.Switch;
 import org.bukkit.inventory.InventoryHolder;
 
 /** Temporary structures preserve existing blocks; transmutation preflights the complete component. */
@@ -21,6 +28,7 @@ final class PerkTerrain {
     private final Map<Pos, Lease> leases = new HashMap<>();
     PerkTerrain(World world) { this.world = world; }
     boolean locked(Block b, long tick) { Lease l = leases.get(Pos.of(b)); return l != null && l.locked() && tick < l.until(); }
+    boolean leased(Block block) { return leases.containsKey(Pos.of(block)); }
     void changed(Block b) { leases.remove(Pos.of(b)); }
     static boolean air(Block b) { return b.getType() == Material.AIR || b.getType() == Material.CAVE_AIR || b.getType() == Material.VOID_AIR; }
     boolean put(Block b, Material material, long until, boolean locked) {
@@ -66,28 +74,81 @@ final class PerkTerrain {
         plan.put(new Pos(0, 1, 0), Material.WALL_TORCH);
         return Map.copyOf(plan);
     }
-    boolean house(Location at) {
+    static Map<Pos, Material> bunkerPlan() {
+        Map<Pos, Material> plan = new LinkedHashMap<>(housePlan());
+        plan.replaceAll((pos, material) -> material == Material.OAK_DOOR ? Material.IRON_DOOR : Material.OBSIDIAN);
+        plan.put(new Pos(0, -1, -2), Material.OBSIDIAN);
+        plan.put(new Pos(0, 0, -2), Material.LEVER);
+        plan.put(new Pos(0, 1, 0), Material.LEVER);
+        plan.put(new Pos(0, 0, 0), Material.AIR);
+        plan.put(new Pos(0, 1, -2), Material.AIR);
+        return plan;
+    }
+
+    boolean house(Location at) { return build(at, housePlan(), true); }
+    boolean bunker(Location at) { return build(at, bunkerPlan(), true); }
+    boolean garden(Location at, BlockFace forward) { return build(at, PerkLayouts.garden(forward), false); }
+    boolean maze(Location at) { return build(at, PerkLayouts.maze(), true); }
+
+    boolean inside(Block block) {
+        return block.getY() >= world.getMinHeight() && block.getY() < world.getMaxHeight()
+                && world.getWorldBorder().isInside(block.getLocation());
+    }
+
+    private Block offset(Location at, Pos pos) {
+        return world.getBlockAt(at.getBlockX() + pos.x(), at.getBlockY() + pos.y(), at.getBlockZ() + pos.z());
+    }
+
+    private boolean build(Location at, Map<Pos, Material> plan, boolean keepFloor) {
         // Preflight the whole structure before spending the item or changing any blocks.
-        var plan = housePlan();
-        for (var entry : plan.entrySet()) {
-            Pos pos = entry.getKey(); Block b = world.getBlockAt(at.getBlockX() + pos.x(), at.getBlockY() + pos.y(), at.getBlockZ() + pos.z());
-            if (b.getY() < world.getMinHeight() || b.getY() >= world.getMaxHeight() || !world.getWorldBorder().isInside(b.getLocation())) return false;
-            if (!air(b) && pos.y() != -1) return false;
+        for (Pos pos : plan.keySet()) {
+            Block block = offset(at, pos);
+            if (!inside(block) || (!air(block) && !(keepFloor && pos.y() == -1))) return false;
         }
-        for (var entry : plan.entrySet()) {
-            Pos pos = entry.getKey(); Block b = world.getBlockAt(at.getBlockX() + pos.x(), at.getBlockY() + pos.y(), at.getBlockZ() + pos.z());
-            if (!air(b)) continue; // Preserve the existing supporting pillar/floor.
-            BlockData data = entry.getValue().createBlockData();
+        var ordered = plan.entrySet().stream().sorted(Comparator.comparingInt(entry -> entry.getKey().y())).toList();
+        for (var entry : ordered) {
+            Pos pos = entry.getKey();
+            Block block = offset(at, pos);
+            Material material = entry.getValue();
+            if (!air(block) || material.isAir()) continue;
+            BlockData data = material.createBlockData();
             if (data instanceof Door door) {
                 door.setFacing(BlockFace.NORTH);
                 door.setHalf(pos.y() == 0 ? Bisected.Half.BOTTOM : Bisected.Half.TOP);
             }
-            if (data instanceof org.bukkit.block.data.Directional direction && entry.getValue() == Material.WALL_TORCH)
+            if (data instanceof Directional direction && material == Material.WALL_TORCH)
                 direction.setFacing(BlockFace.NORTH);
-            b.setBlockData(data, false);
+            if (data instanceof Switch lever) {
+                lever.setAttachedFace(pos.z() == 0 ? FaceAttachable.AttachedFace.WALL : FaceAttachable.AttachedFace.FLOOR);
+                lever.setFacing(pos.z() == 0 ? BlockFace.WEST : BlockFace.NORTH);
+            }
+            if (data instanceof Farmland farmland) farmland.setMoisture(farmland.getMaximumMoisture());
+            block.setBlockData(data, false);
         }
         return true;
     }
+    boolean pillar(Location at, Material material, RandomGenerator random) {
+        int top = at.getBlockY() - 1;
+        int bottom = world.getMinHeight();
+        if (top < bottom || top + 2 >= world.getMaxHeight()) return false;
+        var offsets = new ArrayList<>(PerkLayouts.pillarOffsets());
+        // Choose a free column at random, including two clear blocks above its top.
+        while (!offsets.isEmpty()) {
+            Pos offset = offsets.remove(random.nextInt(offsets.size()));
+            int x = at.getBlockX() + offset.x(), z = at.getBlockZ() + offset.z();
+            double distance = Math.hypot(x + .5 - at.getX(), z + .5 - at.getZ());
+            if (distance < 5 || distance > 8) continue;
+            if (!inside(world.getBlockAt(x, bottom, z))) continue;
+            if (!air(world.getBlockAt(x, top + 2, z)) || !air(world.getBlockAt(x, top + 1, z))) continue;
+            int y = top;
+            while (y >= bottom && air(world.getBlockAt(x, y, z))) y--;
+            if (y == top) continue;
+            for (y++; y <= top; y++) world.getBlockAt(x, y, z).setType(material, false);
+            return true;
+        }
+        return false;
+    }
+
     void tick(long tick) {
         var it = leases.values().iterator();
         while (it.hasNext()) { Lease lease = it.next(); if (tick >= lease.until()) { restore(lease); it.remove(); } }

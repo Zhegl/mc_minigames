@@ -44,7 +44,19 @@ enum PerkType {
     GENIE(Material.OAK_SIGN, "genie", 1, false, 2),
     INFECTION(Material.SLIME_BLOCK, "infection", 1, false, 2),
     LIGHTNING(Material.LIGHTNING_ROD, "lightning", 1, false, 1),
-    APOCALYPSE(Material.ROTTEN_FLESH, "apocalypse", 1, false, 2);
+    APOCALYPSE(Material.ROTTEN_FLESH, "apocalypse", 1, false, 2),
+    BUNKER(Material.OBSIDIAN, "bunker", 1, false, 1),
+    BOUNCER(Material.SLIME_BALL, "bouncer", 1, false, 1),
+    AIR(Material.LIGHT_GRAY_DYE, "air", 1, false, 1),
+    PROTRACTOR(Material.COMPASS, "protractor", 1, false, 1),
+    PAUSE(Material.RECOVERY_COMPASS, "pause", 1, false, 1),
+    TIME(Material.CLOCK, "time", 1, false, 1),
+    WEATHER(Material.LIGHTNING_ROD, "weather", 1, false, 1),
+    GARDEN(Material.WHEAT_SEEDS, "garden", 1, false, 1),
+    LONG_ARM(Material.BAMBOO, "long_arm", 1, false, 1),
+    HAT(Material.LEATHER_HELMET, "hat", 1, false, 1),
+    PILLAR(Material.BEDROCK, "pillar", 1, false, 1),
+    MAZE(Material.MOSSY_STONE_BRICKS, "maze", 1, false, 1);
 
     final Material material;
     final Component title;
