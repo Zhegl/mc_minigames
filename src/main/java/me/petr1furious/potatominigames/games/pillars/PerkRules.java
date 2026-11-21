@@ -17,6 +17,8 @@ final class PerkRules {
     static final int PHANTOM_TICKS = 60 * 20;
     static final int DECOY_TICKS = 60 * 20;
     static final float DECOY_POWER = 1.5f;
+    static final int AURA_TICKS = 100, PAUSE_TICKS = 100, HAT_TICKS = 40, BOUNCER_TICKS = 200;
+    static final double AURA_RADIUS = 2.25, EXTRA_BLOCK_REACH = 24, HAT_FALL_DISTANCE = 5;
     static double decoyDamage(double damage) { return Math.min(4, damage); }
     static final class DecoyTrigger {
         private final java.util.UUID owner;

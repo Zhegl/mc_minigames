@@ -53,11 +53,13 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerVelocityEvent;
@@ -102,6 +104,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     private final PerkTerrain terrain;
     private final PerkIllusions illusions;
     private final PerkExpansion expansion;
+    private final PerkPause pause;
     private final Map<UUID, Gift> gifts = new HashMap<>();
     private final Map<UUID, PerkRules.History<Location>> history = new HashMap<>();
     private final Map<UUID, Frozen> frozen = new HashMap<>();
@@ -110,6 +113,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     private final Map<UUID, Anchor> anchors = new HashMap<>();
     private final Map<UUID, Long> usedAt = new HashMap<>();
     private final Map<UUID, Long> jumpAt = new HashMap<>();
+    private final Map<UUID, Long> fallProtection = new HashMap<>();
     private final Map<UUID, Gravity> gravity = new HashMap<>();
     private final Map<UUID, PerkRules.GravityCycle> gravityCycles = new HashMap<>();
     private final Map<UUID, PerkRules.PhantomNoises> phantomNoises = new HashMap<>();
@@ -129,6 +133,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     PillarsPerks(PillarsSession session, SessionServices services, World world, double chance, Supplier<List<ItemStack>> draw) {
         this.session = session; this.services = services; this.world = world; dropChance = chance; ordinaryDraw = draw;
         terrain = new PerkTerrain(world);
+        pause = new PerkPause(world);
         illusions = new PerkIllusions(world);
         expansion = new PerkExpansion(this, services.plugin(), world, session::perkPlayers, terrain);
         Bukkit.getPluginManager().registerEvents(this, services.plugin());
@@ -144,7 +149,8 @@ final class PillarsPerks implements Listener, AutoCloseable {
     private boolean scoped(Player p) { return !closed && p.getWorld().equals(world) && session.isParticipant(p); }
     boolean alive(Player p) { return scoped(p) && session.hasStarted() && session.isInGame(p) && !p.isDead() && p.isOnline(); }
     boolean active(Player p) { return alive(p) && p.getGameMode() == GameMode.SURVIVAL && !blocked(p); }
-    private boolean blocked(Player p) { return expansion.blocked(p) || frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()); }
+    private boolean blocked(Player p) { return paused() || expansion.blocked(p) || frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()); }
+    boolean paused() { return pause.active(); }
     boolean immuneToVoid(Player p) { return !closed && (frozen.containsKey(p.getUniqueId()) || ghosts.containsKey(p.getUniqueId()) || expansion.invulnerable(p)); }
     boolean isGhost(Player p) { return ghosts.containsKey(p.getUniqueId()); }
     static void message(Player p, String key, Object... args) {
@@ -257,7 +263,9 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     private void tick() {
         if (closed) return;
+        if (paused()) { pause.tick(); return; }
         tick++;
+        fallProtection.values().removeIf(until -> until <= tick);
         terrain.tick(tick);
         illusions.tick();
         expansion.tick(tick);
@@ -311,7 +319,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
                     teleport(p, ghost.fallback());
                 continue;
             }
-            if (active(p)) { boots(p); channel(p); }
+            if (active(p)) { hat(p, p.getLocation()); boots(p); channel(p); }
         }
         channels.keySet().removeIf(id -> { Player p = Bukkit.getPlayer(id); return p == null || !active(p); });
         for (var it = entities.iterator(); it.hasNext();) {
@@ -333,6 +341,68 @@ final class PillarsPerks implements Listener, AutoCloseable {
                     && p.getLocation().distanceSquared(cloud.at()) <= 16)
                 p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 10, 0, false, false));
         }
+    }
+
+    private boolean hat(Player p, Location at) {
+        if (p.getFallDistance() < PerkRules.HAT_FALL_DISTANCE) return false;
+        ItemStack helmet = p.getInventory().getHelmet();
+        if (PerkItems.type(helmet) != PerkType.HAT || PerkItems.charges(helmet) <= 0) return false;
+        Block floor = world.getBlockAt(at.getBlockX(), at.getBlockY() - 1, at.getBlockZ());
+        if (!terrain.inside(floor) || floor.getY() + 1 < deathHeight()) return false;
+        if (PerkTerrain.air(floor)) {
+            floor.setType(Material.BEDROCK, false);
+            p.setVelocity(p.getVelocity().setY(Math.max(-.25, p.getVelocity().getY())));
+        }
+        p.setFallDistance(0);
+        fallProtection.merge(p.getUniqueId(), tick + PerkRules.HAT_TICKS, Math::max);
+        consume(p, EquipmentSlot.HEAD, PerkItems.string(helmet, PerkItems.SERIAL));
+        return true;
+    }
+
+    private void bounce(Player p) {
+        fallProtection.put(p.getUniqueId(), tick + PerkRules.BOUNCER_TICKS);
+        p.setFallDistance(0);
+        p.setVelocity(p.getVelocity().setY(1.65));
+    }
+
+    private void changeTime() {
+        long time = world.getTime();
+        world.setTime(time >= 13000 && time < 23000 ? 6000 : 18000);
+    }
+
+    private void changeWeather() {
+        if (!world.hasStorm()) {
+            world.setStorm(true);
+            world.setThundering(false);
+        } else if (!world.isThundering()) {
+            world.setThundering(true);
+        } else {
+            world.setThundering(false);
+            world.setStorm(false);
+        }
+    }
+
+    private boolean built(Player p, boolean success) {
+        if (!success) message(p, "structure_space");
+        return success;
+    }
+
+    private boolean shelter(Player p, boolean maze) {
+        Location at = p.getLocation();
+        if (at.getBlockY() < deathHeight()) return built(p, false);
+        if (!built(p, maze ? terrain.maze(at) : terrain.bunker(at))) return false;
+        at.setX(at.getBlockX() + .5);
+        at.setY(at.getBlockY());
+        at.setZ(at.getBlockZ() + .5);
+        teleport(p, at);
+        return true;
+    }
+
+    private boolean transpose(Player p) {
+        if (PerkProtractor.cast(p, terrain, deathHeight(), entity ->
+                entity instanceof Player target ? active(target) : entity.isValid())) return true;
+        message(p, "protractor_space");
+        return false;
     }
     private void boots(Player p) {
         ItemStack item = p.getInventory().getBoots();
@@ -654,6 +724,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     void disconnected(Player p) { playerGone(p, true); }
     void playerGone(Player p) { playerGone(p, false); }
     private void playerGone(Player p, boolean keepFreeze) {
+        pause.release(p);
         expansion.playerGone(p);
         UUID id = p.getUniqueId(); endGhost(id, p); if (!keepFreeze) frozen.remove(id); channels.remove(id); history.remove(id); gifts.remove(id);
         endGravity(id, p);
@@ -661,7 +732,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
         decoys.values().removeIf(d -> d.owner().equals(id));
         if (!keepFreeze) gravityCycles.remove(id);
         illusions.playerGone(id); pendingAnvils.removeIf(a -> a.owner().equals(id));
-        anchors.remove(id); jumping.remove(id); jumpAt.remove(id); usedAt.remove(id);
+        anchors.remove(id); jumping.remove(id); jumpAt.remove(id); usedAt.remove(id); fallProtection.remove(id);
         for (Iterator<Tracked> it = entities.iterator(); it.hasNext();) {
             Tracked e = it.next();
             if (e.owner().equals(id)) { pumpkins.remove(e.entity().getUniqueId()); e.entity().remove(); it.remove(); }
@@ -678,8 +749,12 @@ final class PillarsPerks implements Listener, AutoCloseable {
         if (type == null) return;
         if (!active(p)) { e.setCancelled(true); return; }
         if (!e.getAction().isRightClick()) return;
-        // Boots retain native right-click equipping; their effect starts only when actually worn.
-        if (type == PerkType.ANCHOR || type == PerkType.PLANKS) {
+        if (type == PerkType.AIR || type == PerkType.LONG_ARM) {
+            e.setUseItemInHand(Event.Result.DENY);
+            return;
+        }
+        // Armor retains native right-click equipping; its effect starts only when actually worn.
+        if (type == PerkType.ANCHOR || type == PerkType.PLANKS || type == PerkType.HAT) {
             e.setUseInteractedBlock(Event.Result.DENY); e.setUseItemInHand(Event.Result.ALLOW); return;
         }
         if (e.getHand() != EquipmentSlot.HAND) { e.setCancelled(true); return; }
@@ -717,6 +792,15 @@ final class PillarsPerks implements Listener, AutoCloseable {
                 teleport(p, at); yield true;
             }
             case HOUSE -> { boolean built = terrain.house(p.getLocation()); if (!built) message(p, "house_space"); yield built; }
+            case BUNKER -> shelter(p, false);
+            case BOUNCER -> { bounce(p); yield true; }
+            case PROTRACTOR -> transpose(p);
+            case PAUSE -> { pause.start(services.session().audiencePlayers()); yield true; }
+            case TIME -> { changeTime(); yield true; }
+            case WEATHER -> { changeWeather(); yield true; }
+            case GARDEN -> built(p, terrain.garden(p.getLocation(), p.getFacing()));
+            case PILLAR -> built(p, terrain.pillar(p.getLocation(), session.pillarMaterial(), ThreadLocalRandom.current()));
+            case MAZE -> shelter(p, true);
             case FREEZE -> { beam(p); yield true; }
             case CROSSBOW -> tnt(p);
             case PUMPKIN -> pumpkin(p);
@@ -781,6 +865,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void projectileHit(ProjectileHitEvent e) {
+        if (paused() && e.getEntity().getWorld().equals(world)) { e.setCancelled(true); return; }
         if (pumpkins.remove(e.getEntity().getUniqueId())) {
             var shooter = e.getEntity().getShooter();
             e.setCancelled(true);
@@ -827,9 +912,14 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void damage(EntityDamageEvent e) {
+        if (paused() && e.getEntity().getWorld().equals(world)) { e.setCancelled(true); return; }
         Decoy decoy = decoys.get(e.getEntity().getUniqueId());
         if (decoy != null) { hitDecoy(e, decoy); return; }
         if (!(e.getEntity() instanceof Player p) || !scoped(p)) return;
+        if (!e.isCancelled() && e.getCause() == EntityDamageEvent.DamageCause.FALL
+                && (fallProtection.getOrDefault(p.getUniqueId(), 0L) > tick || active(p) && hat(p, p.getLocation()))) {
+            e.setCancelled(true);
+        }
         if (decoyBlastOwner != null && e.getCause() == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
             if (decoyBlastOwner.equals(p.getUniqueId())) e.setCancelled(true);
             else e.setDamage(PerkRules.decoyDamage(e.getDamage()));
@@ -859,18 +949,27 @@ final class PillarsPerks implements Listener, AutoCloseable {
     public void velocity(PlayerVelocityEvent e) {
         if (!scoped(e.getPlayer())) return;
         Anchor anchor = anchors.get(e.getPlayer().getUniqueId());
-        if (expansion.invulnerable(e.getPlayer())) e.setCancelled(true);
+        if (paused() || expansion.invulnerable(e.getPlayer())) e.setCancelled(true);
         else if (frozen.containsKey(e.getPlayer().getUniqueId())) e.setVelocity(new Vector());
         else if (anchor != null) e.setVelocity(anchor.velocity().clone());
     }
-    void hold(org.bukkit.event.player.PlayerMoveEvent e) {
+    void hold(PlayerMoveEvent e) {
         expansion.hold(e);
         Frozen state = frozen.get(e.getPlayer().getUniqueId());
         if (state != null) { Location at = state.at().clone(); at.setYaw(e.getTo().getYaw()); at.setPitch(e.getTo().getPitch()); e.setTo(at); }
     }
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void pauseMovement(PlayerMoveEvent e) {
+        if (paused() && e.getFrom().getWorld().equals(world) && e.hasChangedPosition()) e.setCancelled(true);
+    }
+    @EventHandler
+    public void leavePausedWorld(PlayerChangedWorldEvent e) {
+        if (e.getFrom().equals(world)) pause.release(e.getPlayer());
+    }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void teleport(PlayerTeleportEvent e) {
         if (!scoped(e.getPlayer()) || internalTeleport) return;
+        if (paused() && e.getTo().getWorld().equals(world)) { e.setCancelled(true); return; }
         if (frozen.containsKey(e.getPlayer().getUniqueId())) e.setCancelled(true);
         if (ghosts.containsKey(e.getPlayer().getUniqueId())) {
             if (e.getCause() == PlayerTeleportEvent.TeleportCause.SPECTATE || !ghostBounds(ghosts.get(e.getPlayer().getUniqueId()), e.getTo())) e.setCancelled(true);
@@ -880,8 +979,19 @@ final class PillarsPerks implements Listener, AutoCloseable {
     public void attack(PrePlayerAttackEntityEvent e) { if (scoped(e.getPlayer()) && blocked(e.getPlayer())) e.setCancelled(true); }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void interactEntity(PlayerInteractEntityEvent e) {
-        if (decoys.containsKey(e.getRightClicked().getUniqueId()) || scoped(e.getPlayer()) &&
-                (blocked(e.getPlayer()) || PerkItems.type(e.getPlayer().getInventory().getItem(e.getHand())) == PerkType.DECOY)) e.setCancelled(true);
+        Player p = e.getPlayer();
+        if (decoys.containsKey(e.getRightClicked().getUniqueId())) e.setCancelled(true);
+        if (!scoped(p)) return;
+        ItemStack item = p.getInventory().getItem(e.getHand());
+        PerkType type = PerkItems.type(item);
+        if (blocked(p) || type == PerkType.DECOY) e.setCancelled(true);
+        if (type != PerkType.PROTRACTOR) return;
+        e.setCancelled(true);
+        if (e.getHand() == EquipmentSlot.HAND && active(p) && PerkItems.charges(item) > 0
+                && tick - usedAt.getOrDefault(p.getUniqueId(), -100L) >= 10 && transpose(p)) {
+            consumeHand(p, PerkItems.string(item, PerkItems.SERIAL));
+            usedAt.put(p.getUniqueId(), tick);
+        }
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void interactAtEntity(org.bukkit.event.player.PlayerInteractAtEntityEvent e) { interactEntity(e); }
@@ -937,15 +1047,18 @@ final class PillarsPerks implements Listener, AutoCloseable {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void explosion(EntityExplodeEvent e) {
         if (!e.getLocation().getWorld().equals(world)) return;
+        if (paused()) { e.setCancelled(true); return; }
         e.blockList().removeIf(b -> terrain.locked(b, tick));
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void blockExplosion(org.bukkit.event.block.BlockExplodeEvent e) {
-        if (e.getBlock().getWorld().equals(world)) e.blockList().removeIf(b -> terrain.locked(b, tick));
+        if (!e.getBlock().getWorld().equals(world)) return;
+        if (paused()) e.setCancelled(true);
+        else e.blockList().removeIf(b -> terrain.locked(b, tick));
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void fallingBlock(org.bukkit.event.entity.EntityChangeBlockEvent e) {
-        if (e.getBlock().getWorld().equals(world) && terrain.locked(e.getBlock(), tick)) e.setCancelled(true);
+        if (e.getBlock().getWorld().equals(world) && (paused() || terrain.locked(e.getBlock(), tick))) e.setCancelled(true);
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void piston(org.bukkit.event.block.BlockPistonExtendEvent e) {
@@ -967,6 +1080,7 @@ final class PillarsPerks implements Listener, AutoCloseable {
     }
     @Override public void close() {
         if (closed) return;
+        pause.release();
         expansion.close();
         closed = true; ticker.cancel(); HandlerList.unregisterAll(this);
         for (UUID id : List.copyOf(gravity.keySet())) endGravity(id, Bukkit.getPlayer(id));
@@ -976,6 +1090,6 @@ final class PillarsPerks implements Listener, AutoCloseable {
         pendingAnvils.clear(); gravityCycles.clear(); illusions.close();
         phantomNoises.clear();
         decoys.clear();
-        gifts.clear(); history.clear(); anchors.clear(); jumping.clear(); jumpAt.clear(); usedAt.clear();
+        gifts.clear(); history.clear(); anchors.clear(); jumping.clear(); jumpAt.clear(); usedAt.clear(); fallProtection.clear();
     }
 }

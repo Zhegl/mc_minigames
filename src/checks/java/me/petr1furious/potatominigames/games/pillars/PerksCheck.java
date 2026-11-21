@@ -15,20 +15,26 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.RayTraceResult;
+import org.bukkit.util.Vector;
 
 /** Exercises the production weighted pool, timers, provenance counts and actual temporary block writes. */
 public final class PerksCheck {
     public static void main(String[] args) throws Exception {
         catalogue(); immunity(); layouts(); wishes(); atomicBomb(); decoys(); shapes(); gravity(); phantoms(); history(); channel(); reroll(); terrain(); transmute(); illusions(); integration();
-        System.out.println("Pillars perks: 37 weighted items, atomic TNT, enemy-triggered decoys with owner/terrain immunity and capped damage, shuffled 3x3 anvil rain, complete connected transmutation, personal gravity cooldown, opponent-only phantom sounds/timing, bounded rewind/channel/reroll rules, temporary terrain and queue/preset integration passed");
+        construction(); protractor();
+        System.out.println("Pillars perks: 49 weighted items, timed effects, terrain, transposition and queue/preset integration passed");
     }
     private static void catalogue() {
-        check(PerkType.values().length == 37, "All thirty-seven perks are present");
+        check(PerkType.values().length == 49, "All forty-nine perks are present");
         Map<PerkType, Integer> counts = new HashMap<>();
         for (int roll = 0; roll < PerkType.totalWeight(); roll++) counts.merge(PerkType.atWeight(roll), 1, Integer::sum);
-        check(counts.size() == 37 && PerkType.totalWeight() == 142, "No unreachable outcomes or gaps in the weighted draw");
+        check(counts.size() == 49 && PerkType.totalWeight() == 190, "No unreachable outcomes or gaps in the weighted draw");
         check(Arrays.stream(PerkType.values()).filter(t -> t.legendary).count() == 2, "Exactly the bow and TNT crossbow are legendary");
         for (PerkType type : PerkType.values()) {
             check(counts.get(type) == (type.legendary ? 1 : 4), "Each legendary is four times rarer than each ordinary perk");
@@ -46,6 +52,78 @@ public final class PerksCheck {
         check(PerkRules.BLESSING_TICKS == 1200, "Blessing lasts a full minute");
         check(PerkType.PILLS.charges == 1 && PerkType.PILLS.material == Material.SUGAR, "Pills use one charge and their own icon");
         check(PerkType.DECOY.charges == 1 && PerkType.DECOY.material == Material.ZOMBIE_SPAWN_EGG, "One decoy egg summons one copy");
+    }
+    private static void construction() {
+        var bunker = PerkTerrain.bunkerPlan();
+        check(bunker.values().stream().filter(m -> m == Material.IRON_DOOR).count() == 2
+                && bunker.values().stream().filter(m -> m == Material.LEVER).count() == 2,
+                "Obsidian bunker has a complete iron door and a lever on each side");
+        check(bunker.get(new PerkTerrain.Pos(0, 2, 0)) == Material.OBSIDIAN
+                && bunker.get(new PerkTerrain.Pos(0, 0, 0)) == Material.AIR, "Bunker has shelter and room to stand");
+        var garden = PerkLayouts.garden(org.bukkit.block.BlockFace.EAST);
+        check(garden.get(new PerkTerrain.Pos(4, -1, 0)) == Material.WATER
+                && garden.get(new PerkTerrain.Pos(4, -1, 1)) == Material.FARMLAND
+                && garden.get(new PerkTerrain.Pos(4, 0, 1)) == Material.CARROTS, "Garden faces the player and irrigates its crops");
+        var maze = PerkLayouts.maze();
+        var mazePaths = PerkShapes.connected(new PerkShapes.Cell(0, 0, 0),
+                cell -> maze.get(new PerkTerrain.Pos(cell.x(), cell.y(), cell.z())) == Material.AIR, 100);
+        check(mazePaths != null && mazePaths.contains(new PerkShapes.Cell(0, 0, -3))
+                && mazePaths.contains(new PerkShapes.Cell(2, 0, 3)), "The maze can be exited from its central starting point");
+
+        FakeWorld fake = new FakeWorld();
+        Location at = new Location(fake.world, .5, 200, .5);
+        check(new PerkTerrain(fake.world).pillar(at, Material.BEDROCK, new java.util.Random(42)),
+                "An empty arena has room to build a pillar");
+        var top = fake.blocks.keySet().stream().filter(pos -> pos.y() == 199).findFirst().orElseThrow();
+        double distance = Math.hypot(top.x(), top.z());
+        check(distance >= 5 && distance <= 8 && fake.get(top.x(), -64, top.z()) == Material.BEDROCK,
+                "The new pillar is 5–8 blocks away and rises from world bottom to the player's level");
+    }
+    private static void protractor() {
+        var origin = new PerkTerrain.Pos(-11, 200, 9);
+        var before = new PerkTerrain.Pos(-13, 201, 10);
+        var after = new PerkTerrain.Pos(-10, 198, 10);
+        check(PerkProtractor.transpose(before, origin).equals(after) && PerkProtractor.transpose(after, origin).equals(before),
+                "Transposing relative X and Y is reversible and preserves Z");
+        var entity = new Location(null, -12.75, 201.5, 10.125, 45, 15);
+        var moved = PerkProtractor.transpose(entity, origin);
+        check(moved.getX() == -9.5 && moved.getY() == 198.25 && moved.getZ() == 10.125
+                && moved.getYaw() == entity.getYaw() && moved.getPitch() == entity.getPitch(),
+                "Entities transpose the same axes as blocks, keeping sub-block coordinates and view direction");
+
+        FakeWorld fake = new FakeWorld();
+        PerkTerrain terrain = new PerkTerrain(fake.world);
+        Location[] victim = {new Location(fake.world, .5, 200, .5)};
+        fake.target = player(fake, victim);
+        fake.set(0, 199, 0, Material.BEDROCK);
+        fake.set(0, 198, 0, Material.OBSIDIAN);
+        Player user = player(fake, new Location[]{new Location(fake.world, .5, 200, -5)});
+        check(PerkProtractor.cast(user, terrain, 0, e -> true), "A pillar and a player standing on it can transpose together");
+        check(fake.get(-1, 200, 0) == Material.BEDROCK && fake.get(-2, 200, 0) == Material.OBSIDIAN
+                && fake.get(0, 199, 0) == Material.AIR, "Transposition moves the original block data");
+        check(Math.abs(victim[0].getX() - .9) < .001 && Math.abs(victim[0].getY() - 199.6) < .001,
+                "The victim's centre transposes while its body remains upright");
+
+        terrain.put(fake.block(2, 200, 0), Material.ICE, 100, true);
+        int writes = fake.writes;
+        Location at = victim[0].clone();
+        check(!PerkProtractor.cast(user, terrain, 0, e -> true) && fake.writes == writes && at.equals(victim[0]),
+                "A protected cell prevents the entire transposition");
+    }
+
+    private static Player player(FakeWorld fake, Location[] at) {
+        return (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (p, m, a) -> switch (m.getName()) {
+            case "getWorld" -> fake.world;
+            case "getLocation", "getEyeLocation" -> at[0].clone();
+            case "getBoundingBox" -> new BoundingBox(-.3, 0, -.3, .3, 1.8, .3).shift(at[0].toVector());
+            case "getVelocity" -> new Vector();
+            case "getFallDistance" -> 0f;
+            case "isInsideVehicle" -> false;
+            case "getPassengers" -> List.of();
+            case "teleport" -> { at[0] = ((Location) a[0]).clone(); yield true; }
+            case "setVelocity", "setFallDistance" -> null;
+            default -> throw new AssertionError(m.getName());
+        });
     }
     private static void immunity() {
         FakeWorld f = new FakeWorld(); UUID id = UUID.randomUUID();
@@ -368,13 +446,18 @@ public final class PerksCheck {
     }
     private static final class FakeWorld {
         final Map<PerkTerrain.Pos, Material> blocks = new HashMap<>(); int writes;
+        Player target;
         final java.util.List<FakeDisplay> displays = new java.util.ArrayList<>();
         final WorldBorder border = (WorldBorder) Proxy.newProxyInstance(WorldBorder.class.getClassLoader(), new Class<?>[] {WorldBorder.class},
                 (p, m, a) -> { if (m.getName().equals("isInside")) return true; throw new AssertionError(m.getName()); });
         final World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[] {World.class}, (p, m, a) -> switch (m.getName()) {
-            case "getBlockAt" -> block((int) a[0], (int) a[1], (int) a[2]);
+            case "getBlockAt" -> a[0] instanceof Location at
+                    ? block(at.getBlockX(), at.getBlockY(), at.getBlockZ())
+                    : block((int) a[0], (int) a[1], (int) a[2]);
             case "getMinHeight" -> -64; case "getMaxHeight" -> 320; case "getWorldBorder" -> border;
             case "isChunkLoaded" -> true;
+            case "rayTrace" -> new RayTraceResult(target.getLocation().toVector(), target);
+            case "getNearbyEntities" -> List.of(target);
             case "spawn" -> spawn((Location) a[0], (Class<?>) a[1], a[2]);
             case "playSound" -> null;
             case "equals" -> p == a[0]; case "hashCode" -> System.identityHashCode(p);
@@ -396,13 +479,25 @@ public final class PerksCheck {
                 default -> throw new AssertionError("Unexpected data operation: " + m.getName());
             });
         }
+        BlockState state(Location at, Material material) {
+            return (BlockState) Proxy.newProxyInstance(BlockState.class.getClassLoader(),
+                    new Class<?>[]{BlockState.class}, (p, m, a) -> switch (m.getName()) {
+                        case "getBlockData" -> data(material);
+                        case "copy" -> state((Location) a[0], material);
+                        case "isCollidable" -> material != Material.AIR;
+                        case "update" -> { set(at.getBlockX(), at.getBlockY(), at.getBlockZ(), material); yield true; }
+                        default -> throw new AssertionError(m.getName());
+                    });
+        }
         Block block(int x, int y, int z) {
             return (Block) Proxy.newProxyInstance(Block.class.getClassLoader(), new Class<?>[] {Block.class}, (p, m, a) -> switch (m.getName()) {
                 case "getX" -> x; case "getY" -> y; case "getZ" -> z; case "getWorld" -> world;
                 case "getRelative" -> { var face = (org.bukkit.block.BlockFace) a[0]; yield block(x + face.getModX(), y + face.getModY(), z + face.getModZ()); }
                 case "getType" -> get(x, y, z); case "getLocation" -> new Location(world, x, y, z);
                 case "getBlockData" -> data(get(x, y, z));
-                case "isLiquid" -> false; case "getState" -> null;
+                case "isLiquid" -> false;
+                case "isCollidable" -> get(x, y, z) != Material.AIR;
+                case "getState" -> state(new Location(world, x, y, z), get(x, y, z));
                 case "setType" -> { check(a.length == 2 && !(boolean) a[1], "Perk block writes do not enable physics"); set(x, y, z, (Material) a[0]); yield null; }
                 case "setBlockData" -> { check(a.length == 2 && !(boolean) a[1], "Restoring terrain does not enable physics"); set(x, y, z, ((BlockData) a[0]).getMaterial()); yield null; }
                 default -> throw new AssertionError("Unexpected block operation: " + m.getName());

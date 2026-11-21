@@ -300,11 +300,7 @@ final class PillarsEvents implements Listener {
     }
 
     private void later(Kind kind, long delay, Runnable action) {
-        eventTasks.add(kind, Bukkit.getScheduler().runTaskLater(services.plugin(), () -> {
-            if (!closed) {
-                action.run();
-            }
-        }, delay));
+        eventTasks.add(kind, tick + delay, action);
     }
 
     // Starting each event.
@@ -380,10 +376,10 @@ final class PillarsEvents implements Listener {
     }
 
     private void onTick() {
-        tick++;
-        if (closed) {
+        if (closed || session.paused()) {
             return;
         }
+        eventTasks.tick(++tick);
         List<Player> alive = session.aliveOnline();
         trackMovement(alive);
         if (running.contains(Kind.CONTRACT_AD) && (tick - adStartedAt) % 5 == 0) {
@@ -485,7 +481,7 @@ final class PillarsEvents implements Listener {
         String message = PlainTextComponentSerializer.plainText().serialize(event.message());
         // Never inspect session collections or touch players from the asynchronous chat thread.
         Bukkit.getScheduler().runTask(services.plugin(), () -> {
-            if (closed || mathChallenge != expected || tick >= mathEndsAt) {
+            if (closed || session.paused() || mathChallenge != expected || tick >= mathEndsAt) {
                 return;
             }
             Player player = session.aliveOnline().stream()
@@ -989,14 +985,21 @@ final class PillarsEvents implements Listener {
 
     /** A warning, its effect and its callbacks belong to the same event lifetime. */
     static final class EventTasks<K> {
-        private final Map<K, List<BukkitTask>> tasks = new HashMap<>();
+        private record Pending<K>(K kind, long due, long order, Runnable action) { }
+        private final java.util.PriorityQueue<Pending<K>> tasks = new java.util.PriorityQueue<>(
+                java.util.Comparator.<Pending<K>>comparingLong(Pending::due).thenComparingLong(Pending::order));
         private final Set<K> burstEvents = new HashSet<>();
         private boolean burst;
+        private long nextOrder;
 
         void startBurst() { burst = true; }
         void selected(K kind) { if (burst) burstEvents.add(kind); }
         boolean isBurst(K kind) { return burstEvents.contains(kind); }
-        void add(K kind, BukkitTask task) { tasks.computeIfAbsent(kind, ignored -> new ArrayList<>()).add(task); }
+        void add(K kind, long due, Runnable action) { tasks.add(new Pending<>(kind, due, nextOrder++, action)); }
+
+        void tick(long now) {
+            while (!tasks.isEmpty() && tasks.peek().due() <= now) tasks.remove().action().run();
+        }
 
         Set<K> stopBurst() {
             burst = false;
@@ -1005,12 +1008,11 @@ final class PillarsEvents implements Listener {
 
         void finish(K kind) {
             burstEvents.remove(kind);
-            List<BukkitTask> scheduled = tasks.remove(kind);
-            if (scheduled != null) scheduled.forEach(BukkitTask::cancel);
+            tasks.removeIf(task -> task.kind().equals(kind));
         }
 
         void close() {
-            for (K kind : List.copyOf(tasks.keySet())) finish(kind);
+            tasks.clear();
             burstEvents.clear();
             burst = false;
         }
