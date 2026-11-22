@@ -7,7 +7,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import me.petr1furious.potatominigames.core.game.SessionServices;
-import me.petr1furious.potatominigames.core.hud.EntityCamera;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import me.petr1furious.potatominigames.i18n.I18n;
 import net.kyori.adventure.text.Component;
@@ -19,12 +18,12 @@ import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.block.Bell;
-import org.bukkit.entity.Animals;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -33,25 +32,10 @@ final class FurryQuestSession extends PartySurvivalSession {
     static final String ID = "furry_quest";
     private static final int RANGE = 72;
 
-    private static final class Agent {
-        final Player player;
-        final Animals animal;
-        final boolean wasVisible;
-        boolean viewing, steering;
-        float heading;
-
-        Agent(Player player, Animals animal) {
-            this.player = player;
-            this.animal = animal;
-            wasVisible = player.isVisibleByDefault();
-        }
-    }
-
     private FurryQuestArena arena;
     private FurryQuest quest;
-    private EntityCamera camera;
-    private final Map<UUID, Agent> agents = new HashMap<>();
-    private final Map<UUID, Agent> owners = new HashMap<>();
+    private final Map<UUID, FurryQuestDisguise> agents = new HashMap<>();
+    private final Map<UUID, FurryQuestDisguise> owners = new HashMap<>();
     private long nextShot;
     private boolean aiming;
 
@@ -65,11 +49,10 @@ final class FurryQuestSession extends PartySurvivalSession {
         world.setGameRule(GameRules.MOB_GRIEFING, false);
         arena = new FurryQuestArena(world, random);
         arena.build();
-        camera = new EntityCamera();
     }
 
-    @Override Location spawn(int index, int count) { return arena.lookout(index, false); }
-    @Override Location viewpoint() { return arena.lookout(0, true); }
+    @Override Location spawn(int index, int count) { return arena.staging(index, count); }
+    @Override Location viewpoint() { return arena.lookout(); }
     @Override double outHeight() { return FurryQuestArena.FLOOR - 3; }
     @Override long arenaTime() { return 6000; }
     @Override int durationSeconds() { return FurryQuest.SECONDS; }
@@ -94,16 +77,16 @@ final class FurryQuestSession extends PartySurvivalSession {
                 player.getInventory().setItem(0, new ItemStack(Material.SPYGLASS));
                 player.sendMessage(message("sniper"));
             } else {
-                Agent agent = new Agent(player, animals.next());
+                FurryQuestDisguise agent = new FurryQuestDisguise(player, animals.next());
                 agents.put(id, agent);
                 owners.put(agent.animal.getUniqueId(), agent);
-                player.setVisibleByDefault(false);
-                teleport(player, arena.controller());
+                arena.claim(agent.animal);
+                agent.apply(services.plugin());
+                teleport(player, agent.animal.getLocation());
                 player.sendMessage(message("agent", Component.translatable(agent.animal.getType().translationKey())));
                 player.sendMessage(mission(id));
             }
             player.getInventory().setHeldItemSlot(0);
-            freezeMovement(player);
         }
     }
 
@@ -115,22 +98,14 @@ final class FurryQuestSession extends PartySurvivalSession {
             arena.tick(elapsed);
             for (var entry : agents.entrySet()) {
                 UUID id = entry.getKey();
-                Agent agent = entry.getValue();
-                // The client must have spawned this entity before it can accept a camera packet.
-                if (!agent.animal.getTrackedBy().contains(agent.player)) {
-                    agent.viewing = false;
-                    continue;
-                }
-                if (!agent.viewing) {
-                    camera.point(agent.player, agent.animal);
-                    agent.viewing = true;
-                }
+                FurryQuestDisguise agent = entry.getValue();
+                if (!world.equals(agent.player.getWorld())) continue;
+                agent.sync();
                 Input input = agent.player.getCurrentInput();
-                steer(agent, input, elapsed);
                 FurryQuest.Site site = quest.site(id);
                 if (site == null) continue;
                 Location target = arena.landmark(site);
-                Location body = agent.animal.getLocation();
+                Location body = agent.player.getLocation();
                 if (elapsed % 10 == 0) {
                     agent.player.spawnParticle(Particle.HAPPY_VILLAGER, target.clone().add(0, 2.5, 0),
                             8, .45, .3, .45, 0);
@@ -151,23 +126,13 @@ final class FurryQuestSession extends PartySurvivalSession {
         }
     }
 
-    private void steer(Agent agent, Input input, long tick) {
-        int turn = (input.isRight() ? 1 : 0) - (input.isLeft() ? 1 : 0);
-        boolean walking = input.isForward() && !input.isSneak();
-        boolean steering = walking || turn != 0 || input.isSneak();
-        if (steering) {
-            if (!agent.steering) agent.heading = agent.animal.getYaw();
-            agent.heading = Location.normalizeYaw(agent.heading + 5 * turn);
-            if (turn != 0) agent.animal.setRotation(agent.heading, 0);
-            if (!walking) arena.pause(agent.animal, tick);
-            else if (!agent.steering || tick % 4 == 0) arena.step(agent.animal, agent.heading, tick);
-        } else if (agent.steering) {
-            arena.pause(agent.animal, tick);
-        }
-        agent.steering = steering;
+    @Override
+    protected void handleMove(PlayerMoveEvent event) {
+        if (quest == null || !quest.sniper().equals(event.getPlayer().getUniqueId())) return;
+        arena.constrainSniper(event);
     }
 
-    private void playTaskEffect(Agent agent, FurryQuest.Site site) {
+    private void playTaskEffect(FurryQuestDisguise agent, FurryQuest.Site site) {
         if (site == FurryQuest.Site.HAY) {
             world.spawnParticle(Particle.BLOCK, agent.animal.getEyeLocation(), 28, .45, .3, .45, .08,
                     Material.HAY_BLOCK.createBlockData());
@@ -216,7 +181,7 @@ final class FurryQuestSession extends PartySurvivalSession {
             player.sendActionBar(message("miss"));
             return;
         }
-        Agent agent = owners.get(hit.getHitEntity().getUniqueId());
+        FurryQuestDisguise agent = owners.get(hit.getHitEntity().getUniqueId());
         if (agent == null) quest.wrongShot();
         else eliminate(agent.player);
     }
@@ -251,12 +216,11 @@ final class FurryQuestSession extends PartySurvivalSession {
     }
 
     private void removeAgent(UUID id) {
-        Agent agent = agents.remove(id);
+        FurryQuestDisguise agent = agents.remove(id);
         if (agent == null) return;
-        camera.point(agent.player, agent.player);
+        agent.restore(services.plugin());
         owners.remove(agent.animal.getUniqueId());
         arena.remove(agent.animal);
-        agent.player.setVisibleByDefault(agent.wasVisible);
     }
 
     @Override

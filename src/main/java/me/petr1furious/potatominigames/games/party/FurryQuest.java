@@ -15,7 +15,7 @@ final class FurryQuest {
     static final int SECONDS = 150;
 
     enum Site {
-        POND(-10, -9), HAY(10, -9), TREE(-10, 10), TROUGH(10, 10), BELL(0, 0);
+        POND(-13, -10), HAY(12, -11), TREE(-12, 10), TROUGH(13, 8), BELL(1, 15);
 
         final int x, z;
         Site(int x, int z) {
