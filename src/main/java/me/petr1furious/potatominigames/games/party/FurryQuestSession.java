@@ -94,7 +94,7 @@ final class FurryQuestSession extends PartySurvivalSession {
     @Override
     void playTick(long elapsed) {
         if (!playing() || quest == null) return;
-        if (elapsed >= FurryQuest.SECONDS * 20L) quest.timeout();
+        if (remainingRoundTicks() == 0) quest.timeout();
         if (quest.outcome() == null) {
             returnFallenSniper();
             arena.tick(elapsed);
@@ -114,14 +114,21 @@ final class FurryQuestSession extends PartySurvivalSession {
                     playTaskEffect(agent, site);
                     agent.player.playSound(body, Sound.BLOCK_NOTE_BLOCK_CHIME, .7f, 1.4f);
                     agent.player.sendMessage(message("complete", quest.completed(id), FurryQuest.TASKS));
-                    if (quest.outcome() != null) break;
                     agent.player.sendMessage(mission(id));
+                    checkFinalHunt();
                 }
             }
         }
         if (quest.outcome() != null) {
             say(message("end." + key(quest.outcome())));
             finish(List.of());
+        }
+    }
+
+    private void checkFinalHunt() {
+        if (quest.startFinalHuntIfReady()) {
+            restartRoundTimer(FurryQuest.FINAL_SECONDS);
+            say(message("final_start", FurryQuest.FINAL_SECONDS));
         }
     }
 
@@ -211,7 +218,7 @@ final class FurryQuestSession extends PartySurvivalSession {
 
     @Override
     Component status() {
-        return message("time", Math.max(0, FurryQuest.SECONDS - elapsed() / 20));
+        return message(quest != null && quest.finalHunt() ? "final_time" : "time", (remainingRoundTicks() + 19) / 20);
     }
 
     private Component mission(UUID id) {
@@ -234,7 +241,10 @@ final class FurryQuestSession extends PartySurvivalSession {
 
     @Override
     void playerOut(Player player) {
-        if (quest != null) quest.out(player.getUniqueId());
+        if (quest != null) {
+            quest.out(player.getUniqueId());
+            checkFinalHunt();
+        }
         removeAgent(player.getUniqueId());
     }
 

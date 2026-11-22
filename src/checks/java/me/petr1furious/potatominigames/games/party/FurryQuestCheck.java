@@ -79,19 +79,42 @@ public final class FurryQuestCheck {
         require(game.remaining() == 2 && game.site(sniper) == null, "One sniper and two agents");
         finishRoute(game, first, true);
         require(game.outcome() == null && game.completed(second) == 0, "Personal tasks cannot be pooled");
+        require(!game.startFinalHuntIfReady(), "Wait for every living agent");
         require(!game.act(first, 0, 0, true, true, true), "Completed agents cannot score again");
-        game.out(first);
         finishRoute(game, second, false);
-        require(game.outcome() == FurryQuest.Outcome.MISSIONS, "Both routes complete");
+        require(game.startFinalHuntIfReady() && game.outcome() == null, "Last route starts the final hunt");
         game.timeout();
-        require(game.result(Set.of(sniper, second)).places().equals(List.of(List.of(second))), "Eligible winners");
+        require(game.outcome() == FurryQuest.Outcome.MISSIONS
+                        && Set.copyOf(game.result(Set.copyOf(PLAYERS)).places().getFirst()).equals(Set.copyOf(spies)),
+                "All surviving agents share first place");
+
+        game = round();
+        finishRoute(game, second, false);
+        game.out(first);
+        require(game.startFinalHuntIfReady(), "Losing the last unfinished agent starts the hunt");
+        game.timeout();
+        require(game.result(Set.copyOf(PLAYERS)).places().equals(List.of(List.of(second))),
+                "A caught agent with unfinished tasks cannot block or share the mission win");
 
         game = round();
         game.out(first);
         finishRoute(game, second, false);
-        require(game.outcome() == null && game.remaining() == 1, "An unfinished agent still counts");
+        require(game.startFinalHuntIfReady(), "Living agents can finish after an earlier elimination");
         game.out(second);
-        require(game.outcome() == FurryQuest.Outcome.ALL_CAUGHT, "Sniper catches all agents");
+        require(game.outcome() == FurryQuest.Outcome.ALL_CAUGHT && !game.startFinalHuntIfReady(),
+                "Catching the last agent during the countdown wins immediately");
+        game.timeout();
+        require(game.result(Set.copyOf(PLAYERS)).places().equals(List.of(List.of(sniper))), "Sniper keeps the win");
+
+        game = round();
+        finishRoute(game, first, true);
+        finishRoute(game, second, false);
+        require(game.startFinalHuntIfReady(), "Start the hunt with two agents");
+        game.out(first);
+        require(!game.startFinalHuntIfReady() && game.outcome() == null, "A catch cannot restart the ten seconds");
+        game.timeout();
+        require(game.result(Set.copyOf(PLAYERS)).places().equals(List.of(List.of(second))),
+                "Only agents still alive at the end win");
         game = round();
         game.wrongShot();
         require(game.result(Set.copyOf(PLAYERS)).places().getFirst().containsAll(spies), "Livestock loss");
@@ -101,6 +124,15 @@ public final class FurryQuestCheck {
         game = round();
         game.out(sniper);
         require(game.outcome() == FurryQuest.Outcome.SNIPER_LEFT, "Sniper departure");
-        System.out.println("Furry Quest individual routes and all five task interactions passed");
+        var session = new FurryQuestSession(null, null, PartyRoundContext.standalone(null));
+        session.restartRoundTimer(session.durationSeconds());
+        session.tick = 2999;
+        require(session.remainingRoundTicks() == 1, "One tick remains on the original clock");
+        session.restartRoundTimer(FurryQuest.FINAL_SECONDS);
+        session.tick += 199;
+        require(session.remainingRoundTicks() == 1, "The sniper gets the full ten seconds across the old deadline");
+        session.tick++;
+        require(session.remainingRoundTicks() == 0, "Final hunt ends on tick 200");
+        System.out.println("Furry Quest personal routes, final countdown and survivor awards passed");
     }
 }

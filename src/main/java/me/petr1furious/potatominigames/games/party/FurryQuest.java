@@ -10,9 +10,10 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
-/** Each agent owns a route. Catching one cannot erase the team's unfinished work. */
+/** Each surviving agent must finish a personal route to start the sniper's final countdown. */
 final class FurryQuest {
     static final int SECONDS = 150;
+    static final int FINAL_SECONDS = 10;
 
     enum Site {
         POND(-13, -10), HAY(12, -11), TREE(-12, 10), TROUGH(13, 8), BELL(1, 15);
@@ -86,6 +87,7 @@ final class FurryQuest {
     private final UUID sniper;
     private final Map<UUID, Route> routes = new LinkedHashMap<>();
     private Outcome outcome;
+    private boolean finalHunt;
 
     FurryQuest(Collection<UUID> players, Random random) {
         if (players.size() < 2) throw new IllegalArgumentException("Furry Quest requires two players");
@@ -102,12 +104,18 @@ final class FurryQuest {
         return route == null || !route.active ? null : route.site();
     }
     Outcome outcome() { return outcome; }
+    boolean finalHunt() { return finalHunt; }
+
+    boolean startFinalHuntIfReady() {
+        if (finalHunt || outcome != null || routes.values().stream().anyMatch(r -> r.active && r.completed < TASKS))
+            return false;
+        finalHunt = true;
+        return true;
+    }
 
     boolean act(UUID id, double dx, double dz, boolean level, boolean crouch, boolean jump) {
         if (outcome != null || site(id) == null) return false;
-        if (!routes.get(id).act(dx, dz, level, crouch, jump)) return false;
-        if (routes.values().stream().allMatch(r -> r.completed == TASKS)) outcome = Outcome.MISSIONS;
-        return true;
+        return routes.get(id).act(dx, dz, level, crouch, jump);
     }
 
     void out(UUID id) {
@@ -124,14 +132,15 @@ final class FurryQuest {
     }
 
     void timeout() {
-        if (outcome == null) outcome = Outcome.TIME;
+        if (outcome == null) outcome = finalHunt ? Outcome.MISSIONS : Outcome.TIME;
     }
 
     PartyRoundResult result(Set<UUID> eligible) {
         if (outcome == null) return PartyRoundResult.empty();
         List<UUID> winners = switch (outcome) {
             case ALL_CAUGHT, TIME -> List.of(sniper);
-            default -> List.copyOf(routes.keySet());
+            case MISSIONS, LIVESTOCK, SNIPER_LEFT -> routes.entrySet().stream()
+                    .filter(e -> !finalHunt || e.getValue().active).map(Map.Entry::getKey).toList();
         };
         return new PartyRoundResult(List.of(winners)).eligible(eligible);
     }
