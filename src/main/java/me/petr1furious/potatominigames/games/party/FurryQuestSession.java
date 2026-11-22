@@ -429,10 +429,6 @@ final class FurryQuestSession extends PartySurvivalSession {
         Player player = event.getPlayer();
         UUID id = player.getUniqueId();
         if (!playing() || quest == null || quest.outcome() != null) return;
-        if (id.equals(quest.sniper()) && chaseEndsAt != 0 && alive(player) && world.equals(player.getWorld())) {
-            recallHunter(player);
-            return;
-        }
         if (!agents.containsKey(id) || quest.site(id) == null) return;
         quest.cycle(id);
         player.sendActionBar(mission(id, quest.site(id)));
