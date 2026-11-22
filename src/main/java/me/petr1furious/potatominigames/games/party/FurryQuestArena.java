@@ -52,6 +52,8 @@ final class FurryQuestArena {
             }
         }
         for (FurryQuest.Site site : FurryQuest.Site.values()) buildLandmark(site);
+        // Keep the hidden controllers near the whole herd so every animal stays client-tracked.
+        block(0, -3, 0, Material.STONE);
         for (int x = -9; x <= 9; x++) {
             block(x, 14, -EDGE, Material.SPRUCE_PLANKS);
             block(x, 14, EDGE, Material.SPRUCE_PLANKS);
@@ -92,6 +94,10 @@ final class FurryQuestArena {
             case TROUGH -> {
                 for (int dx = -1; dx <= 1; dx++) block(x + dx, 1, z, Material.WATER_CAULDRON);
             }
+            case BELL -> {
+                block(x, 1, z, Material.STONE_BRICKS);
+                block(x, 2, z, Material.BELL);
+            }
         }
     }
 
@@ -106,6 +112,10 @@ final class FurryQuestArena {
 
     Location landmark(FurryQuest.Site site) {
         return new Location(world, site.x + .5, FLOOR + 1, site.z + .5);
+    }
+
+    Location controller() {
+        return new Location(world, .5, FLOOR - 2, .5);
     }
 
     private boolean open(int x, int z) {
@@ -156,8 +166,20 @@ final class FurryQuestArena {
         walker.body.getPathfinder().moveTo(target, 1.0);
     }
 
-    void direct(Animals animal, Location target, long tick) {
-        walk(herd.get(animal.getUniqueId()), target, tick);
+    void step(Animals animal, float yaw, long tick) {
+        Location from = animal.getLocation();
+        double angle = Math.toRadians(yaw);
+        Block ahead = from.add(-3 * Math.sin(angle), 0, 3 * Math.cos(angle)).getBlock();
+        Location target = destination(ahead);
+        if (target != null) walk(herd.get(animal.getUniqueId()), target, tick);
+        else pause(animal, tick);
+    }
+
+    void pause(Animals animal, long tick) {
+        Walker walker = herd.get(animal.getUniqueId());
+        walker.destination = null;
+        walker.nextWander = tick + 70;
+        animal.getPathfinder().stopPathfinding();
     }
 
     void tick(long tick) {
