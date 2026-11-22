@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import me.petr1furious.potatominigames.core.game.SessionServices;
+import me.petr1furious.potatominigames.core.hud.PrivatePlayerGlow;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import me.petr1furious.potatominigames.i18n.I18n;
 import net.kyori.adventure.text.Component;
@@ -39,6 +40,7 @@ final class FurryQuestSession extends PartySurvivalSession {
     private FurryQuest quest;
     private final Map<UUID, FurryQuestDisguise> agents = new HashMap<>();
     private final Map<UUID, FurryQuestDisguise> owners = new HashMap<>();
+    private PrivatePlayerGlow teammateGlow;
     private long nextShot;
     private boolean aiming;
 
@@ -71,6 +73,7 @@ final class FurryQuestSession extends PartySurvivalSession {
             finish(List.of());
             return;
         }
+        teammateGlow = new PrivatePlayerGlow(services.plugin());
         quest = new FurryQuest(players.stream().map(Player::getUniqueId).toList(), arena.doubleAgent().getUniqueId(), random);
         var animals = arena.shuffledDisguises().iterator();
         for (Player player : players) {
@@ -92,6 +95,17 @@ final class FurryQuestSession extends PartySurvivalSession {
             }
             player.getInventory().setHeldItemSlot(0);
         }
+        refreshTeammateOutlines();
+    }
+
+    private void refreshTeammateOutlines() {
+        for (var viewer : agents.values()) {
+            var teammates = agents.values().stream()
+                    .filter(teammate -> teammate != viewer)
+                    .map(teammate -> teammate.animal)
+                    .toList();
+            teammateGlow.updateTargets(viewer.player, teammates);
+        }
     }
 
     @Override
@@ -101,6 +115,7 @@ final class FurryQuestSession extends PartySurvivalSession {
         if (quest.outcome() == null) {
             returnFallenSniper();
             arena.tick(elapsed);
+            if (elapsed % 10 == 0) refreshTeammateOutlines();
             for (var entry : agents.entrySet()) {
                 UUID id = entry.getKey();
                 FurryQuestDisguise agent = entry.getValue();
@@ -343,6 +358,8 @@ final class FurryQuestSession extends PartySurvivalSession {
     private void removeAgent(UUID id) {
         FurryQuestDisguise agent = agents.remove(id);
         if (agent == null) return;
+        teammateGlow.remove(id);
+        teammateGlow.remove(agent.animal.getUniqueId());
         agent.restore(services.plugin());
         owners.remove(agent.animal.getUniqueId());
         arena.remove(agent.animal);
