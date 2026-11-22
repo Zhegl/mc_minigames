@@ -57,6 +57,11 @@ final class FurryQuestArena {
         return new Location(world, .5, FLOOR + DECK + 2, .5, 0, 25);
     }
 
+    boolean belowLookout(Location feet) {
+        // The outer ring is half a block lower than the center of the deck.
+        return feet.getY() < FLOOR + DECK + 1.5;
+    }
+
     Location staging(int index, int count) {
         double angle = 2 * Math.PI * index / Math.max(1, count);
         return lookout().add(1.4 * Math.sin(angle), 0, 1.4 * Math.cos(angle));

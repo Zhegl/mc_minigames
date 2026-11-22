@@ -10,6 +10,7 @@ import me.petr1furious.potatominigames.core.game.SessionServices;
 import io.papermc.paper.event.player.PlayerStopUsingItemEvent;
 import me.petr1furious.potatominigames.i18n.I18n;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.GameRules;
 import org.bukkit.Input;
@@ -95,6 +96,7 @@ final class FurryQuestSession extends PartySurvivalSession {
         if (!playing() || quest == null) return;
         if (elapsed >= FurryQuest.SECONDS * 20L) quest.timeout();
         if (quest.outcome() == null) {
+            returnFallenSniper();
             arena.tick(elapsed);
             for (var entry : agents.entrySet()) {
                 UUID id = entry.getKey();
@@ -123,6 +125,18 @@ final class FurryQuestSession extends PartySurvivalSession {
         if (quest.outcome() != null) {
             say(message("end." + key(quest.outcome())));
             finish(List.of());
+        }
+    }
+
+    private void returnFallenSniper() {
+        Player sniper = Bukkit.getPlayer(quest.sniper());
+        if (sniper == null || !world.equals(sniper.getWorld()) || !alive(sniper)) return;
+        Location feet = sniper.getLocation();
+        if (arena.belowLookout(feet)) {
+            Location lookout = arena.lookout();
+            lookout.setYaw(feet.getYaw());
+            lookout.setPitch(feet.getPitch());
+            teleport(sniper, lookout);
         }
     }
 
