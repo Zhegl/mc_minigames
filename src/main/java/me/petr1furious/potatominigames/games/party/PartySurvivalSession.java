@@ -71,6 +71,7 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
     long startedAt;
     private long countdownEnd;
     private long durationTicks;
+    private long timerStart;
     private boolean playing;
     private boolean done;
     private boolean internalTeleport;
@@ -302,7 +303,7 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
                 finish(standings.survivors());
                 return;
             }
-            if (!standings.resultsHeld() && elapsed() >= durationTicks) {
+            if (!standings.resultsHeld() && remainingRoundTicks() == 0) {
                 finish(standings.survivors());
                 return;
             }
@@ -415,6 +416,15 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
         return tick;
     }
 
+    final void restartRoundTimer(int seconds) {
+        timerStart = elapsed();
+        durationTicks = seconds * 20L;
+    }
+
+    final long remainingRoundTicks() {
+        return Math.max(0, timerStart + durationTicks - elapsed());
+    }
+
     private void hud() {
         if (bar == null || done) return;
         Component preparing = !playing ? preparationStatus() : null;
@@ -428,7 +438,7 @@ abstract class PartySurvivalSession implements PartyRoundSession, Listener {
         else
             bar.progress(
                     playing
-                            ? Math.clamp(1f - (float) elapsed() / durationTicks, 0, 1)
+                            ? Math.clamp((float) remainingRoundTicks() / durationTicks, 0, 1)
                             : Math.clamp(1f - (float) tick / Math.max(1, countdownEnd), 0, 1));
         for (Player player : services.session().audiencePlayers()) {
             player.showBossBar(bar);

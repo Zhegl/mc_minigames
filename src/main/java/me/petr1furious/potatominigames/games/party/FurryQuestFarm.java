@@ -49,17 +49,32 @@ final class FurryQuestFarm {
 
         for (var site : FurryQuest.Site.values()) {
             switch (site) {
-                case POND -> pond(site.x, site.z);
-                case HAY -> barn(site.x, site.z);
-                case TREE -> orchard(site.x, site.z);
-                case TROUGH -> field(site.x, site.z);
-                case BELL -> bellGreen(site.x, site.z);
+                case POND -> pond(site.plot.x(), site.plot.z());
+                case HAY -> barn(site.plot.x(), site.plot.z());
+                case TREE -> orchard(site.plot.x(), site.plot.z());
+                case TROUGH -> field(site.plot.x(), site.plot.z());
+                case BELL -> bellGreen(site.plot.x(), site.plot.z());
+                case PARCEL -> {
+                    var loom = FurryQuest.Station.LOOM;
+                    put(loom.x, loom.y, loom.z, LOOM);
+                }
+                case CHIMES -> {
+                    chime(FurryQuest.Station.BLUE, BLUE_WOOL);
+                    chime(FurryQuest.Station.GOLD, YELLOW_WOOL);
+                    chime(FurryQuest.Station.RED, RED_WOOL);
+                }
+                case FISH, SWAP, CONTACT -> { } // These use existing scenery or livestock.
             }
         }
         farmGate();
         handcart(-18, 1);
         watchtower();
         connectRails();
+    }
+
+    private void chime(FurryQuest.Station station, Material color) {
+        put(station.x, station.y - 1, station.z, NOTE_BLOCK);
+        put(station.x, station.y, station.z, color);
     }
 
     private void lane(int x, int z, int endX, int endZ) {

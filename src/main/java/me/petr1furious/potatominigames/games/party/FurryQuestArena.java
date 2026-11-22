@@ -35,6 +35,7 @@ final class FurryQuestArena {
     private final World world;
     private final Random random;
     private final Map<UUID, Walker> herd = new LinkedHashMap<>();
+    private Animals doubleAgent;
 
     FurryQuestArena(World world, Random random) {
         this.world = world;
@@ -43,6 +44,7 @@ final class FurryQuestArena {
 
     void build() {
         new FurryQuestFarm(world).build();
+        int contactIndex = random.nextInt(40);
         for (int i = 0; i < 40; i++) {
             Animals body = (Animals) world.spawnEntity(meadow(), SPECIES.get(i % SPECIES.size()));
             body.setAdult();
@@ -50,11 +52,17 @@ final class FurryQuestArena {
             body.setInvulnerable(true);
             body.setRemoveWhenFarAway(false);
             herd.put(body.getUniqueId(), new Walker(body, random.nextInt(100)));
+            if (i == contactIndex) doubleAgent = body;
         }
     }
 
     Location lookout() {
         return new Location(world, .5, FLOOR + DECK + 2, .5, 0, 25);
+    }
+
+    boolean belowLookout(Location feet) {
+        // The outer ring is half a block lower than the center of the deck.
+        return feet.getY() < FLOOR + DECK + 1.5;
     }
 
     Location staging(int index, int count) {
@@ -75,7 +83,20 @@ final class FurryQuestArena {
     }
 
     Location landmark(FurryQuest.Site site) {
-        return new Location(world, site.x + .5, FLOOR + 1, site.z + .5);
+        if (site == FurryQuest.Site.CONTACT) return doubleAgent.getLocation();
+        return new Location(world, site.plot.x() + .5, FLOOR + 1, site.plot.z() + .5);
+    }
+
+    Location station(FurryQuest.Station station) {
+        return new Location(world, station.x + .5, FLOOR + station.y, station.z + .5);
+    }
+
+    FurryQuest.Station stationAt(Block block) {
+        for (var station : FurryQuest.Station.values()) {
+            if (block.getX() == station.x && block.getY() == FLOOR + station.y && block.getZ() == station.z)
+                return station;
+        }
+        return null;
     }
 
     private boolean open(int x, int z) {
@@ -115,8 +136,10 @@ final class FurryQuestArena {
         return new Location(world, x + .5, FLOOR + 1, z + .5);
     }
 
-    List<Animals> shuffledHerd() {
-        var animals = new ArrayList<>(herd.values().stream().map(w -> w.body).toList());
+    Animals doubleAgent() { return doubleAgent; }
+
+    List<Animals> shuffledDisguises() {
+        var animals = new ArrayList<>(herd.values().stream().map(w -> w.body).filter(a -> a != doubleAgent).toList());
         Collections.shuffle(animals, random);
         return animals;
     }
