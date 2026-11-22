@@ -51,9 +51,11 @@ import org.bukkit.util.Vector;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.random.RandomGenerator;
@@ -108,6 +110,7 @@ final class PillarsSession implements GameSession {
     private Location center;
     private double radius;
     private List<ItemPool.PoolItem> items = List.of();
+    private List<ItemPool.PoolItem> unbannedItems = List.of();
     private List<ItemPool.ItemGroup> groups = List.of();
     /** Group boosts for {@code sameItems}, where everyone shares one draw. */
     private ItemPool.GroupState sharedGroups;
@@ -117,6 +120,7 @@ final class PillarsSession implements GameSession {
     private ItemPool.PoolItem sniperRocket;
 
     private final Map<UUID, PillarPlayer> players = new LinkedHashMap<>();
+    private final Set<UUID> pendingShuffles = new HashSet<>();
     private final List<PillarPlayer> alive = new ArrayList<>();
 
     private long timeLeft;
@@ -236,6 +240,7 @@ final class PillarsSession implements GameSession {
             prepareSniperDrops();
         }
 
+        unbannedItems = items;
         for (Participant participant : services.participants().all()) {
             Player player = participant.player();
             if (player == null) {
@@ -307,7 +312,7 @@ final class PillarsSession implements GameSession {
         game.setActiveSession(this);
         setLuckyWorld(mode.luckyBlocks.get());
         if (rules.eventMeanSeconds() > 0 || adhd != null) {
-            events = new PillarsEvents(this, services);
+            events = new PillarsEvents(this, services, PillarsEvents.Casino.fromMode(modeId));
         }
         if (rules.shuffle() || adhd != null) {
             shuffleItems = new ShuffleItems(world);
@@ -634,9 +639,12 @@ final class PillarsSession implements GameSession {
                     playItemSound(player);
                 }
             } else {
-                giveItems(player, shared != null ? shared : perkDraw(create(draw(pillarPlayer.groups, count))));
+                boolean exempt = protectsFromEvents(player.getUniqueId()) && items != unbannedItems;
+                giveItems(player, shared != null && !exempt ? shared
+                        : perkDraw(create(draw(pillarPlayer.groups, count, exempt ? unbannedItems : items))));
             }
         }
+        if (perks != null) perks.drawForBots(count, shuffle);
         itemCountdown = itemCooldown();
     }
 
@@ -791,6 +799,16 @@ final class PillarsSession implements GameSession {
 
     boolean paused() { return perks != null && perks.paused(); }
 
+    boolean protectsFromEvents(UUID player) { return perks != null && perks.protectsFromEvents(player); }
+
+    void onEventProtection(Player player) {
+        if (events != null) events.onProtection(player);
+    }
+
+    void restoreEventItems(Player player) {
+        if (events != null) events.restoreFrozenItems(player);
+    }
+
     Location center() {
         return center;
     }
@@ -800,12 +818,21 @@ final class PillarsSession implements GameSession {
         return radius;
     }
 
+    void onTranspose(PerkTerrain.Pos center, Set<PerkTerrain.Pos> changed) {
+        for (PillarPlayer player : players.values()) {
+            if (player.pillar == null) continue;
+            var top = new PerkTerrain.Pos(player.pillar.getBlockX(), pillarTop(), player.pillar.getBlockZ());
+            if (changed.contains(top)) player.pillar = PerkProtractor.transpose(player.pillar, center);
+        }
+        if (events != null) events.onTranspose(center, changed);
+    }
+
     /** Pillar blocks still of this material, from the world bottom up to the platform. */
     List<org.bukkit.block.Block> pillarBlocks(Material material) {
         List<org.bukkit.block.Block> blocks = new ArrayList<>();
         int top = (int) Math.floor(config.platformHeight.get());
         for (PillarPlayer pillarPlayer : players.values()) {
-            if (pillarPlayer.pillar == null) {
+            if (pillarPlayer.pillar == null || protectsFromEvents(pillarPlayer.id)) {
                 continue;
             }
             for (int y = world.getMinHeight(); y <= top; y++) {
@@ -818,9 +845,39 @@ final class PillarsSession implements GameSession {
         return blocks;
     }
 
+    boolean isProtectedPillarBlock(Block block) {
+        if (!world.equals(block.getWorld()) || block.getY() > pillarTop() || block.getType() != pillarMaterial()) return false;
+        return players.values().stream().anyMatch(player -> player.pillar != null && protectsFromEvents(player.id)
+                && player.pillar.getBlockX() == block.getX() && player.pillar.getBlockZ() == block.getZ());
+    }
+
     /** Airdrop loot: pool items, rolled like handed-out ones (potion types, enchantments). */
     List<ItemStack> lootRow(int count) {
         return create(draw(new ItemPool.GroupState(groups), count));
+    }
+
+    ItemStack differentLoot(ItemStack old) {
+        String sameMaterial = old.getType().getKey().getKey();
+        var candidates = new ArrayList<>(items.stream().filter(item -> !item.id().equals(sameMaterial)).toList());
+        while (!candidates.isEmpty()) {
+            var selected = ItemPool.randomByWeight(candidates, ItemPool.PoolItem::weight);
+            ItemStack item = selected.createItemStack();
+            if (item.getType() != old.getType()) {
+                item = maybeEnchant(item);
+                item.setAmount(Math.min(old.getAmount(), item.getMaxStackSize()));
+                return item;
+            }
+            // A custom pool ID may create the same material as the original item.
+            candidates.remove(selected);
+        }
+        return lootRow(1).getFirst();
+    }
+
+    void deferShuffleForDisconnected() {
+        for (PillarPlayer player : alive) {
+            Player online = player.player();
+            if (online == null || !online.isOnline()) pendingShuffles.add(player.id);
+        }
     }
 
     /** Where the pillars of the players still in are centred, at pillar-top height; the arena middle without any. */
@@ -905,9 +962,13 @@ final class PillarsSession implements GameSession {
     }
 
     private List<ItemPool.PoolItem> draw(ItemPool.GroupState groupState, int count) {
+        return draw(groupState, count, items);
+    }
+
+    private List<ItemPool.PoolItem> draw(ItemPool.GroupState groupState, int count, List<ItemPool.PoolItem> pool) {
         List<ItemPool.PoolItem> drawn = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            ItemPool.PoolItem chosen = ItemPool.randomByWeight(items, groupState::weightOf);
+            ItemPool.PoolItem chosen = ItemPool.randomByWeight(pool, groupState::weightOf);
             groupState.record(chosen);
             drawn.add(chosen);
         }
@@ -1307,6 +1368,7 @@ final class PillarsSession implements GameSession {
                 if (replays != null) replays.start(player);
                 return;
             }
+            if (perks != null && pendingShuffles.remove(pillarPlayer.id)) perks.shuffleInventory(player);
             if (perks != null && !perks.isGhost(player) && player.getGameMode() == GameMode.SPECTATOR) {
                 player.setGameMode(GameMode.SURVIVAL); player.setAllowFlight(false); player.setFlying(false);
             }

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.random.RandomGenerator;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -35,6 +36,8 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -58,38 +61,79 @@ import me.petr1furious.potatominigames.i18n.I18n;
 
 /**
  * Random events of the party and rave modes. Every second an event starts with the same chance,
- * so the wait between them averages the supplied mean; it is picked evenly among the events
- * not already running or announced. Swap starts immediately; others are announced five seconds ahead.
+ * so the wait between them averages the supplied mean. Casino modes roll the category first.
+ * Swap starts immediately; others are announced five seconds ahead.
  */
 final class PillarsEvents implements Listener {
+    enum Casino {
+        LUCKY(75), NEUTRAL(50), UNLUCKY(25);
+
+        final int goodPercent;
+
+        Casino(int goodPercent) {
+            this.goodPercent = goodPercent;
+        }
+
+        static Casino fromMode(String mode) {
+            return switch (mode) {
+                case "casino_lucky" -> LUCKY;
+                case "casino" -> NEUTRAL;
+                case "casino_unlucky" -> UNLUCKY;
+                default -> null;
+            };
+        }
+
+        Kind pick(List<Kind> eligible, RandomGenerator random) {
+            boolean good = random.nextInt(100) < goodPercent;
+            List<Kind> pool = eligible.stream().filter(kind -> kind.good == good).toList();
+            if (pool.isEmpty()) pool = eligible;
+            return pool.get(random.nextInt(pool.size()));
+        }
+    }
+
     enum Kind {
-        BOATS(15),
+        BOATS(15, true),
         DISCO(30),
         BLOCK_BAN(7),
         STIFF_NECK(20),
         SWAP(0),
-        LOW_GRAVITY(10),
+        LOW_GRAVITY(10, true),
         GIANTS(20),
         SLIPPERY(20),
         SPOTLIGHT(15),
         HANGOVER(15),
         WIND(60),
-        KNOCKBACK(20),
-        FRENZY(15),
+        KNOCKBACK(20, true),
+        FRENZY(15, true),
         HOT_POTATO(20),
         DARKNESS(15),
         VANISHING(-1),
         SUPERHOT(30),
-        AIRDROP(0),
+        AIRDROP(0, true),
         CONTRACT_AD(5),
-        MATH(10);
+        MATH(10),
+        SECOND_WIND(0, true, true),
+        SPEED(12, true, true),
+        WEAKNESS(12, false, true);
 
         final Component title;
         final Component description;
         /** Seconds; 0 happens at once, -1 lasts until the end of the game. */
         final int seconds;
+        final boolean good;
+        final boolean casinoOnly;
 
         Kind(int seconds) {
+            this(seconds, false);
+        }
+
+        Kind(int seconds, boolean good) {
+            this(seconds, good, false);
+        }
+
+        Kind(int seconds, boolean good, boolean casinoOnly) {
+            this.good = good;
+            this.casinoOnly = casinoOnly;
             String key = "pillars.effects.event." + name().toLowerCase(Locale.ROOT);
             this.title = I18n.tr(key + ".title");
             this.description = I18n.tr(key + ".description");
@@ -113,7 +157,19 @@ final class PillarsEvents implements Listener {
             EntityType.BIRCH_BOAT, EntityType.JUNGLE_BOAT, EntityType.ACACIA_BOAT, EntityType.DARK_OAK_BOAT,
             EntityType.MANGROVE_BOAT, EntityType.CHERRY_BOAT, EntityType.BAMBOO_RAFT);
 
-    private record Vanish(int dueTick, Block block) {
+    private static final class Placement {
+        Block block;
+        Material material;
+        final UUID owner;
+
+        Placement(Block block, UUID owner) {
+            this.block = block;
+            this.material = block.getType();
+            this.owner = owner;
+        }
+    }
+
+    private record Vanish(int dueTick, Placement placement) {
     }
 
     private record Frozen(ItemStack[] storage, ItemStack offHand) {
@@ -121,6 +177,7 @@ final class PillarsEvents implements Listener {
 
     private final PillarsSession session;
     private final SessionServices services;
+    private final Casino casino;
     private final NamespacedKey gravityKey;
     private final NamespacedKey scaleKey;
     private final NamespacedKey itemKey;
@@ -136,7 +193,7 @@ final class PillarsEvents implements Listener {
     private final Map<UUID, Location> lastPosition = new HashMap<>();
     private final Map<UUID, Integer> lastMoved = new HashMap<>();
     /** Blocks players placed, by the type they were; checked again before use. */
-    private final Map<Block, Material> placed = new LinkedHashMap<>();
+    private final Map<Block, Placement> placed = new LinkedHashMap<>();
 
     private final List<Entity> boats = new ArrayList<>();
     private final Map<UUID, Integer> discoHits = new HashMap<>();
@@ -147,6 +204,7 @@ final class PillarsEvents implements Listener {
     private UUID potatoHolder;
     private int potatoPassedAt;
     private int potatoEndsAt;
+    private boolean potatoExplosion;
     private final Deque<Vanish> vanishing = new ArrayDeque<>();
     private final Map<UUID, Frozen> frozen = new HashMap<>();
     private int adStartedAt;
@@ -154,9 +212,10 @@ final class PillarsEvents implements Listener {
     /** The async chat handler only snapshots this reference; all state is read on the server thread. */
     private volatile MathChallenge mathChallenge;
 
-    PillarsEvents(PillarsSession session, SessionServices services) {
+    PillarsEvents(PillarsSession session, SessionServices services, Casino casino) {
         this.session = session;
         this.services = services;
+        this.casino = casino;
         var plugin = services.plugin();
         this.gravityKey = new NamespacedKey(plugin, "pillars_event_gravity");
         this.scaleKey = new NamespacedKey(plugin, "pillars_event_scale");
@@ -181,7 +240,8 @@ final class PillarsEvents implements Listener {
         if (candidates.isEmpty()) {
             return;
         }
-        Kind kind = candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
+        var random = ThreadLocalRandom.current();
+        Kind kind = casino == null ? candidates.get(random.nextInt(candidates.size())) : casino.pick(candidates, random);
         eventTasks.selected(kind);
         if (kind == Kind.SWAP) {
             begin(kind);
@@ -195,7 +255,7 @@ final class PillarsEvents implements Listener {
         for (Player player : audience()) {
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BELL, 0.8f, 1.2f);
         }
-        showEventTitle(warning);
+        showEventTitle(kind, warning);
         services.messages().broadcast(I18n.tr("pillars.effects.event.warning",
                 kind.title.color(NamedTextColor.GOLD), kind.description).color(NamedTextColor.GRAY));
         later(kind, WARNING_TICKS, () -> begin(kind));
@@ -214,8 +274,11 @@ final class PillarsEvents implements Listener {
     }
 
     private boolean eligible(Kind kind) {
+        if (casino == null && kind.casinoOnly) return false;
+        int participants = players(kind).size();
+        if (participants == 0) return false;
         return switch (kind) {
-            case SWAP, HOT_POTATO -> session.aliveOnline().size() >= 2;
+            case SWAP, HOT_POTATO -> participants >= 2;
             case BLOCK_BAN -> !banCandidates().isEmpty();
             case FRENZY -> !session.shuffles();
             default -> true;
@@ -224,7 +287,8 @@ final class PillarsEvents implements Listener {
 
     private void begin(Kind kind) {
         pending.remove(kind);
-        if (closed) {
+        if (closed || !eligible(kind)) {
+            eventTasks.finish(kind);
             return;
         }
         running.add(kind);
@@ -261,7 +325,7 @@ final class PillarsEvents implements Listener {
             case HOT_POTATO -> endPotato(natural);
             case VANISHING -> vanishing.clear();
             case CONTRACT_AD -> {
-                for (Player player : audience()) {
+                for (Player player : audience(kind)) {
                     player.clearTitle();
                 }
             }
@@ -306,7 +370,7 @@ final class PillarsEvents implements Listener {
     // Starting each event.
 
     private void start(Kind kind) {
-        List<Player> alive = session.aliveOnline();
+        List<Player> alive = players(kind);
         switch (kind) {
             case DISCO, SUPERHOT -> {
                 // A fresh grace period, so nobody is caught standing the moment it starts.
@@ -348,7 +412,15 @@ final class PillarsEvents implements Listener {
                 Component towards = I18n.tr("pillars.effects.direction." + COMPASS[Math.floorMod(Math.round(windYaw / 45f), 8)]);
                 Title title = Title.title(Kind.WIND.title.color(NamedTextColor.AQUA).decorate(TextDecoration.BOLD),
                         I18n.tr("pillars.effects.wind.instructions", towards).color(NamedTextColor.WHITE));
-                showEventTitle(title);
+                showEventTitle(kind, title);
+            }
+            case SPEED -> effect(alive, PotionEffectType.SPEED, 0, effectTicks(kind, kind.seconds * 20));
+            case WEAKNESS -> effect(alive, PotionEffectType.WEAKNESS, 0, effectTicks(kind, kind.seconds * 20));
+            case SECOND_WIND -> {
+                for (Player player : alive) {
+                    double max = player.getAttribute(Attribute.MAX_HEALTH).getValue();
+                    player.setHealth(Math.min(max, player.getHealth() + 4));
+                }
             }
             case KNOCKBACK -> {
                 for (Player player : alive) {
@@ -381,48 +453,47 @@ final class PillarsEvents implements Listener {
         }
         eventTasks.tick(++tick);
         List<Player> alive = session.aliveOnline();
+        List<Player> unprotected = alive.stream().filter(player -> !protectedPlayer(player)).toList();
         trackMovement(alive);
         if (running.contains(Kind.CONTRACT_AD) && (tick - adStartedAt) % 5 == 0) {
             showContractAd();
         }
         if (running.contains(Kind.MATH) && tick % 20 == 0) {
-            showMathReminder(alive);
+            showMathReminder(unprotected);
         }
         if (running.contains(Kind.DISCO)) {
-            tickDisco(alive);
+            tickDisco(unprotected);
         }
         if (running.contains(Kind.SUPERHOT)) {
-            tickSuperhot(alive);
+            tickSuperhot(unprotected);
         }
         if (running.contains(Kind.STIFF_NECK)) {
-            tickStiffNeck(alive);
+            tickStiffNeck(unprotected);
         }
         if (running.contains(Kind.BOATS) && tick % 10 == 0) {
             dropBoats(alive.size());
         }
         if (running.contains(Kind.WIND) && tick % 10 == 0) {
-            tickWind(alive);
+            tickWind(unprotected);
         }
         if (running.contains(Kind.HOT_POTATO) && tick % 10 == 0) {
-            tickPotato(alive);
+            tickPotato(unprotected);
         }
         while (!vanishing.isEmpty() && vanishing.peekFirst().dueTick() <= tick) {
-            Block block = vanishing.pollFirst().block();
-            if (block.getType() != Material.AIR) {
+            Vanish expiry = vanishing.removeFirst();
+            Block block = expiry.placement().block;
+            if (stillPlaced(block, expiry.placement()) && !session.protectsFromEvents(expiry.placement().owner)) {
                 block.setType(Material.AIR);
+                placed.remove(block);
             }
-            placed.remove(block);
         }
     }
 
     // Screen events. Keep the ad visible even when another event announces itself.
 
-    private void showEventTitle(Title title) {
-        if (running.contains(Kind.CONTRACT_AD)) {
-            return;
-        }
-        for (Player player : audience()) {
-            player.showTitle(title);
+    private void showEventTitle(Kind kind, Title title) {
+        for (Player player : audience(kind)) {
+            if (!running.contains(Kind.CONTRACT_AD) || protectedPlayer(player)) player.showTitle(title);
         }
     }
 
@@ -435,7 +506,7 @@ final class PillarsEvents implements Listener {
                 I18n.tr("pillars.effects.ad.subtitle").color(AD_COLORS[(frame + 1) % AD_COLORS.length])
                         .decorate(TextDecoration.BOLD),
                 Title.Times.times(Duration.ZERO, Duration.ofMillis(300), Duration.ZERO));
-        for (Player player : audience()) {
+        for (Player player : audience(Kind.CONTRACT_AD)) {
             player.showTitle(title);
         }
     }
@@ -447,7 +518,7 @@ final class PillarsEvents implements Listener {
         mathChallenge = challenge;
         Component question = I18n.tr("pillars.effects.math.question", challenge.problem().expression())
                 .color(NamedTextColor.YELLOW).decorate(TextDecoration.BOLD);
-        showEventTitle(Title.title(question,
+        showEventTitle(Kind.MATH, Title.title(question,
                 I18n.tr("pillars.effects.math.instructions").color(NamedTextColor.WHITE),
                 Title.Times.times(Duration.ZERO, Duration.ofSeconds(3), Duration.ofMillis(250))));
         for (Player player : alive) {
@@ -511,7 +582,7 @@ final class PillarsEvents implements Listener {
             if (closed) {
                 break;
             }
-            if (failures.contains(player.getUniqueId())) {
+            if (!protectedPlayer(player) && failures.contains(player.getUniqueId())) {
                 player.sendMessage(I18n.tr("pillars.effects.math.timeout", challenge.problem().expression(),
                         challenge.problem().result()).color(NamedTextColor.RED));
                 player.sendActionBar(Component.empty());
@@ -760,7 +831,7 @@ final class PillarsEvents implements Listener {
             removeEventItems(former, Kind.HOT_POTATO);
             former.removePotionEffect(PotionEffectType.GLOWING);
         }
-        List<Player> others = new ArrayList<>(session.aliveOnline());
+        List<Player> others = new ArrayList<>(players(Kind.HOT_POTATO));
         others.remove(former);
         if (others.isEmpty()) {
             potatoHolder = null;
@@ -776,8 +847,13 @@ final class PillarsEvents implements Listener {
         removeEventItems(Kind.HOT_POTATO);
         if (holder != null) {
             holder.removePotionEffect(PotionEffectType.GLOWING);
-            if (natural && session.aliveOnline().contains(holder)) {
-                holder.getWorld().createExplosion(holder, holder.getLocation(), 3.0f, false, true);
+            if (natural && players(Kind.HOT_POTATO).contains(holder)) {
+                potatoExplosion = true;
+                try {
+                    holder.getWorld().createExplosion(holder, holder.getLocation(), 3.0f, false, true);
+                } finally {
+                    potatoExplosion = false;
+                }
             }
         }
     }
@@ -818,9 +894,9 @@ final class PillarsEvents implements Listener {
     /** Placed types still on the map, by weight; the pillars' own material is rarely picked. */
     private Map<Material, Double> banCandidates() {
         Map<Material, Double> weights = new LinkedHashMap<>();
-        placed.entrySet().removeIf(entry -> entry.getKey().getType() != entry.getValue());
-        for (Material material : placed.values()) {
-            weights.put(material, 1.0);
+        placed.entrySet().removeIf(entry -> entry.getKey().getType() != entry.getValue().material);
+        for (Placement placement : placed.values()) {
+            if (!session.protectsFromEvents(placement.owner)) weights.put(placement.material, 1.0);
         }
         Material pillar = session.pillarMaterial();
         if (!session.pillarBlocks(pillar).isEmpty()) {
@@ -866,8 +942,9 @@ final class PillarsEvents implements Listener {
         });
         later(Kind.BLOCK_BAN, WARNING_TICKS + 40, () -> {
             int removed = 0;
-            for (Map.Entry<Block, Material> entry : List.copyOf(placed.entrySet())) {
-                if (entry.getValue() == chosen && entry.getKey().getType() == chosen) {
+            for (var entry : List.copyOf(placed.entrySet())) {
+                if (entry.getValue().material == chosen && entry.getKey().getType() == chosen
+                        && !session.protectsFromEvents(entry.getValue().owner)) {
                     entry.getKey().setType(Material.AIR, false);
                     placed.remove(entry.getKey());
                     removed++;
@@ -893,7 +970,7 @@ final class PillarsEvents implements Listener {
     private void showBanName(Component name, int stayTicks) {
         Title title = Title.title(Component.empty(), name,
                 Title.Times.times(Duration.ZERO, Duration.ofMillis(stayTicks * 50L), Duration.ofMillis(150)));
-        showEventTitle(title);
+        showEventTitle(Kind.BLOCK_BAN, title);
     }
 
     private static Material pick(Map<Material, Double> weights) {
@@ -923,18 +1000,39 @@ final class PillarsEvents implements Listener {
             return;
         }
         Block block = event.getBlockPlaced();
-        placed.put(block, block.getType());
+        Placement placement = new Placement(block, event.getPlayer().getUniqueId());
+        placed.put(block, placement);
         if (running.contains(Kind.SLIPPERY)) {
             later(Kind.SLIPPERY, 1L, () -> {
-                if (block.getType() != Material.AIR) {
-                    block.setType(Material.PACKED_ICE);
-                    placed.put(block, Material.PACKED_ICE);
+                if (stillPlaced(placement.block, placement) && !session.protectsFromEvents(placement.owner)) {
+                    placement.block.setType(Material.PACKED_ICE);
+                    placement.material = Material.PACKED_ICE;
                 }
             });
         }
-        if (running.contains(Kind.VANISHING)) {
-            vanishing.addLast(new Vanish(tick + VANISH_TICKS, block));
+        if (running.contains(Kind.VANISHING) && !protectedPlayer(event.getPlayer())) {
+            vanishing.addLast(new Vanish(tick + VANISH_TICKS, placement));
         }
+    }
+
+    void onTranspose(PerkTerrain.Pos center, Set<PerkTerrain.Pos> changed) {
+        var moved = new ArrayList<Placement>();
+        var iterator = placed.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            var pos = PerkTerrain.Pos.of(entry.getKey());
+            if (!changed.contains(pos)) continue;
+            var destination = PerkProtractor.transpose(pos, center);
+            Placement placement = entry.getValue();
+            placement.block = session.world().getBlockAt(destination.x(), destination.y(), destination.z());
+            moved.add(placement);
+            iterator.remove();
+        }
+        for (Placement placement : moved) placed.put(placement.block, placement);
+    }
+
+    private boolean stillPlaced(Block block, Placement placement) {
+        return placed.get(block) == placement && block.getType() == placement.material;
     }
 
     void onDamageByEntity(EntityDamageByEntityEvent event) {
@@ -944,7 +1042,7 @@ final class PillarsEvents implements Listener {
         if (!(event.getDamager() instanceof Player hitter) || !(event.getEntity() instanceof Player victim)) {
             return;
         }
-        List<Player> alive = session.aliveOnline();
+        List<Player> alive = players(Kind.HOT_POTATO);
         if (!hitter.getUniqueId().equals(potatoHolder) || !alive.contains(victim) || tick - potatoPassedAt < 10) {
             return;
         }
@@ -971,6 +1069,54 @@ final class PillarsEvents implements Listener {
         if (running.contains(Kind.HOT_POTATO) && player.getUniqueId().equals(potatoHolder)) {
             passPotatoAway(player);
         }
+    }
+
+    void onProtection(Player player) {
+        UUID id = player.getUniqueId();
+        unfreeze(player);
+        lockedYaw.remove(id);
+        discoHits.remove(id);
+        discoPunishedAt.remove(id);
+        if (running.contains(Kind.CONTRACT_AD)) player.clearTitle();
+        var scale = player.getAttribute(Attribute.SCALE);
+        if (scale != null) scale.removeModifier(scaleKey);
+        if (mathChallenge != null) mathChallenge.remove(id);
+        if (id.equals(potatoHolder)) passPotatoAway(player);
+    }
+
+    void restoreFrozenItems(Player player) {
+        unfreeze(player);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPotatoDamage(EntityDamageEvent event) {
+        if (potatoExplosion && event.getEntity() instanceof Player player && protectedPlayer(player)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPotatoExplosion(EntityExplodeEvent event) {
+        if (!potatoExplosion) return;
+        event.blockList().removeIf(block -> {
+            Placement placement = placed.get(block);
+            return placement != null && stillPlaced(block, placement) && session.protectsFromEvents(placement.owner)
+                    || session.isProtectedPillarBlock(block);
+        });
+    }
+
+    private boolean protectedPlayer(Player player) {
+        return session.protectsFromEvents(player.getUniqueId());
+    }
+
+    private List<Player> players(Kind kind) {
+        List<Player> alive = session.aliveOnline();
+        return kind.good ? alive : alive.stream().filter(player -> !protectedPlayer(player)).toList();
+    }
+
+    private List<Player> audience(Kind kind) {
+        List<Player> players = audience();
+        return kind.good ? players : players.stream().filter(player -> !protectedPlayer(player)).toList();
     }
 
     // Helpers.

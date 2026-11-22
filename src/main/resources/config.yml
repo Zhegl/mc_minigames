@@ -42,6 +42,9 @@ queues:
     big_house: {enabled: true, minPlayers: 2, maxPlayers: 16}
     party: {enabled: true, minPlayers: 2, maxPlayers: 16}
     rave: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    casino_lucky: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    casino: {enabled: true, minPlayers: 2, maxPlayers: 16}
+    casino_unlucky: {enabled: true, minPlayers: 2, maxPlayers: 16}
     adhd: {enabled: true, minPlayers: 2, maxPlayers: 16}
     perks: {enabled: true, minPlayers: 2, maxPlayers: 16}
     fusion: {enabled: true, minPlayers: 2, maxPlayers: 16}

@@ -27,15 +27,15 @@ import org.bukkit.util.Vector;
 public final class PerksCheck {
     public static void main(String[] args) throws Exception {
         catalogue(); immunity(); layouts(); wishes(); atomicBomb(); decoys(); shapes(); gravity(); phantoms(); history(); channel(); reroll(); terrain(); transmute(); illusions(); integration();
-        construction(); protractor();
-        System.out.println("Pillars perks: 49 weighted items, timed effects, terrain, transposition and queue/preset integration passed");
+        construction(); protractor(); casino();
+        System.out.println("Pillars perks: 55 weighted items, timed effects, terrain, transposition and queue/preset integration passed");
     }
     private static void catalogue() {
-        check(PerkType.values().length == 49, "All forty-nine perks are present");
+        check(PerkType.values().length == 55, "All fifty-five perks are present");
         Map<PerkType, Integer> counts = new HashMap<>();
         for (int roll = 0; roll < PerkType.totalWeight(); roll++) counts.merge(PerkType.atWeight(roll), 1, Integer::sum);
-        check(counts.size() == 49 && PerkType.totalWeight() == 190, "No unreachable outcomes or gaps in the weighted draw");
-        check(Arrays.stream(PerkType.values()).filter(t -> t.legendary).count() == 2, "Exactly the bow and TNT crossbow are legendary");
+        check(counts.size() == 55 && PerkType.totalWeight() == 208, "No unreachable outcomes or gaps in the weighted draw");
+        check(Arrays.stream(PerkType.values()).filter(t -> t.legendary).count() == 4, "The bow, TNT crossbow, AGI and super apple are legendary");
         for (PerkType type : PerkType.values()) {
             check(counts.get(type) == (type.legendary ? 1 : 4), "Each legendary is four times rarer than each ordinary perk");
             check(type.instructions.length > 0 && type.charges > 0, "Every item has player-facing instructions and finite charges");
@@ -82,33 +82,47 @@ public final class PerksCheck {
     private static void protractor() {
         var origin = new PerkTerrain.Pos(-11, 200, 9);
         var before = new PerkTerrain.Pos(-13, 201, 10);
-        var after = new PerkTerrain.Pos(-10, 198, 10);
+        var after = new PerkTerrain.Pos(-10, 201, 7);
         check(PerkProtractor.transpose(before, origin).equals(after) && PerkProtractor.transpose(after, origin).equals(before),
-                "Transposing relative X and Y is reversible and preserves Z");
+                "Transposing relative X and Z is reversible and preserves Y");
         var entity = new Location(null, -12.75, 201.5, 10.125, 45, 15);
         var moved = PerkProtractor.transpose(entity, origin);
-        check(moved.getX() == -9.5 && moved.getY() == 198.25 && moved.getZ() == 10.125
+        check(moved.getX() == -9.875 && moved.getY() == 201.5 && moved.getZ() == 7.25
                 && moved.getYaw() == entity.getYaw() && moved.getPitch() == entity.getPitch(),
                 "Entities transpose the same axes as blocks, keeping sub-block coordinates and view direction");
 
         FakeWorld fake = new FakeWorld();
         PerkTerrain terrain = new PerkTerrain(fake.world);
-        Location[] victim = {new Location(fake.world, .5, 200, .5)};
+        Location[] victim = {new Location(fake.world, 40.25, 200, .6)};
         fake.target = player(fake, victim);
-        fake.set(0, 199, 0, Material.BEDROCK);
-        fake.set(0, 198, 0, Material.OBSIDIAN);
-        Player user = player(fake, new Location[]{new Location(fake.world, .5, 200, -5)});
-        check(PerkProtractor.cast(user, terrain, 0, e -> true), "A pillar and a player standing on it can transpose together");
-        check(fake.get(-1, 200, 0) == Material.BEDROCK && fake.get(-2, 200, 0) == Material.OBSIDIAN
-                && fake.get(0, 199, 0) == Material.AIR, "Transposition moves the original block data");
-        check(Math.abs(victim[0].getX() - .9) < .001 && Math.abs(victim[0].getY() - 199.6) < .001,
-                "The victim's centre transposes while its body remains upright");
+        fake.set(40, 199, 0, Material.BEDROCK);
+        fake.set(51, 199, 0, Material.OBSIDIAN);
+        var center = new PerkTerrain.Pos(0, 200, 0);
+        check(PerkProtractor.cast(fake.world, center, terrain, e -> true) != null, "A pillar and a player 40 blocks away transpose together");
+        check(fake.get(0, 199, 40) == Material.BEDROCK && fake.get(51, 199, 0) == Material.OBSIDIAN
+                && fake.get(40, 199, 0) == Material.AIR, "Only terrain inside the radius transposes");
+        check(Math.abs(victim[0].getX() - .6) < .001 && Math.abs(victim[0].getZ() - 40.25) < .001
+                && victim[0].getY() == 200, "The victim moves horizontally and stays on the same level");
 
         terrain.put(fake.block(2, 200, 0), Material.ICE, 100, true);
         int writes = fake.writes;
         Location at = victim[0].clone();
-        check(!PerkProtractor.cast(user, terrain, 0, e -> true) && fake.writes == writes && at.equals(victim[0]),
+        check(PerkProtractor.cast(fake.world, center, terrain, e -> true) == null && fake.writes == writes && at.equals(victim[0]),
                 "A protected cell prevents the entire transposition");
+    }
+
+    private static void casino() {
+        var good = PillarsEvents.Kind.SECOND_WIND;
+        var bad = PillarsEvents.Kind.WEAKNESS;
+        for (var casino : PillarsEvents.Casino.values()) {
+            int goodPicks = 0;
+            var random = new java.util.Random(42);
+            for (int i = 0; i < 10_000; i++) {
+                if (casino.pick(List.of(good, bad), random) == good) goodPicks++;
+            }
+            check(Math.abs(goodPicks - casino.goodPercent * 100) < 200, "Casino rolls the category with its configured odds");
+            check(casino.pick(List.of(good), random) == good, "One eligible category remains playable");
+        }
     }
 
     private static Player player(FakeWorld fake, Location[] at) {
@@ -454,6 +468,7 @@ public final class PerksCheck {
             case "getBlockAt" -> a[0] instanceof Location at
                     ? block(at.getBlockX(), at.getBlockY(), at.getBlockZ())
                     : block((int) a[0], (int) a[1], (int) a[2]);
+            case "getChunkAt" -> chunk((int) a[0], (int) a[1]);
             case "getMinHeight" -> -64; case "getMaxHeight" -> 320; case "getWorldBorder" -> border;
             case "isChunkLoaded" -> true;
             case "rayTrace" -> new RayTraceResult(target.getLocation().toVector(), target);
@@ -463,6 +478,18 @@ public final class PerksCheck {
             case "equals" -> p == a[0]; case "hashCode" -> System.identityHashCode(p);
             default -> throw new AssertionError("Unexpected world operation: " + m.getName());
         });
+        org.bukkit.Chunk chunk(int chunkX, int chunkZ) {
+            return (org.bukkit.Chunk) Proxy.newProxyInstance(org.bukkit.Chunk.class.getClassLoader(),
+                    new Class<?>[]{org.bukkit.Chunk.class}, (p, method, args) -> {
+                        if (!method.getName().equals("getChunkSnapshot")) throw new AssertionError(method.getName());
+                        return (org.bukkit.ChunkSnapshot) Proxy.newProxyInstance(org.bukkit.ChunkSnapshot.class.getClassLoader(),
+                                new Class<?>[]{org.bukkit.ChunkSnapshot.class}, (snapshot, query, coordinates) -> switch (query.getName()) {
+                                    case "isSectionEmpty" -> false;
+                                    case "getBlockType" -> get(chunkX * 16 + (int) coordinates[0], (int) coordinates[1], chunkZ * 16 + (int) coordinates[2]);
+                                    default -> throw new AssertionError(query.getName());
+                                });
+                    });
+        }
         @SuppressWarnings("unchecked")
         Object spawn(Location at, Class<?> type, Object initializer) {
             check(type == org.bukkit.entity.BlockDisplay.class, "Illusions only spawn non-colliding display entities");

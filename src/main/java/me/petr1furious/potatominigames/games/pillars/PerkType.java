@@ -38,7 +38,6 @@ enum PerkType {
     DRONE(Material.BOW, "drone", 1, false, 2),
     AURA(Material.ECHO_SHARD, "aura", 1, false, 1),
     INVULNERABILITY(Material.TOTEM_OF_UNDYING, "invulnerability", 1, false, 1),
-    MORPH(Material.COW_SPAWN_EGG, "morph", 1, false, 1),
     METRO(Material.POWERED_RAIL, "metro", 1, false, 1),
     PUPPET(Material.BOW, "puppet", 1, false, 2),
     GENIE(Material.OAK_SIGN, "genie", 1, false, 2),
@@ -56,7 +55,14 @@ enum PerkType {
     LONG_ARM(Material.BAMBOO, "long_arm", 1, false, 1),
     HAT(Material.LEATHER_HELMET, "hat", 1, false, 1),
     PILLAR(Material.BEDROCK, "pillar", 1, false, 1),
-    MAZE(Material.MOSSY_STONE_BRICKS, "maze", 1, false, 1);
+    MAZE(Material.MOSSY_STONE_BRICKS, "maze", 1, false, 1),
+    SHUFFLER(Material.SHULKER_SHELL, "shuffler", 1, false, 1),
+    AGI(Material.ARMOR_STAND, "agi", 1, true, 1),
+    SUPER_APPLE(Material.ENCHANTED_GOLDEN_APPLE, "super_apple", 1, true, 1),
+    DANCE_FLOOR(Material.MUSIC_DISC_LAVA_CHICKEN, "dance_floor", 1, false, 1),
+    MILK(Material.MILK_BUCKET, "milk", 1, false, 1),
+    SWAPPER(Material.ENDER_PEARL, "swapper", 1, false, 1),
+    SCAFFOLD(Material.SCAFFOLDING, "scaffold", 1, false, 1);
 
     final Material material;
     final Component title;

@@ -28,7 +28,7 @@ import me.petr1furious.potatominigames.core.config.PropertyCodec;
 public final class PillarsConfig {
     static final String FILE = "games/pillars.yml";
     static final List<String> MODES = List.of("original", "chaos", "item-shuffle", "lucky", "tactical", "big_house",
-            "sniper_duel", "party", "rave", "adhd", "perks", "flood", "fusion");
+            "sniper_duel", "party", "rave", "casino_lucky", "casino", "casino_unlucky", "adhd", "perks", "flood", "fusion");
 
     private final ConfigRegistry configs;
     private final PropertyBag bag = new PropertyBag("pillars");
@@ -108,7 +108,7 @@ public final class PillarsConfig {
             this.eventMeanSeconds = bag.define("eventMeanSeconds", PropertyCodec.DOUBLE, eventMeanSeconds)
                     .validate(value -> value >= 0);
             this.adhd = bag.define("adhd", PropertyCodec.BOOL, id.equals("adhd"));
-            this.perks = bag.define("perks", PropertyCodec.BOOL, id.equals("perks"));
+            this.perks = bag.define("perks", PropertyCodec.BOOL, id.equals("perks") || PillarsEvents.Casino.fromMode(id) != null);
             this.flood = bag.define("flood", PropertyCodec.BOOL, id.equals("flood"));
         }
 
@@ -158,6 +158,9 @@ public final class PillarsConfig {
         // Random events: one a minute on average; rave twice as often, with chaos-speed items.
         addMode("party", 5, "8min", "#FF77FF", false, true, "circular", "", false, false, 1.0, 60);
         addMode("rave", 3, "8min", "#FF2E97", false, true, "circular", "", false, false, 1.0, 30);
+        addMode("casino_lucky", 5, "8min", "#6DDD84", false, true, "circular", "", false, false, 1.0, 40);
+        addMode("casino", 5, "8min", "#F2C358", false, true, "circular", "", false, false, 1.0, 40);
+        addMode("casino_unlucky", 5, "8min", "#E57575", false, true, "circular", "", false, false, 1.0, 40);
         addMode("adhd", 5, "8min", "#FFAA00", false, true, "circular");
         addMode("perks", 5, "5min", "#D477FF", false, true, "circular");
         addMode("flood", 5, "5min", "#3399FF", false, true, "circular");

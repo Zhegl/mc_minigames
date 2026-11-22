@@ -17,7 +17,7 @@ Install [Potato Launcher](https://github.com/Petr1Furious/potato-launcher) and f
 
 | Game | Command | Modes | What it is |
 |---|---|---|---|
-| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `adhd`, `perks`, `flood`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. `flood` adds rising lethal water that shelters cannot block. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
+| **Pillars** | `/pillars` | `original`, `chaos`, `item-shuffle`, `lucky`, `tactical`, `big_house`, `sniper_duel`, `party`, `rave`, `casino_lucky`, `casino`, `casino_unlucky`, `adhd`, `perks`, `flood`, `fusion` | Everyone on a bedrock pillar in the sky, a random item every few seconds, last one standing wins; `lucky` builds the pillars from [New Amazing Lucky Blocks](https://github.com/I2000C/NewAmazingLuckyBlocks) lucky blocks. `tactical` hands everyone the same random items each round (`sameItems`, also available in other modes). `big_house` puts the pillars 2.5x further apart (`distanceMultiplier`) with chaos-speed items. `flood` adds rising lethal water that shelters cannot block. Ordinary handed-out items that can be enchanted have a one-in-three enchantment chance (`enchantChance`). Ported from [PillarPeril](https://github.com/MarcPG1905/PillarPeril). |
 | **Bingo** | `/bingo` | `default`, `butfast`, `collectall`, `lockout` | Teams race to collect items on a generated board. Cage drop into a random arena; deaths are short spectator punishments. In `lockout` each item goes to the team that collects it first: a line wins, else the most items when time runs out. |
 | **Warfare** | `/war` | `classic`, `team_beacon` | Formerly hide-and-seek. `classic`: invisible free-for-all with a bucketed-distance sidebar and gadgets; `team_beacon`: defend your wool beacon, respawn at it until it's destroyed. |
 | **Chase** | `/chase` | — | Formerly ultimate tag. A fixed number of rounds; hunters track runners by compass. |
@@ -1607,6 +1607,13 @@ Burst timing lives in `games/pillars.yml`: `adhd.meanSeconds` and
 /pillars test adhd
 ```
 
+## Pillars Casino
+
+`/play pillars casino_lucky`, `/play pillars casino` and `/play pillars casino_unlucky`
+enable perk drops and roll an event about every 40 seconds. If both categories
+are available, the chance of a good event is 75%, 50% or 25%, respectively.
+Casino events include a two-heart heal, a short speed boost and temporary weakness.
+
 ## Pillars Flood
 
 `/play pillars flood` starts ordinary Pillars with a rising lethal flood. Add `flood`
@@ -1757,9 +1764,9 @@ Enable it on another built-in mode with `/pillars config modes.<mode>.perks true
 Sniper Duel keeps its five logs and sixth crossbow; perks can replace later drops.
 
 Each item draw has a **20%** chance to become a special perk instead. Configure
-`perks.dropChance` in `games/pillars.yml` for the next session. The forty-seven ordinary
-perks have weight 4 each; the two legendary weapons have weight 1 each. Each
-legendary therefore has a **0.105%** chance per item draw at the default setting,
+`perks.dropChance` in `games/pillars.yml` for the next session. The 51 ordinary
+perks have weight 4 each and the four legendary perks have weight 1 each. Each
+legendary has a **0.096%** chance per item draw at the default setting,
 four times rarer than each ordinary perk. Tactical presets share perk kinds and
 ordinary item rolls, with separate item instances/charges per player.
 
@@ -1783,7 +1790,7 @@ Active items use the main hand; normal items with the same material have no perk
 | Blaze rod / Дезинтегратор | Hold right-click and aim continuously at the same block within 12 blocks for three seconds. Release, switching item, looking away or target replacement resets progress. Breaks even bedrock, without block/container drops. One successful use. |
 | Sheep egg / Камикадзе | Right-click to summon a sheep carrying primed TNT. It chases the nearest active opponent, can leap gaps, and explodes after five seconds. The caster is never its target, but explosions can still hurt the caster. One use. |
 | Ink sac / Дымовая завеса | Right-click for a smoke cloud with a four-block radius lasting five seconds. Enemies inside are blinded; the caster is unaffected. One use. |
-| Fire charge / Фаербол | Right-click to throw an explosive fireball along your view. One use. |
+| Fire charge / Фаербол | Right-click to throw a slow explosive fireball along your view. One use. |
 | Carved pumpkin / Проклятая тыква | Right-click to throw a pumpkin straight along your view. A direct hit puts a carved pumpkin with Curse of Binding on an active opponent's head. Their previous helmet goes into their inventory, or drops at their feet if full. The projectile disappears on impact without exploding. One throw, including misses. |
 | TNT / Атомная бомба | Right-click a block to place already primed TNT in the adjacent free cell. Four-second fuse; native explosion power 16 instead of ordinary TNT's 4, increasing blast range fourfold. It damages players and terrain, including its owner, while respecting protected perk terrain. One use. |
 | Stick / Тяжёлый прогноз | Aim at a block up to 192 blocks away and right-click. After one second, nine damaging anvils fall from 24 blocks above the target in shuffled order, three ticks apart: one per cell of a 3×3 square. They land as ordinary anvils without dropping items if placement fails. One use. |
@@ -1803,7 +1810,6 @@ New perks also use the ordinary weighted pool and `/pillars perk <id>`:
 | `drone` | Reusable bow, arrow supplied. Fire a slow, gravity-free arrow and steer with the mouse while the camera follows it. Five-second player cooldown, maximum eight-second flight; sneak, impact or damage to your body ends control. Arrows are not consumed. Your body remains vulnerable at the firing position. |
 | `aura` | Five seconds of repelling opponents within 2.25 blocks, with half the previous knockback. |
 | `invulnerability` | Ten seconds without damage or knockback, including the death-height check. |
-| `morph` | Become one of ten random mobs for 15 seconds. Other players see the mob with your name, and hits on it damage you. This changes appearance, not your abilities. |
 | `metro` | A 2×10 loop in your facing direction with powered straight rails, curved corners and three rideable minecarts. Requires free space ahead. Carts last 60 seconds; the railway stays. |
 | `puppet` | One-shot bow, arrow supplied. A hit gives five seconds of movement/jump/look control over the victim and a camera through their eyes. Both bodies remain vulnerable; damage to the controller ends control. |
 | `genie` | Place a sign and write an English item registry name. Grants one ordinary item with the nearest Levenshtein name; spaces and `minecraft:` are accepted, ties resolve alphabetically. One wish per sign, owned by its caster. |
@@ -1813,7 +1819,7 @@ New perks also use the ordinary weighted pool and `/pillars perk <id>`:
 | `bunker` | Build a 3×3 obsidian shelter with an iron door and a lever on each side. |
 | `bouncer` | Launch upward and gain ten seconds of fall protection. |
 | `air` | Right-click has no effect. The item stays in your hand. |
-| `protractor` | Aim within 32 blocks. Swap the local X and Y coordinates of blocks and entities in a 7×7×7 cube around the target. Z stays fixed. |
+| `protractor` | Right-click to swap local X and Z around your position within 50 blocks. The effect moves surrounding terrain and players horizontally. |
 | `pause` | Pause the match for five seconds and display a title to its players. |
 | `time` | Toggle the arena between noon and midnight. |
 | `weather` | Cycle the arena through clear weather, rain and thunderstorms. |
@@ -1822,10 +1828,17 @@ New perks also use the ordinary weighted pool and `/pillars perk <id>`:
 | `hat` | Wear the hat. After falling at least five blocks, it places bedrock below you in free space and protects against fall damage for two seconds. One use. |
 | `pillar` | Build a pillar at your feet's height, randomly placed 5–8 blocks away. |
 | `maze` | Build a 7×7 maze around yourself with two exits. |
+| `shuffler` | Replace the stacks carried by all living participants with random loot. |
+| `agi` | Summon one allied bot on a new pillar. It gets random loot, bridges toward opponents, throws potions and uses some perks. |
+| `super_apple` | Eat for 20 golden hearts, ten times an ordinary golden apple's absorption. |
+| `dance_floor` | Build a flashing 4×4 floor and play Lava Chicken for 20 seconds. |
+| `milk` | Drink for protection from bad events through the end of the match. |
+| `swapper` | Spend one charge for a 50% chance to swap positions with a random opponent. |
+| `scaffold` | Right-click a solid floor to build a ten-block scaffolding tower. |
 
 Remote cameras use the Mojang-named Paper camera packet while keeping players in survival.
 Unsupported camera runtimes refuse a drone shot or control attempt instead of changing game modes.
-Remote control, disguises and pending spawns are cleared on exit. Temporary terrain is restored on expiry or match end.
+Remote control and pending spawns are cleared on exit. Temporary terrain is restored on expiry or match end.
 The bows share the native bow material but have separate persistent perk identities.
 
 Special effects, entities, history and pending block leases are scoped to the match

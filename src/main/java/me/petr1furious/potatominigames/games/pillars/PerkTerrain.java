@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.random.RandomGenerator;
 import org.bukkit.Location;
@@ -18,6 +19,7 @@ import org.bukkit.block.data.FaceAttachable;
 import org.bukkit.block.data.type.Door;
 import org.bukkit.block.data.type.Farmland;
 import org.bukkit.block.data.type.Switch;
+import org.bukkit.block.data.type.Scaffolding;
 import org.bukkit.inventory.InventoryHolder;
 
 /** Temporary structures preserve existing blocks; transmutation preflights the complete component. */
@@ -30,7 +32,11 @@ final class PerkTerrain {
     boolean locked(Block b, long tick) { Lease l = leases.get(Pos.of(b)); return l != null && l.locked() && tick < l.until(); }
     boolean leased(Block block) { return leases.containsKey(Pos.of(block)); }
     void changed(Block b) { leases.remove(Pos.of(b)); }
-    static boolean air(Block b) { return b.getType() == Material.AIR || b.getType() == Material.CAVE_AIR || b.getType() == Material.VOID_AIR; }
+    static boolean air(Block block) { return air(block.getType()); }
+    static boolean air(Material material) { return material == Material.AIR || material == Material.CAVE_AIR || material == Material.VOID_AIR; }
+    boolean canLease(List<Block> blocks) {
+        return blocks.size() + leases.size() <= 8192 && blocks.stream().allMatch(b -> inside(b) && air(b));
+    }
     boolean put(Block b, Material material, long until, boolean locked) {
         if (b.getY() < world.getMinHeight() || b.getY() >= world.getMaxHeight() || !world.getWorldBorder().isInside(b.getLocation())) return false;
         Pos pos = Pos.of(b);
@@ -95,6 +101,26 @@ final class PerkTerrain {
                 && world.getWorldBorder().isInside(block.getLocation());
     }
 
+    boolean scaffold(Block base) {
+        if (!base.getRelative(BlockFace.DOWN).getType().isSolid()) return false;
+        for (int y = 0; y < 10; y++) {
+            Block block = base.getRelative(0, y, 0);
+            if (!inside(block) || !air(block)) return false;
+        }
+        Scaffolding data = (Scaffolding) Material.SCAFFOLDING.createBlockData();
+        data.setDistance(0);
+        for (int y = 0; y < 10; y++) base.getRelative(0, y, 0).setBlockData(data, false);
+        return true;
+    }
+
+    void recolor(Block block, Material material) {
+        Pos pos = Pos.of(block);
+        Lease lease = leases.get(pos);
+        if (lease == null || !block.getBlockData().equals(lease.placed())) return;
+        block.setType(material, false);
+        leases.put(pos, new Lease(block, lease.original(), block.getBlockData().clone(), lease.until(), lease.locked()));
+    }
+
     private Block offset(Location at, Pos pos) {
         return world.getBlockAt(at.getBlockX() + pos.x(), at.getBlockY() + pos.y(), at.getBlockZ() + pos.z());
     }
@@ -128,9 +154,13 @@ final class PerkTerrain {
         return true;
     }
     boolean pillar(Location at, Material material, RandomGenerator random) {
+        return pillarSpot(at, material, random) != null;
+    }
+
+    Location pillarSpot(Location at, Material material, RandomGenerator random) {
         int top = at.getBlockY() - 1;
         int bottom = world.getMinHeight();
-        if (top < bottom || top + 2 >= world.getMaxHeight()) return false;
+        if (top < bottom || top + 2 >= world.getMaxHeight()) return null;
         var offsets = new ArrayList<>(PerkLayouts.pillarOffsets());
         // Choose a free column at random, including two clear blocks above its top.
         while (!offsets.isEmpty()) {
@@ -144,9 +174,9 @@ final class PerkTerrain {
             while (y >= bottom && air(world.getBlockAt(x, y, z))) y--;
             if (y == top) continue;
             for (y++; y <= top; y++) world.getBlockAt(x, y, z).setType(material, false);
-            return true;
+            return new Location(world, x + .5, top + 1, z + .5);
         }
-        return false;
+        return null;
     }
 
     void tick(long tick) {

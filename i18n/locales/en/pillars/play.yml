@@ -23,7 +23,7 @@ description.sniper_duel: "Pillars 1.5x apart: five logs, a plain crossbow, then 
 description.party: "Random events, about one a minute"
 description.rave: "Random events twice as often, items as fast as chaos"
 description.adhd: "ADHD: every ~2 minutes — 30 seconds of shuffle ×3 and rave ×3"
-description.perks: "49 special items in the random pool, including rare legendaries"
+description.perks: "55 special items in the random pool, including rare legendaries"
 description.flood: "Lethal water rises one block every 10s, passing through shelters"
 description.fusion: "A random mix of chaos, shuffle, tactical, big house, ADHD, perks, Flood and party/rave"
 description.preset: "By <arg:0>: <arg:1>"
@@ -128,3 +128,9 @@ shuffle.ender_chest: "Ender chests are unavailable in shuffle: only blocks remai
 item.explosive_firework_rocket: "Explosive Firework Rocket"
 
 title.draw_players: "Winners: <arg:0>"
+mode.casino_lucky: "Lucky Casino"
+description.casino_lucky: "Perks and random events, 75% chance of a good event"
+mode.casino: "Neutral Casino"
+description.casino: "Perks and random events, 50% chance of a good event"
+mode.casino_unlucky: "Unlucky Casino"
+description.casino_unlucky: "Perks and random events, 25% chance of a good event"

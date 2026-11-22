@@ -124,6 +124,24 @@ modes:
     bossBar: true
     layout: circular
     eventMeanSeconds: 30
+  casino_lucky:
+    cooldownSeconds: 5
+    timeLimit: 8min
+    color: '#6DDD84'
+    eventMeanSeconds: 40
+    perks: true
+  casino:
+    cooldownSeconds: 5
+    timeLimit: 8min
+    color: '#F2C358'
+    eventMeanSeconds: 40
+    perks: true
+  casino_unlucky:
+    cooldownSeconds: 5
+    timeLimit: 8min
+    color: '#E57575'
+    eventMeanSeconds: 40
+    perks: true
   adhd:
     cooldownSeconds: 5
     timeLimit: 8min

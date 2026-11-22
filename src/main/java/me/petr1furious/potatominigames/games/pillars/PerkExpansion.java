@@ -30,7 +30,6 @@ import me.petr1furious.potatominigames.i18n.I18n;
 final class PerkExpansion implements Listener, AutoCloseable {
     private record Infection(UUID owner, List<Block> cells, long until) { }
     private record ZombieDrop(UUID owner, Location at, long when) { }
-    private record Morph(Player player, LivingEntity mob, long until) { }
     private record Remote(Player owner, Entity target, Location origin, long until, boolean puppet) { }
     private record Wish(UUID owner, Block block) { }
     private final PillarsPerks perks;
@@ -40,7 +39,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
     private final PerkTerrain terrain;
     private final Map<UUID, Long> auras = new HashMap<>(), shields = new HashMap<>(), droneReady = new HashMap<>();
     private final Map<UUID, Remote> remotes = new HashMap<>();
-    private final Map<UUID, Morph> morphs = new HashMap<>();
     private final Map<UUID, PerkType> arrows = new HashMap<>();
     private final Map<PerkTerrain.Pos, Wish> wishes = new HashMap<>();
     private final List<Infection> infections = new ArrayList<>();
@@ -53,7 +51,7 @@ final class PerkExpansion implements Listener, AutoCloseable {
     private EntityCamera camera;
     private UUID lightningTarget;
     private long tick;
-    private boolean moving, redirecting, closed;
+    private boolean moving, closed;
     PerkExpansion(PillarsPerks perks, Plugin plugin, World world, Supplier<List<Player>> players, PerkTerrain terrain) {
         this(perks, plugin, world, players, terrain, listener -> Bukkit.getPluginManager().registerEvents(listener, plugin));
     }
@@ -85,7 +83,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
             case AQUARIUM -> aquarium(p);
             case AURA -> { auras.put(p.getUniqueId(), tick + PerkRules.AURA_TICKS); yield true; }
             case INVULNERABILITY -> { shields.put(p.getUniqueId(), tick + 200); yield true; }
-            case MORPH -> morph(p);
             case METRO -> metro(p);
             case GENIE -> genie(p, event);
             case INFECTION -> infection(p, event);
@@ -219,29 +216,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
                     tick + ThreadLocalRandom.current().nextInt(10, 101)));
         return true;
     }
-    private boolean morph(Player p) {
-        endMorph(p.getUniqueId());
-        EntityType[] pool = {EntityType.COW, EntityType.PIG, EntityType.CHICKEN, EntityType.CREEPER, EntityType.ZOMBIE,
-                EntityType.SHEEP, EntityType.SLIME, EntityType.ENDERMAN, EntityType.SPIDER, EntityType.GOAT};
-        LivingEntity mob = (LivingEntity) world.spawnEntity(p.getLocation(), pool[ThreadLocalRandom.current().nextInt(pool.length)]);
-        mob.setAI(false); mob.setGravity(false); mob.setSilent(false); mob.setCollidable(false); mob.setPersistent(false);
-        mob.customName(p.name()); mob.setCustomNameVisible(true);
-        if (mob instanceof Ageable age) age.setAdult();
-        if (mob instanceof Slime slime) slime.setSize(2);
-        if (mob instanceof Zombie zombie) zombie.setShouldBurnInDay(false);
-        morphs.put(p.getUniqueId(), new Morph(p, mob, tick + 300));
-        for (Player viewer : world.getPlayers()) if (!viewer.equals(p)) viewer.hidePlayer(plugin, p);
-        p.sendMessage(I18n.tr("pillars.effects.feedback.morphed", Component.translatable(mob.getType().translationKey())));
-        return true;
-    }
-    private void endMorph(UUID id) {
-        Morph m = morphs.remove(id); if (m == null) return;
-        m.mob().remove();
-        for (Player viewer : Bukkit.getOnlinePlayers()) viewer.showPlayer(plugin, m.player());
-    }
-    @EventHandler public void join(PlayerJoinEvent e) {
-        for (Morph m : morphs.values()) if (!m.player().equals(e.getPlayer())) e.getPlayer().hidePlayer(plugin, m.player());
-    }
     void bow(EntityShootBowEvent e, Player p, PerkType type) {
         if (!perks.active(p) || !(e.getProjectile() instanceof AbstractArrow arrow)) { e.setCancelled(true); return; }
         if (type == PerkType.DRONE && droneReady.getOrDefault(p.getUniqueId(), 0L) > tick) {
@@ -266,8 +240,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void hit(ProjectileHitEvent e) {
-        Morph disguise = morphs.values().stream().filter(m -> m.mob().equals(e.getHitEntity())).findFirst().orElse(null);
-        if (disguise != null && disguise.player().equals(e.getEntity().getShooter())) { e.setCancelled(true); return; }
         PerkType type = arrows.remove(e.getEntity().getUniqueId());
         if (type == PerkType.DRONE && e.getEntity().getShooter() instanceof Player p) {
             Remote r = remotes.remove(p.getUniqueId());
@@ -276,7 +248,7 @@ final class PerkExpansion implements Listener, AutoCloseable {
         }
         if (type != PerkType.PUPPET || !(e.getEntity().getShooter() instanceof Player p)) return;
         e.setCancelled(true); e.getEntity().remove();
-        Player victim = disguise != null ? disguise.player() : e.getHitEntity() instanceof Player player ? player : null;
+        Player victim = e.getHitEntity() instanceof Player player ? player : null;
         if (!perks.active(p) || victim == null || victim.equals(p) || !perks.active(victim)
                 || invulnerable(victim) || !cameraReady(p)) return;
         remotes.put(p.getUniqueId(), new Remote(p, victim, p.getLocation().clone(), tick + 100, true));
@@ -300,18 +272,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
     @SuppressWarnings("removal")
     @EventHandler(priority = EventPriority.HIGHEST)
     public void damage(EntityDamageEvent e) {
-        Morph m = morphs.values().stream().filter(s -> s.mob().equals(e.getEntity())).findFirst().orElse(null);
-        if (m != null) {
-            boolean allowed = !e.isCancelled(); e.setCancelled(true);
-            if (allowed && !redirecting && perks.alive(m.player())) {
-                redirecting = true;
-                try {
-                    if (e instanceof EntityDamageByEntityEvent hit) m.player().damage(e.getDamage(), hit.getDamager());
-                    else m.player().damage(e.getDamage());
-                } finally { redirecting = false; }
-            }
-            return;
-        }
         if (!(e.getEntity() instanceof Player p) || !world.equals(p.getWorld())) return;
         if (invulnerable(p)) { e.setCancelled(true); return; }
         if (p.getUniqueId().equals(lightningTarget) && !e.isCancelled()) {
@@ -335,17 +295,9 @@ final class PerkExpansion implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void death(EntityDeathEvent e) {
-        if (zombieExpiry.containsKey(e.getEntity().getUniqueId()) || morphs.values().stream().anyMatch(m -> m.mob().equals(e.getEntity()))) {
+        if (zombieExpiry.containsKey(e.getEntity().getUniqueId())) {
             e.getDrops().clear(); e.setDroppedExp(0);
         }
-    }
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void morphInteract(PlayerInteractEntityEvent e) {
-        if (morphs.values().stream().anyMatch(m -> m.mob().equals(e.getRightClicked()))) e.setCancelled(true);
-    }
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void morphTeleport(EntityTeleportEvent e) {
-        if (morphs.values().stream().anyMatch(m -> m.mob().equals(e.getEntity()))) e.setCancelled(true);
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void target(EntityTargetLivingEntityEvent e) {
@@ -362,11 +314,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
         punches.clear(); anchorHits.clear();
         shields.entrySet().removeIf(e -> e.getValue() <= tick || !present(e.getKey()));
         auras.entrySet().removeIf(e -> e.getValue() <= tick || !present(e.getKey()));
-        for (UUID id : List.copyOf(morphs.keySet())) {
-            Morph m = morphs.get(id);
-            if (!perks.alive(m.player()) || tick >= m.until() || !m.mob().isValid()) { endMorph(id); continue; }
-            m.mob().teleport(m.player().getLocation());
-        }
         for (UUID id : List.copyOf(remotes.keySet())) {
             Remote r = remotes.get(id);
             if (!available(r.owner()) || !r.target().isValid() || tick >= r.until()
@@ -484,7 +431,7 @@ final class PerkExpansion implements Listener, AutoCloseable {
         }
     }
     void playerGone(Player p) {
-        UUID id = p.getUniqueId(); endRemote(id); endMorph(id);
+        UUID id = p.getUniqueId(); endRemote(id);
         for (Remote r : List.copyOf(remotes.values())) if (r.target().equals(p)) endRemote(r.owner().getUniqueId());
         auras.remove(id); shields.remove(id); punches.remove(id); anchorHits.remove(id);
         drops.removeIf(d -> d.owner().equals(id)); infections.removeIf(i -> i.owner().equals(id));
@@ -493,7 +440,6 @@ final class PerkExpansion implements Listener, AutoCloseable {
     @Override public void close() {
         closed = true;
         for (UUID id : List.copyOf(remotes.keySet())) endRemote(id);
-        for (UUID id : List.copyOf(morphs.keySet())) endMorph(id);
         HandlerList.unregisterAll(this);
         auras.clear(); shields.clear(); droneReady.clear(); arrows.clear(); wishes.clear(); infections.clear(); drops.clear();
         zombies.forEach(Entity::remove); zombies.clear(); zombieExpiry.clear(); pendingCamera.clear(); punches.clear(); anchorHits.clear();
