@@ -106,16 +106,23 @@ final class FurryQuestSession extends PartySurvivalSession {
                 Input input = agent.player.getCurrentInput();
                 FurryQuest.Site site = quest.site(id);
                 if (site == null) continue;
-                Location target = arena.landmark(site);
+                var station = quest.station(id);
+                Location target = station == null ? arena.landmark(site) : arena.station(station);
                 Location body = agent.player.getLocation();
-                if (elapsed % 10 == 0) showTaskMarker(agent.player, site, target);
+                if (elapsed % 10 == 0) {
+                    if (station == null) showTaskMarker(agent.player, site, target);
+                    else agent.player.spawnParticle(Particle.HAPPY_VILLAGER, target.clone().add(0, 1.35, 0),
+                            4, .18, .12, .18, 0);
+                }
+                if (site == FurryQuest.Site.FISH && quest.biteTick(id) == elapsed) {
+                    Location splash = target.clone().add(-1, -.08, 0);
+                    world.spawnParticle(Particle.SPLASH, splash, 10, .16, .04, .16, .04);
+                    agent.player.playSound(splash, Sound.ENTITY_FISHING_BOBBER_SPLASH, .7f, 1);
+                    agent.player.sendActionBar(message("bite"));
+                }
                 if (quest.act(id, body.getX() - target.getX(), body.getZ() - target.getZ(),
                         Math.abs(body.getY() - target.getY()) <= 2, input.isSneak(), input.isJump())) {
-                    playTaskEffect(agent, site);
-                    agent.player.playSound(body, Sound.BLOCK_NOTE_BLOCK_CHIME, .7f, 1.4f);
-                    agent.player.sendMessage(message("complete", quest.completed(id), FurryQuest.TASKS));
-                    agent.player.sendMessage(mission(id));
-                    checkFinalHunt();
+                    completeTask(agent, site);
                 }
             }
         }
@@ -123,6 +130,16 @@ final class FurryQuestSession extends PartySurvivalSession {
             say(message("end." + key(quest.outcome())));
             finish(List.of());
         }
+    }
+
+    private void completeTask(FurryQuestDisguise agent, FurryQuest.Site site) {
+        Player player = agent.player;
+        UUID id = player.getUniqueId();
+        playTaskEffect(agent, site);
+        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, .7f, 1.4f);
+        player.sendMessage(message("complete", quest.completed(id), FurryQuest.TASKS));
+        player.sendMessage(mission(id));
+        checkFinalHunt();
     }
 
     private void checkFinalHunt() {
@@ -169,6 +186,9 @@ final class FurryQuestSession extends PartySurvivalSession {
         } else if (site == FurryQuest.Site.BELL) {
             if (arena.landmark(site).getBlock().getRelative(0, 1, 0).getState() instanceof Bell bell)
                 bell.ring();
+        } else if (site == FurryQuest.Site.SWAP) {
+            var hat = arena.station(FurryQuest.Station.SCARECROW).getBlock().getRelative(0, 1, 0);
+            hat.setType(hat.getType() == Material.SPRUCE_SLAB ? Material.CRIMSON_SLAB : Material.SPRUCE_SLAB, false);
         }
     }
 
@@ -182,6 +202,33 @@ final class FurryQuestSession extends PartySurvivalSession {
                 && player.getInventory().getItemInMainHand().getType() == Material.SPYGLASS) {
             event.setUseItemInHand(Event.Result.ALLOW);
             aiming = true;
+        } else if (event.getAction().isRightClick() && event.getClickedBlock() != null) {
+            var agent = agents.get(player.getUniqueId());
+            if (agent != null) interactAtStation(agent, arena.stationAt(event.getClickedBlock()));
+        }
+    }
+
+    private void interactAtStation(FurryQuestDisguise agent, FurryQuest.Station station) {
+        if (station == null) return;
+        Player player = agent.player;
+        UUID id = player.getUniqueId();
+        var site = quest.site(id);
+        var result = quest.click(id, station, player.isSneaking(), elapsed());
+        if (result == FurryQuest.Interaction.IGNORED) return;
+        if (station.chime()) {
+            float pitch = switch (station) {
+                case BLUE -> .75f;
+                case GOLD -> 1f;
+                default -> 1.25f;
+            };
+            world.playSound(arena.station(station), Sound.BLOCK_NOTE_BLOCK_CHIME, .55f, pitch);
+        }
+        switch (result) {
+            case COMPLETE -> completeTask(agent, site);
+            case NEXT, CAST -> player.sendMessage(mission(id));
+            case EARLY -> player.sendMessage(message("early"));
+            case WRONG_NOTE -> player.sendMessage(message("wrong_note"));
+            case IGNORED -> { }
         }
     }
 
@@ -223,7 +270,12 @@ final class FurryQuestSession extends PartySurvivalSession {
 
     private Component mission(UUID id) {
         FurryQuest.Site site = quest.site(id);
-        return site == null ? message("finished") : message("task." + key(site));
+        if (site == null) return message("finished");
+        var station = quest.station(id);
+        if (station == null) return message("task." + key(site));
+        if (site == FurryQuest.Site.FISH && quest.biteTick(id) >= 0
+                && elapsed() < quest.biteTick(id) + FurryQuest.BITE_WINDOW) return message("waiting");
+        return message("task." + key(station));
     }
 
     @Override

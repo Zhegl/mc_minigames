@@ -15,7 +15,7 @@ public final class FurryQuestCheck {
 
     private static FurryQuest round() { return new FurryQuest(PLAYERS, new Random(42)); }
 
-    private static void finishRoute(FurryQuest game, UUID id, boolean clockwise) {
+    private static Set<FurryQuest.Site> finishRoute(FurryQuest game, UUID id, boolean clockwise) {
         var seen = EnumSet.noneOf(FurryQuest.Site.class);
         while (game.site(id) != null) {
             var site = game.site(id);
@@ -65,13 +65,51 @@ public final class FurryQuestCheck {
                     game.act(id, 2, 0, true, false, false);
                     yield game.act(id, 2, 0, true, false, true);
                 }
+                case PARCEL -> {
+                    require(game.click(id, FurryQuest.Station.LOOM, false, 0) == FurryQuest.Interaction.IGNORED,
+                            "No delivery before pickup");
+                    require(game.click(id, FurryQuest.Station.BARN_BARREL, false, 1) == FurryQuest.Interaction.NEXT,
+                            "Pick up wool at the barn");
+                    game.act(id, 18, 6, true, false, false);
+                    require(game.station(id) == FurryQuest.Station.LOOM, "Keep the parcel while crossing the farm");
+                    yield game.click(id, FurryQuest.Station.LOOM, false, 22) == FurryQuest.Interaction.COMPLETE;
+                }
+                case FISH -> {
+                    var post = FurryQuest.Station.DOCK_POST;
+                    require(game.click(id, post, false, 10) == FurryQuest.Interaction.CAST, "Cast at the dock");
+                    require(game.click(id, post, false, 11) == FurryQuest.Interaction.EARLY, "Early reel loses the bite");
+                    game.click(id, post, false, 12);
+                    long late = game.biteTick(id) + FurryQuest.BITE_WINDOW;
+                    require(game.click(id, post, false, late) == FurryQuest.Interaction.CAST, "Missed bite allows recast");
+                    yield game.click(id, post, false, game.biteTick(id)) == FurryQuest.Interaction.COMPLETE;
+                }
+                case CHIMES -> {
+                    game.click(id, FurryQuest.Station.BLUE, false, 0);
+                    require(game.click(id, FurryQuest.Station.RED, false, 1) == FurryQuest.Interaction.WRONG_NOTE,
+                            "Incorrect note resets the tune");
+                    for (var note : List.of(FurryQuest.Station.BLUE, FurryQuest.Station.GOLD))
+                        require(game.click(id, note, false, 2) == FurryQuest.Interaction.NEXT, "Play notes in order");
+                    yield game.click(id, FurryQuest.Station.RED, false, 3) == FurryQuest.Interaction.COMPLETE;
+                }
+                case SWAP -> {
+                    require(game.click(id, FurryQuest.Station.SCARECROW, false, 1) == FurryQuest.Interaction.IGNORED,
+                            "Stand beside the scarecrow without swapping");
+                    yield game.click(id, FurryQuest.Station.SCARECROW, true, 2) == FurryQuest.Interaction.COMPLETE;
+                }
             };
             require(done && game.completed(id) == seen.size(), "One personal completion for " + site);
         }
         require(seen.size() == 5, "All five different tasks");
+        return seen;
     }
 
     public static void main(String[] args) {
+        var pool = EnumSet.noneOf(FurryQuest.Site.class);
+        for (int seed = 0; seed < 32; seed++) {
+            var sample = new FurryQuest(PLAYERS, new Random(seed));
+            for (UUID id : PLAYERS) if (!id.equals(sample.sniper())) pool.addAll(finishRoute(sample, id, true));
+        }
+        require(pool.equals(EnumSet.allOf(FurryQuest.Site.class)), "Every mission can appear and be completed");
         FurryQuest game = round();
         UUID sniper = game.sniper();
         List<UUID> spies = PLAYERS.stream().filter(id -> !id.equals(sniper)).toList();

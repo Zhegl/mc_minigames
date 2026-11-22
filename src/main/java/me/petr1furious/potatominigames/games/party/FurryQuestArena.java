@@ -83,6 +83,18 @@ final class FurryQuestArena {
         return new Location(world, site.x + .5, FLOOR + 1, site.z + .5);
     }
 
+    Location station(FurryQuest.Station station) {
+        return new Location(world, station.x + .5, FLOOR + station.y, station.z + .5);
+    }
+
+    FurryQuest.Station stationAt(Block block) {
+        for (var station : FurryQuest.Station.values()) {
+            if (block.getX() == station.x && block.getY() == FLOOR + station.y && block.getZ() == station.z)
+                return station;
+        }
+        return null;
+    }
+
     private boolean open(int x, int z) {
         return Math.abs(x) < EDGE && Math.abs(z) < EDGE
                 && switch (world.getBlockAt(x, FLOOR, z).getType()) {
