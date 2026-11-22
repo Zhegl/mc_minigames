@@ -54,6 +54,7 @@ final class FurryQuestSession extends PartySurvivalSession {
     private boolean aiming;
     private long chaseEndsAt;
     private long chaseReadyAt;
+    private long lastAxeUseTick = -1;
 
     FurryQuestSession(SessionServices services, PartyConfig config, PartyRoundContext context) {
         super(services, config, ID, context);
@@ -220,8 +221,14 @@ final class FurryQuestSession extends PartySurvivalSession {
         }
     }
 
-    private void startChase(Player hunter) {
-        if (chaseEndsAt != 0) return;
+    private void toggleChase(Player hunter) {
+        // A single right-click on an animal can reach both interaction handlers.
+        if (lastAxeUseTick == elapsed()) return;
+        lastAxeUseTick = elapsed();
+        if (chaseEndsAt != 0) {
+            recallHunter(hunter);
+            return;
+        }
         if (elapsed() < chaseReadyAt) {
             hunter.sendActionBar(message("chase_cooldown", (chaseReadyAt - elapsed() + 19) / 20));
             return;
@@ -280,13 +287,18 @@ final class FurryQuestSession extends PartySurvivalSession {
         if (!playing() || quest == null || quest.outcome() != null
                 || !alive(player) || !world.equals(player.getWorld())) return;
         var animal = event.getRightClicked();
+        if (quest.sniper().equals(player.getUniqueId()) && event.getHand() == EquipmentSlot.HAND
+                && player.getInventory().getItemInMainHand().getType() == CHASE_AXE) {
+            event.setCancelled(true);
+            toggleChase(player);
+            return;
+        }
         if (!arena.contains(animal.getUniqueId())) return;
         event.setCancelled(true);
         if (quest.sniper().equals(player.getUniqueId())) {
             if (event.getHand() != EquipmentSlot.HAND || chaseEndsAt != 0) return;
             Material held = player.getInventory().getItemInMainHand().getType();
-            if (held == CHASE_AXE) startChase(player);
-            else if (held == HIGHLIGHTER)
+            if (held == HIGHLIGHTER)
                 markAnimal(player, false);
             return;
         }
@@ -303,11 +315,13 @@ final class FurryQuestSession extends PartySurvivalSession {
         if (event.getHand() != EquipmentSlot.HAND || !playing() || quest == null || quest.outcome() != null
                 || !alive(player) || !world.equals(player.getWorld())) return;
         if (player.getUniqueId().equals(quest.sniper())) {
-            if (chaseEndsAt != 0) return;
             Material held = player.getInventory().getItemInMainHand().getType();
             if (event.getAction().isRightClick() && held == CHASE_AXE) {
-                startChase(player);
-            } else if (event.getAction().isRightClick() && held == Material.SPYGLASS) {
+                toggleChase(player);
+                return;
+            }
+            if (chaseEndsAt != 0) return;
+            if (event.getAction().isRightClick() && held == Material.SPYGLASS) {
                 event.setUseItemInHand(Event.Result.ALLOW);
                 aiming = true;
             } else if (event.getAction().isRightClick() && held == HIGHLIGHTER) {
