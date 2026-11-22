@@ -41,14 +41,15 @@ final class FurryQuest {
 
     record Plot(int x, int z) {}
 
+    /** How clearly the task gives away a hider to the sniper. */
     enum Difficulty { EASY, MEDIUM, HARD }
 
     enum Site {
-        POND(Difficulty.EASY, -13, -10), HAY(Difficulty.MEDIUM, 12, -11),
-        TREE(Difficulty.HARD, -12, 10), TROUGH(Difficulty.MEDIUM, 13, 8), BELL(Difficulty.EASY, 1, 15),
-        PARCEL(Difficulty.MEDIUM, Station.BARN_BARREL, Station.LOOM), FISH(Difficulty.HARD, Station.DOCK_POST),
-        CHIMES(Difficulty.MEDIUM, Station.BLUE, Station.GOLD, Station.RED),
-        SWAP(Difficulty.EASY, Station.SCARECROW), CONTACT(Difficulty.HARD);
+        POND(Difficulty.EASY, -13, -10), HAY(Difficulty.HARD, 12, -11),
+        TREE(Difficulty.MEDIUM, -12, 10), TROUGH(Difficulty.EASY, 13, 8), BELL(Difficulty.HARD, 1, 15),
+        PARCEL(Difficulty.MEDIUM, Station.BARN_BARREL, Station.LOOM), FISH(Difficulty.MEDIUM, Station.DOCK_POST),
+        CHIMES(Difficulty.HARD, Station.BLUE, Station.GOLD, Station.RED),
+        SWAP(Difficulty.MEDIUM, Station.SCARECROW), CONTACT(Difficulty.EASY);
 
         final Difficulty difficulty;
         final Plot plot;

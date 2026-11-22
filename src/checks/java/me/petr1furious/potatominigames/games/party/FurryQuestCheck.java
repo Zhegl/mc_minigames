@@ -121,6 +121,7 @@ public final class FurryQuestCheck {
     }
 
     public static void main(String[] args) {
+        require(FurryQuest.Site.BELL.difficulty == FurryQuest.Difficulty.HARD, "Ringing the bell is high exposure");
         var pool = EnumSet.noneOf(FurryQuest.Site.class);
         for (int seed = 0; seed < 32; seed++) {
             var sample = new FurryQuest(PLAYERS, CONTACT, new Random(seed));
@@ -194,7 +195,8 @@ public final class FurryQuestCheck {
 
     private static void checkInterleavedTasks() {
         var players = PLAYERS.subList(0, 2);
-        var game = new FurryQuest(players, CONTACT, new Random(2056));
+        // Deals a parcel, hat swap, chimes, trough and contact to the hider.
+        var game = new FurryQuest(players, CONTACT, new Random(14138));
         UUID id = players.stream().filter(p -> !p.equals(game.sniper())).findFirst().orElseThrow();
         require(game.click(id, FurryQuest.Station.BARN_BARREL, false, 0) == FurryQuest.Interaction.NEXT,
                 "Collect a parcel before starting the tune");
