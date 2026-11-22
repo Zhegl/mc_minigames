@@ -3,6 +3,7 @@ package me.petr1furious.potatominigames.games.party;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,27 +27,45 @@ final class FurryQuest {
             this.z = z;
         }
 
+        Site task() {
+            return switch (this) {
+                case BARN_BARREL, LOOM -> Site.PARCEL;
+                case DOCK_POST -> Site.FISH;
+                case BLUE, GOLD, RED -> Site.CHIMES;
+                case SCARECROW -> Site.SWAP;
+            };
+        }
+
         boolean chime() { return this == BLUE || this == GOLD || this == RED; }
     }
 
-    enum Site {
-        POND(-13, -10), HAY(12, -11), TREE(-12, 10), TROUGH(13, 8), BELL(1, 15),
-        PARCEL(Station.BARN_BARREL, Station.LOOM), FISH(Station.DOCK_POST),
-        CHIMES(Station.BLUE, Station.GOLD, Station.RED), SWAP(Station.SCARECROW);
+    record Plot(int x, int z) {}
 
-        final int x, z;
+    enum Difficulty { EASY, MEDIUM, HARD }
+
+    enum Site {
+        POND(Difficulty.EASY, -13, -10), HAY(Difficulty.MEDIUM, 12, -11),
+        TREE(Difficulty.HARD, -12, 10), TROUGH(Difficulty.MEDIUM, 13, 8), BELL(Difficulty.EASY, 1, 15),
+        PARCEL(Difficulty.MEDIUM, Station.BARN_BARREL, Station.LOOM), FISH(Difficulty.HARD, Station.DOCK_POST),
+        CHIMES(Difficulty.MEDIUM, Station.BLUE, Station.GOLD, Station.RED),
+        SWAP(Difficulty.EASY, Station.SCARECROW), CONTACT(Difficulty.HARD);
+
+        final Difficulty difficulty;
+        final Plot plot;
         final List<Station> stops;
-        Site(int x, int z) {
-            this.x = x;
-            this.z = z;
-            stops = List.of();
+        Site(Difficulty difficulty, Plot plot, List<Station> stops) {
+            this.difficulty = difficulty;
+            this.plot = plot;
+            this.stops = stops;
         }
-        Site(Station first, Station... next) {
-            x = first.x;
-            z = first.z;
-            var stations = new ArrayList<>(List.of(first));
-            stations.addAll(List.of(next));
-            stops = List.copyOf(stations);
+        Site(Difficulty difficulty) {
+            this(difficulty, null, List.of()); // The contact moves with the herd.
+        }
+        Site(Difficulty difficulty, int x, int z) {
+            this(difficulty, new Plot(x, z), List.of());
+        }
+        Site(Difficulty difficulty, Station... stops) {
+            this(difficulty, new Plot(stops[0].x, stops[0].z), List.of(stops));
         }
     }
 
@@ -59,35 +78,72 @@ final class FurryQuest {
         final List<Site> sites;
         final Random random;
         boolean active = true;
-        int completed, progress;
+        final Map<Site, TaskProgress> pending = new EnumMap<>(Site.class);
+        Site focus;
+
+        Route(Random random) {
+            this.random = random;
+            var hard = new ArrayList<Site>();
+            var others = new ArrayList<Site>();
+            for (Site site : Site.values()) {
+                if (site.difficulty == Difficulty.HARD) hard.add(site);
+                else others.add(site);
+            }
+            Collections.shuffle(others, random);
+            var route = new ArrayList<>(others.subList(0, TASKS - 1));
+            route.add(hard.get(random.nextInt(hard.size())));
+            Collections.shuffle(route, random);
+            sites = List.copyOf(route);
+            for (Site site : sites) pending.put(site, new TaskProgress(site));
+            focus = sites.getFirst();
+        }
+
+        void cycle() {
+            if (pending.isEmpty()) {
+                focus = null;
+                return;
+            }
+            int start = sites.indexOf(focus);
+            for (int step = 1; step <= sites.size(); step++) {
+                Site next = sites.get((start + step) % sites.size());
+                if (pending.containsKey(next)) {
+                    focus = next;
+                    return;
+                }
+            }
+        }
+
+        void complete(Site site) {
+            pending.remove(site);
+            if (site == focus) cycle();
+        }
+    }
+
+    private static final class TaskProgress {
+        final Site site;
+        int progress;
         int previousSector = -1;
         long biteTick = -1;
         boolean crouching, jumping;
 
-        Route(Random random) {
-            this.random = random;
-            var pool = new ArrayList<>(List.of(Site.values()));
-            Collections.shuffle(pool, random);
-            sites = List.copyOf(pool.subList(0, TASKS));
-        }
-        Site site() { return completed == sites.size() ? null : sites.get(completed); }
+        TaskProgress(Site site) { this.site = site; }
+
         Station station() {
-            Site site = site();
-            return site == null || site.stops.isEmpty() ? null : site.stops.get(progress);
+            return site.stops.isEmpty() ? null : site.stops.get(progress);
         }
 
-        Interaction click(Station clicked, boolean sneak, long tick) {
+        Interaction click(Station clicked, boolean sneak, long tick, Random random) {
             Station expected = station();
             if (expected == null || clicked == null) return Interaction.IGNORED;
             if (clicked != expected) {
-                if (site() == Site.CHIMES && clicked.chime()) {
+                if (site == Site.CHIMES && clicked.chime()) {
                     progress = 0;
                     return Interaction.WRONG_NOTE;
                 }
                 return Interaction.IGNORED;
             }
-            if (site() == Site.SWAP && !sneak) return Interaction.IGNORED;
-            if (site() == Site.FISH) {
+            if (site == Site.SWAP && !sneak) return Interaction.IGNORED;
+            if (site == Site.FISH) {
                 if (biteTick < 0 || tick >= biteTick + BITE_WINDOW) {
                     biteTick = tick + 24 + random.nextInt(33);
                     return Interaction.CAST;
@@ -97,30 +153,22 @@ final class FurryQuest {
                     return Interaction.EARLY;
                 }
             }
-            if (++progress < site().stops.size()) return Interaction.NEXT;
-            complete();
+            if (++progress < site.stops.size()) return Interaction.NEXT;
             return Interaction.COMPLETE;
-        }
-
-        private void complete() {
-            completed++;
-            progress = 0;
-            previousSector = -1;
-            biteTick = -1;
         }
 
         boolean act(double dx, double dz, boolean level, boolean crouch, boolean jump) {
             boolean peck = crouch && !crouching, ring = jump && !jumping;
             crouching = crouch;
             jumping = jump;
-            if (!site().stops.isEmpty()) return false;
+            if (!site.stops.isEmpty()) return false;
             double radius2 = dx * dx + dz * dz;
-            if (!level || radius2 > (site() == Site.TREE ? 30.25 : 16)) {
+            if (!level || radius2 > (site == Site.TREE ? 30.25 : 16)) {
                 progress = 0;
                 previousSector = -1;
                 return false;
             }
-            boolean done = switch (site()) {
+            return switch (site) {
                 case POND -> {
                     progress = crouch ? progress + 1 : 0;
                     yield progress >= 40;
@@ -133,10 +181,8 @@ final class FurryQuest {
                     yield progress == 3;
                 }
                 case BELL -> ring;
-                case PARCEL, FISH, CHIMES, SWAP -> false;
+                case PARCEL, FISH, CHIMES, SWAP, CONTACT -> false;
             };
-            if (done) complete();
-            return done;
         }
 
         private boolean circle(double dx, double dz) {
@@ -154,12 +200,14 @@ final class FurryQuest {
     }
 
     private final UUID sniper;
+    private final UUID doubleAgent;
     private final Map<UUID, Route> routes = new LinkedHashMap<>();
     private Outcome outcome;
     private boolean finalHunt;
 
-    FurryQuest(Collection<UUID> players, Random random) {
+    FurryQuest(Collection<UUID> players, UUID doubleAgent, Random random) {
         if (players.size() < 2) throw new IllegalArgumentException("Furry Quest requires two players");
+        this.doubleAgent = doubleAgent;
         var ids = new ArrayList<>(players);
         sniper = ids.remove(random.nextInt(ids.size()));
         for (UUID id : ids) routes.put(id, new Route(random));
@@ -167,30 +215,66 @@ final class FurryQuest {
 
     UUID sniper() { return sniper; }
     int remaining() { return (int) routes.values().stream().filter(r -> r.active).count(); }
-    int completed(UUID id) { return routes.get(id).completed; }
+    int completed(UUID id) { return TASKS - routes.get(id).pending.size(); }
+    List<Site> assignments(UUID id) { return routes.get(id).sites; }
+
     Site site(UUID id) {
         Route route = routes.get(id);
-        return route == null || !route.active ? null : route.site();
+        return route == null || !route.active ? null : route.focus;
     }
+
+    void cycle(UUID id) {
+        if (site(id) != null) routes.get(id).cycle();
+    }
+
+    private TaskProgress pending(UUID id, Site site) {
+        Route route = routes.get(id);
+        return outcome == null && route != null && route.active ? route.pending.get(site) : null;
+    }
+
     Outcome outcome() { return outcome; }
-    Station station(UUID id) { return site(id) == null ? null : routes.get(id).station(); }
-    long biteTick(UUID id) { return routes.get(id).biteTick; }
-    Interaction click(UUID id, Station station, boolean sneak, long tick) {
-        if (outcome != null || site(id) == null) return Interaction.IGNORED;
-        return routes.get(id).click(station, sneak, tick);
+
+    boolean contact(UUID id, UUID animal) {
+        if (pending(id, Site.CONTACT) == null || !doubleAgent.equals(animal)) return false;
+        routes.get(id).complete(Site.CONTACT);
+        return true;
     }
+
+    Station station(UUID id, Site site) {
+        TaskProgress task = pending(id, site);
+        return task == null ? null : task.station();
+    }
+
+    long biteTick(UUID id) {
+        TaskProgress task = pending(id, Site.FISH);
+        return task == null ? -1 : task.biteTick;
+    }
+
+    Interaction click(UUID id, Station station, boolean sneak, long tick) {
+        if (station == null) return Interaction.IGNORED;
+        Site site = station.task();
+        TaskProgress task = pending(id, site);
+        if (task == null) return Interaction.IGNORED;
+        Route route = routes.get(id);
+        Interaction result = task.click(station, sneak, tick, route.random);
+        if (result == Interaction.COMPLETE) route.complete(site);
+        return result;
+    }
+
     boolean finalHunt() { return finalHunt; }
 
     boolean startFinalHuntIfReady() {
-        if (finalHunt || outcome != null || routes.values().stream().anyMatch(r -> r.active && r.completed < TASKS))
+        if (finalHunt || outcome != null || routes.values().stream().anyMatch(r -> r.active && !r.pending.isEmpty()))
             return false;
         finalHunt = true;
         return true;
     }
 
-    boolean act(UUID id, double dx, double dz, boolean level, boolean crouch, boolean jump) {
-        if (outcome != null || site(id) == null) return false;
-        return routes.get(id).act(dx, dz, level, crouch, jump);
+    boolean act(UUID id, Site site, double dx, double dz, boolean level, boolean crouch, boolean jump) {
+        TaskProgress task = pending(id, site);
+        if (task == null || !task.act(dx, dz, level, crouch, jump)) return false;
+        routes.get(id).complete(site);
+        return true;
     }
 
     void out(UUID id) {

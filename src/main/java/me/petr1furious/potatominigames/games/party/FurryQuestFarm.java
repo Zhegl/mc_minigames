@@ -49,11 +49,11 @@ final class FurryQuestFarm {
 
         for (var site : FurryQuest.Site.values()) {
             switch (site) {
-                case POND -> pond(site.x, site.z);
-                case HAY -> barn(site.x, site.z);
-                case TREE -> orchard(site.x, site.z);
-                case TROUGH -> field(site.x, site.z);
-                case BELL -> bellGreen(site.x, site.z);
+                case POND -> pond(site.plot.x(), site.plot.z());
+                case HAY -> barn(site.plot.x(), site.plot.z());
+                case TREE -> orchard(site.plot.x(), site.plot.z());
+                case TROUGH -> field(site.plot.x(), site.plot.z());
+                case BELL -> bellGreen(site.plot.x(), site.plot.z());
                 case PARCEL -> {
                     var loom = FurryQuest.Station.LOOM;
                     put(loom.x, loom.y, loom.z, LOOM);
@@ -63,8 +63,7 @@ final class FurryQuestFarm {
                     chime(FurryQuest.Station.GOLD, YELLOW_WOOL);
                     chime(FurryQuest.Station.RED, RED_WOOL);
                 }
-                // Fishing and the hat swap use the existing dock post and scarecrow.
-                case FISH, SWAP -> { }
+                case FISH, SWAP, CONTACT -> { } // These use existing scenery or livestock.
             }
         }
         farmGate();
