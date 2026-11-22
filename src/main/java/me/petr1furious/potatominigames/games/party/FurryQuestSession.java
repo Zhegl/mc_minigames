@@ -108,10 +108,7 @@ final class FurryQuestSession extends PartySurvivalSession {
                 if (site == null) continue;
                 Location target = arena.landmark(site);
                 Location body = agent.player.getLocation();
-                if (elapsed % 10 == 0) {
-                    agent.player.spawnParticle(Particle.HAPPY_VILLAGER, target.clone().add(0, 2.5, 0),
-                            8, .45, .3, .45, 0);
-                }
+                if (elapsed % 10 == 0) showTaskMarker(agent.player, site, target);
                 if (quest.act(id, body.getX() - target.getX(), body.getZ() - target.getZ(),
                         Math.abs(body.getY() - target.getY()) <= 2, input.isSneak(), input.isJump())) {
                     playTaskEffect(agent, site);
@@ -125,6 +122,18 @@ final class FurryQuestSession extends PartySurvivalSession {
         if (quest.outcome() != null) {
             say(message("end." + key(quest.outcome())));
             finish(List.of());
+        }
+    }
+
+    private void showTaskMarker(Player player, FurryQuest.Site site, Location target) {
+        if (site == FurryQuest.Site.TREE) {
+            for (int i = 0; i < 8; i++) {
+                double angle = i * Math.PI / 4;
+                player.spawnParticle(Particle.HAPPY_VILLAGER, target.getX() + 1.2 * Math.cos(angle),
+                        target.getY() + .4, target.getZ() + 1.2 * Math.sin(angle), 1, 0, 0, 0, 0);
+            }
+        } else {
+            player.spawnParticle(Particle.HAPPY_VILLAGER, target.clone().add(0, 2.5, 0), 8, .45, .3, .45, 0);
         }
     }
 

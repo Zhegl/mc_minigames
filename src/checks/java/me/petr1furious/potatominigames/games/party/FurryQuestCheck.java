@@ -15,7 +15,7 @@ public final class FurryQuestCheck {
 
     private static FurryQuest round() { return new FurryQuest(PLAYERS, new Random(42)); }
 
-    private static void finishRoute(FurryQuest game, UUID id) {
+    private static void finishRoute(FurryQuest game, UUID id, boolean clockwise) {
         var seen = EnumSet.noneOf(FurryQuest.Site.class);
         while (game.site(id) != null) {
             var site = game.site(id);
@@ -45,10 +45,14 @@ public final class FurryQuestCheck {
                         game.act(id, 0, 3, true, false, false);
                         require(!game.act(id, 3, 0, true, false, false), "Backtracking is not a lap");
                     }
-                    game.act(id, 0, -3, true, false, false);
-                    game.act(id, -3, 0, true, false, false);
-                    game.act(id, 0, 3, true, false, false);
-                    yield game.act(id, 3, 0, true, false, false);
+                    // A hider can walk this close to the one-block trunk, even at the corners.
+                    boolean lap = false;
+                    for (int step = 0; step <= 96 && !lap; step++) {
+                        double angle = (clockwise ? 1 : -1) * step * 2 * Math.PI / 96;
+                        lap = game.act(id, 1.2 * Math.cos(angle), 1.2 * Math.sin(angle), true, false, false);
+                    }
+                    require(lap, "A close lap around the oak completes in either direction");
+                    yield lap;
                 }
                 case TROUGH -> {
                     game.act(id, -2, 0, true, false, false);
@@ -73,18 +77,18 @@ public final class FurryQuestCheck {
         List<UUID> spies = PLAYERS.stream().filter(id -> !id.equals(sniper)).toList();
         UUID first = spies.getFirst(), second = spies.getLast();
         require(game.remaining() == 2 && game.site(sniper) == null, "One sniper and two agents");
-        finishRoute(game, first);
+        finishRoute(game, first, true);
         require(game.outcome() == null && game.completed(second) == 0, "Personal tasks cannot be pooled");
         require(!game.act(first, 0, 0, true, true, true), "Completed agents cannot score again");
         game.out(first);
-        finishRoute(game, second);
+        finishRoute(game, second, false);
         require(game.outcome() == FurryQuest.Outcome.MISSIONS, "Both routes complete");
         game.timeout();
         require(game.result(Set.of(sniper, second)).places().equals(List.of(List.of(second))), "Eligible winners");
 
         game = round();
         game.out(first);
-        finishRoute(game, second);
+        finishRoute(game, second, false);
         require(game.outcome() == null && game.remaining() == 1, "An unfinished agent still counts");
         game.out(second);
         require(game.outcome() == FurryQuest.Outcome.ALL_CAUGHT, "Sniper catches all agents");

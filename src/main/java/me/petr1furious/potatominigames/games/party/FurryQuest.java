@@ -53,7 +53,7 @@ final class FurryQuest {
                     yield progress >= 40;
                 }
                 case HAY -> peck && ++progress == 3;
-                case TREE -> circle(dx, dz, radius2);
+                case TREE -> circle(dx, dz);
                 case TROUGH -> {
                     if (Math.abs(dz) <= 2 && Math.abs(dx) >= 1.75)
                         progress |= dx < 0 ? 1 : 2;
@@ -69,12 +69,7 @@ final class FurryQuest {
             return done;
         }
 
-        private boolean circle(double dx, double dz, double radius2) {
-            if (radius2 < 2.25) {
-                progress = 0;
-                previousSector = -1;
-                return false;
-            }
+        private boolean circle(double dx, double dz) {
             int sector = Math.floorMod((int) Math.floor(Math.atan2(dz, dx) / (Math.PI / 2) + .5), 4);
             if (previousSector != -1) {
                 switch (Math.floorMod(sector - previousSector, 4)) {
