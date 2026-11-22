@@ -2,6 +2,7 @@ package me.petr1furious.potatominigames.games.party;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,13 +10,12 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
-/** Team objectives and the first event that decides the round. */
+/** Each agent owns a route. Catching one cannot erase the team's unfinished work. */
 final class FurryQuest {
-    static final int SECONDS = 105;
-    static final int HOLD_TICKS = 40;
+    static final int SECONDS = 150;
 
     enum Site {
-        POND(-10, -9), HAY(10, -9), TREE(-10, 10), TROUGH(10, 10);
+        POND(-10, -9), HAY(10, -9), TREE(-10, 10), TROUGH(10, 10), BELL(0, 0);
 
         final int x, z;
         Site(int x, int z) {
@@ -24,56 +24,104 @@ final class FurryQuest {
         }
     }
 
+    static final int TASKS = Site.values().length;
     enum Outcome { MISSIONS, LIVESTOCK, ALL_CAUGHT, TIME, SNIPER_LEFT }
 
-    private final Random random;
+    private static final class Route {
+        final List<Site> sites = new ArrayList<>(List.of(Site.values()));
+        boolean active = true;
+        int completed, progress;
+        int previousSector = -1;
+        boolean crouching, jumping;
+
+        Route(Random random) { Collections.shuffle(sites, random); }
+        Site site() { return completed == sites.size() ? null : sites.get(completed); }
+
+        boolean act(double dx, double dz, boolean level, boolean crouch, boolean jump) {
+            boolean peck = crouch && !crouching, ring = jump && !jumping;
+            crouching = crouch;
+            jumping = jump;
+            double radius2 = dx * dx + dz * dz;
+            if (!level || radius2 > (site() == Site.TREE ? 30.25 : 16)) {
+                progress = 0;
+                previousSector = -1;
+                return false;
+            }
+            boolean done = switch (site()) {
+                case POND -> {
+                    progress = crouch ? progress + 1 : 0;
+                    yield progress >= 40;
+                }
+                case HAY -> peck && ++progress == 3;
+                case TREE -> circle(dx, dz, radius2);
+                case TROUGH -> {
+                    if (Math.abs(dz) <= 2 && Math.abs(dx) >= 1.75)
+                        progress |= dx < 0 ? 1 : 2;
+                    yield progress == 3;
+                }
+                case BELL -> ring;
+            };
+            if (done) {
+                completed++;
+                progress = 0;
+                previousSector = -1;
+            }
+            return done;
+        }
+
+        private boolean circle(double dx, double dz, double radius2) {
+            if (radius2 < 2.25) {
+                progress = 0;
+                previousSector = -1;
+                return false;
+            }
+            int sector = Math.floorMod((int) Math.floor(Math.atan2(dz, dx) / (Math.PI / 2) + .5), 4);
+            if (previousSector != -1) {
+                switch (Math.floorMod(sector - previousSector, 4)) {
+                    case 1 -> progress++;
+                    case 3 -> progress--;
+                    case 2 -> progress = 0;
+                }
+            }
+            previousSector = sector;
+            return Math.abs(progress) >= 4;
+        }
+    }
+
     private final UUID sniper;
-    private final List<UUID> team;
-    private final Map<UUID, Site> assignments = new LinkedHashMap<>();
-    private final Map<UUID, Integer> progress = new LinkedHashMap<>();
-    private final int required;
-    private int completed;
+    private final Map<UUID, Route> routes = new LinkedHashMap<>();
     private Outcome outcome;
 
     FurryQuest(Collection<UUID> players, Random random) {
         if (players.size() < 2) throw new IllegalArgumentException("Furry Quest requires two players");
-        this.random = random;
         var ids = new ArrayList<>(players);
         sniper = ids.remove(random.nextInt(ids.size()));
-        team = List.copyOf(ids);
-        required = team.size() + 2;
-        for (UUID id : team) assign(id);
+        for (UUID id : ids) routes.put(id, new Route(random));
     }
 
     UUID sniper() { return sniper; }
-    int remaining() { return assignments.size(); }
-    int required() { return required; }
-    int completed() { return completed; }
-    Site site(UUID id) { return assignments.get(id); }
+    int remaining() { return (int) routes.values().stream().filter(r -> r.active).count(); }
+    int completed(UUID id) { return routes.get(id).completed; }
+    Site site(UUID id) {
+        Route route = routes.get(id);
+        return route == null || !route.active ? null : route.site();
+    }
     Outcome outcome() { return outcome; }
 
-    private void assign(UUID id) {
-        var choices = new ArrayList<>(List.of(Site.values()));
-        choices.remove(assignments.get(id));
-        assignments.put(id, choices.get(random.nextInt(choices.size())));
-        progress.put(id, 0);
-    }
-
-    boolean linger(UUID id, boolean nearby) {
-        if (outcome != null || !assignments.containsKey(id)) return false;
-        int ticks = nearby ? progress.get(id) + 1 : 0;
-        progress.put(id, ticks);
-        if (ticks < HOLD_TICKS) return false;
-        if (++completed == required) outcome = Outcome.MISSIONS;
-        else assign(id);
+    boolean act(UUID id, double dx, double dz, boolean level, boolean crouch, boolean jump) {
+        if (outcome != null || site(id) == null) return false;
+        if (!routes.get(id).act(dx, dz, level, crouch, jump)) return false;
+        if (routes.values().stream().allMatch(r -> r.completed == TASKS)) outcome = Outcome.MISSIONS;
         return true;
     }
 
     void out(UUID id) {
         if (outcome != null) return;
         if (sniper.equals(id)) outcome = Outcome.SNIPER_LEFT;
-        else if (assignments.remove(id) != null && assignments.isEmpty()) outcome = Outcome.ALL_CAUGHT;
-        progress.remove(id);
+        else if (routes.containsKey(id)) {
+            routes.get(id).active = false;
+            if (remaining() == 0) outcome = Outcome.ALL_CAUGHT;
+        }
     }
 
     void wrongShot() {
@@ -88,7 +136,7 @@ final class FurryQuest {
         if (outcome == null) return PartyRoundResult.empty();
         List<UUID> winners = switch (outcome) {
             case ALL_CAUGHT, TIME -> List.of(sniper);
-            default -> team;
+            default -> List.copyOf(routes.keySet());
         };
         return new PartyRoundResult(List.of(winners)).eligible(eligible);
     }

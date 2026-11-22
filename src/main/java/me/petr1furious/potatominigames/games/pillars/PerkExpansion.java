@@ -1,5 +1,7 @@
 package me.petr1furious.potatominigames.games.pillars;
 
+import me.petr1furious.potatominigames.core.hud.EntityCamera;
+
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.concurrent.ThreadLocalRandom;
@@ -48,7 +50,7 @@ final class PerkExpansion implements Listener, AutoCloseable {
     private final List<UUID> pendingCamera = new ArrayList<>();
     private final Map<UUID, Vector> punches = new HashMap<>();
     private final Set<UUID> anchorHits = new HashSet<>();
-    private PerkCamera camera;
+    private EntityCamera camera;
     private UUID lightningTarget;
     private long tick;
     private boolean moving, redirecting, closed;
@@ -67,7 +69,7 @@ final class PerkExpansion implements Listener, AutoCloseable {
     }
     private boolean available(Player p) { return perks.alive(p) && p.getGameMode() == GameMode.SURVIVAL; }
     private void view(Player p, Entity target) {
-        if (camera == null) camera = new PerkCamera();
+        if (camera == null) camera = new EntityCamera();
         camera.point(p, target);
     }
     private boolean cameraReady(Player p) {
