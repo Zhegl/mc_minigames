@@ -18,6 +18,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.block.Bell;
 import org.bukkit.entity.Animals;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -38,7 +39,6 @@ final class FurryQuestSession extends PartySurvivalSession {
         final boolean wasVisible;
         boolean viewing, steering;
         float heading;
-        long glowUntil;
 
         Agent(Player player, Animals animal) {
             this.player = player;
@@ -116,10 +116,6 @@ final class FurryQuestSession extends PartySurvivalSession {
             for (var entry : agents.entrySet()) {
                 UUID id = entry.getKey();
                 Agent agent = entry.getValue();
-                if (agent.glowUntil != 0 && elapsed >= agent.glowUntil) {
-                    agent.animal.setGlowing(false);
-                    agent.glowUntil = 0;
-                }
                 // The client must have spawned this entity before it can accept a camera packet.
                 if (!agent.animal.getTrackedBy().contains(agent.player)) {
                     agent.viewing = false;
@@ -141,7 +137,7 @@ final class FurryQuestSession extends PartySurvivalSession {
                 }
                 if (quest.act(id, body.getX() - target.getX(), body.getZ() - target.getZ(),
                         Math.abs(body.getY() - target.getY()) <= 2, input.isSneak(), input.isJump())) {
-                    reveal(agent, site, elapsed);
+                    playTaskEffect(agent, site);
                     agent.player.playSound(body, Sound.BLOCK_NOTE_BLOCK_CHIME, .7f, 1.4f);
                     agent.player.sendMessage(message("complete", quest.completed(id), FurryQuest.TASKS));
                     if (quest.outcome() != null) break;
@@ -171,14 +167,13 @@ final class FurryQuestSession extends PartySurvivalSession {
         agent.steering = steering;
     }
 
-    private void reveal(Agent agent, FurryQuest.Site site, long tick) {
-        Location at = agent.animal.getEyeLocation();
+    private void playTaskEffect(Agent agent, FurryQuest.Site site) {
         if (site == FurryQuest.Site.HAY) {
-            world.spawnParticle(Particle.BLOCK, at, 28, .45, .3, .45, .08, Material.HAY_BLOCK.createBlockData());
+            world.spawnParticle(Particle.BLOCK, agent.animal.getEyeLocation(), 28, .45, .3, .45, .08,
+                    Material.HAY_BLOCK.createBlockData());
         } else if (site == FurryQuest.Site.BELL) {
-            world.playSound(at, Sound.BLOCK_BELL_USE, 1, 1);
-            agent.animal.setGlowing(true);
-            agent.glowUntil = tick + 30;
+            if (arena.landmark(site).getBlock().getRelative(0, 1, 0).getState() instanceof Bell bell)
+                bell.ring();
         }
     }
 
